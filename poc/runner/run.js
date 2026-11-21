@@ -9,7 +9,7 @@
 //   node runner/run.js --keep                  끝나고 창을 닫지 않음
 
 import { execFileSync, spawn } from 'node:child_process';
-import { existsSync, mkdirSync, writeFileSync, readdirSync, createReadStream } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync, readdirSync, createReadStream, copyFileSync, unlinkSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { randomBytes } from 'node:crypto';
 import http from 'node:http';
@@ -280,8 +280,11 @@ async function main(){
   for (const d of docs){
     const A = APPS[d.key];
     await step(d.id, `${A.label} 열기·연결·앞으로·옮기기`, async () => {
-      const file = d.file ? path.join(SAMPLES, d.file) : null;
-      if (d.file && !existsSync(file)) return { status: 'skip', detail: `시험 파일이 없습니다: ${d.file}` };
+      const sample = d.file ? path.join(SAMPLES, d.file) : null;
+      if (sample && !existsSync(sample)) return { status: 'skip', detail: `시험 파일이 없습니다: ${d.file}` };
+      // 예시 파일을 그대로 열지 않고 매번 새 이름의 복사본을 연다.
+      // 같은 문서가 이미 열려 있으면 프로그램이 새 창을 만들지 않고 그 창을 앞으로 가져오기 때문이다 (맥 한글에서 확인).
+      const file = sample ? copyForRun(sample, d.id) : null;
       const before = list(A.match);
       const t0 = Date.now();
       openFile(d.key, file);
@@ -327,11 +330,23 @@ async function main(){
       const { value: gone } = await waitFor(() => { const ids = new Set(list().map(w => w.wid)); return res.every(c => !ids.has(c.wid)) ? true : null; }, 6000, 500);
       const alive = gone ? new Set() : new Set(list().map(w => w.wid));
       const left = res.filter(c => alive.has(c.wid));
+      if (!left.length) for (const f of copies.splice(0)){ try { unlinkSync(f); } catch { /* 다음 실행 때 */ } }
       return { status: left.length ? 'warn' : 'pass',
         detail: left.length ? `남은 창: ${left.map(c => c.label).join(', ')} (저장 여부를 묻는 창일 수 있음)` : `${res.length}개 모두 닫힘`, data: res };
     });
   }
   return finish();
+}
+
+const copies = [];   // 실행기가 만든 시험용 복사본 (창을 모두 닫으면 지운다)
+function copyForRun(sample, id){
+  const dir = path.join(OUT, 'copies');
+  mkdirSync(dir, { recursive: true });
+  const stamp = new Date().toTimeString().slice(0, 8).replace(/:/g, '');
+  const file = path.join(dir, `${id}_${stamp}_${path.basename(sample)}`);
+  copyFileSync(sample, file);
+  copies.push(file);
+  return file;
 }
 
 function pickHwpSample(){

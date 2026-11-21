@@ -147,6 +147,17 @@ test('다시 켜면 이미 열린 문서 창을 다시 연결하고, 브라우�
   assert.equal(s.state.get('web').status, 'closed');
 });
 
+test('이미 열려 있던 문서는 새 창이 안 생겨도 같은 이름의 창을 찾아 연결한다 (맥 한글·오피스)', async () => {
+  const { s, helper } = makeSession();
+  helper.spawn('PowerPoint', '04_발표자료');           // 선생님이 미리 열어 둔 같은 문서
+  s.launcher.openWithApp = async () => {};            // 프로그램은 새 창 없이 그 창을 앞으로 가져옴
+  await s.refreshDisplays(); s.load(makeLesson());
+  await s.open('ppt');
+  assert.equal(s.state.get('ppt').status, 'open');
+  assert.equal(s.state.get('ppt').wid, helper.wins[0].wid);
+  assert.equal(s.state.get('ppt').disp, 'student');
+});
+
 test('다른 창 숨기기는 학생 화면의 자료만 숨기고 교사 화면 메모는 둔다', async () => {
   const { s, helper } = makeSession();
   const mins = [];
