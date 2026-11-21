@@ -33,7 +33,7 @@
 - **읽지 않아도 되는 것**: `design/prototype.html`(큰 시안 파일), `docs/PLAN.md` 전체, `poc/mac-helper/`
 - 큰 일 하나가 끝나면 이 파일을 고치고 새 대화로 시작한다
 1. (완료) 윈도우 도우미 `poc/win-helper/winctl.js` + 실행기 윈도우 열기 명령 고침 + 1차 실행 (`win/helper` 브랜치, PR)
-2. 선생님이 함께: 다른 프로그램에 글자를 치는 도중 `node runner/raise-lock.js` → 결과를 `docs/poc/windows.md` "알게 된 것 1"에
+2. (완료) 선생님과 함께 `raise-lock.js`: 메모장에 글자를 치는 도중에도 보통 방법으로 앞으로 가져오기 성공 (0.06초)
 3. 외부 모니터(또는 프로젝터)를 연결하고 `node runner/run.js --browsers=chrome,edge,whale` → P3, 배율이 다른 모니터(예: 노트북 150% + 프로젝터 100%)에서 위치가 맞는지. 뺀 상태·다시 꽂은 상태도
 4. 한글 예시 파일을 받으면 `poc/samples/`에 넣고 F3 다시 시험
 5. `docs/poc/windows.md`의 "남은 것" 나머지 (관리자 권한 창, 저장 창이 떠 있을 때 닫기)
@@ -45,7 +45,7 @@ Git·Node·GitHub CLI 설치와 로그인 끝. 저장소는 `C:\vibe_coding_win\
 ## 사용자에게 받을 것
 - 학생 정보가 없는 예시 한글 파일(.hwp 또는 .hwpx) 하나
 - 눈으로 확인할 것: 슬라이드 쇼 위에 사이드바가 보이는지, 외부 모니터를 뺐다 꽂을 때 창이 모이고 돌아오는지, 수업 준비 화면 직접 써 보기
-- 윈도우 PC에서: `raise-lock.js` 시험을 함께 해 주기, 외부 모니터(또는 프로젝터) 연결
+- 윈도우 PC에서: 외부 모니터(또는 프로젝터) 연결
 
 ## 넘길 일
 - 맥 Claude에게: 실행기 `finish()`에 `closeAllConnections()`를 넣었다 (윈도우에서 브라우저가 뒤에 남아 실행기가 안 끝났음). 맥에서도 문제없는지 다음 실행 때 확인

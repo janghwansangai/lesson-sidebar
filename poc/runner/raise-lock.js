@@ -35,10 +35,19 @@ for (let i = 0; i < 40 && !win; i++){
   win = helper('list', '--app', EXE[browser]).windows.find(w => !before.has(w.wid)) ?? null;
 }
 if (!win){ console.log('브라우저 새 창을 찾지 못했습니다'); process.exit(1); }
+console.log('브라우저 창을 하나 열었습니다.');
 
-console.log('\n브라우저 창을 하나 열었습니다.');
-console.log('지금 메모장(또는 아무 프로그램)을 클릭하고, 아래 숫자가 끝날 때까지 키보드를 계속 눌러 주세요.\n');
-for (let s = 8; s > 0; s--){ process.stdout.write(`  ${s}… `); await sleep(1000); }
+// 사람이 글자를 칠 프로그램으로 메모장을 연다 (메모장이 브라우저 창 앞에 온다)
+spawn('cmd.exe', ['/d', '/s', '/c', '"start "" notepad.exe"'], { detached: true, stdio: 'ignore', windowsHide: true, windowsVerbatimArguments: true }).unref();
+let pad = null;
+for (let i = 0; i < 20 && !pad; i++){
+  await sleep(500);
+  const f = helper('front').front;
+  if (/notepad/i.test(f.app ?? '')) pad = f;
+}
+console.log(pad ? '메모장이 맨 앞에 열렸습니다.' : '메모장이 맨 앞에 오지 않았습니다 (그래도 계속합니다).');
+console.log('메모장을 클릭하고, 숫자가 끝날 때까지 아무 글자나 계속 쳐 주세요.\n');
+for (let s = 12; s > 0; s--){ process.stdout.write(`  ${s}… `); await sleep(1000); }
 console.log('\n');
 
 const fgBefore = helper('front').front;
@@ -47,6 +56,7 @@ const tried = (r.detail?.tried ?? []).map(t => `${t.method}:${t.front ? '성공'
 console.log(`시험 전 맨 앞: ${fgBefore.app}`);
 console.log(`결과: ${r.ok ? '앞으로 가져오기 성공' : '실패 (작업 표시줄 단추만 깜빡였을 수 있음)'} · 통한 방법 ${r.detail?.method ?? '없음'} · 시도 ${tried} · ${r.ms}ms`);
 
-await sleep(1500);
+await sleep(3000);
 helper('close', String(win.wid));
-console.log('\n시험한 창을 닫았습니다. 위 "결과" 줄을 Claude에게 알려 주세요.');
+console.log('\n시험한 브라우저 창을 닫았습니다. 메모장은 쓰신 글이 있어 그대로 둡니다 (저장하지 않고 닫아 주세요).');
+console.log('위 "결과" 줄을 Claude에게 알려 주세요.');
