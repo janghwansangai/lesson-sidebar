@@ -41,6 +41,8 @@ const W = {
   EnumWindows:         fn(user32, 'int __stdcall EnumWindows(WNDENUMPROC *cb, intptr_t lParam)'),
   IsWindow:            fn(user32, 'int __stdcall IsWindow(intptr_t hwnd)'),
   IsWindowVisible:     fn(user32, 'int __stdcall IsWindowVisible(intptr_t hwnd)'),
+  IsWindowEnabled:     fn(user32, 'int __stdcall IsWindowEnabled(intptr_t hwnd)'),
+  GetLastActivePopup:  fn(user32, 'intptr_t __stdcall GetLastActivePopup(intptr_t hwnd)'),
   IsIconic:            fn(user32, 'int __stdcall IsIconic(intptr_t hwnd)'),
   IsZoomed:            fn(user32, 'int __stdcall IsZoomed(intptr_t hwnd)'),
   GetWindow:           fn(user32, 'intptr_t __stdcall GetWindow(intptr_t hwnd, uint32_t cmd)'),
@@ -70,7 +72,7 @@ const W = {
   SetProcessDpiAwareness: fn(shcore, 'int32_t __stdcall SetProcessDpiAwareness(int value)'),
 };
 
-const GW_OWNER = 4, GA_ROOT = 2, GWL_EXSTYLE = -20;
+const GW_OWNER = 4, GW_ENABLEDPOPUP = 6, GA_ROOT = 2, GWL_EXSTYLE = -20;
 const WS_EX_TOOLWINDOW = 0x80, WS_EX_APPWINDOW = 0x40000;
 const DWMWA_EXTENDED_FRAME_BOUNDS = 9, DWMWA_CLOAKED = 14;
 const SW_RESTORE = 9, SW_MINIMIZE = 6;
@@ -234,6 +236,17 @@ function allWindows(appFilter){
   return topWindows().filter(isAppWindow).filter(h => !f || exeName(pidOf(h)).toLowerCase().includes(f));
 }
 
+/**
+ * 답을 기다리는 창(저장 여부·확인·로그인 등 모달 대화 상자)이 떠 있으면 그 창. 없으면 null.
+ * 모달 대화 상자가 뜨면 바탕 창은 "사용 안 함" 상태가 된다. 맨 앞이 아니어도 알 수 있다.
+ */
+function waitingFor(h){
+  if (W.IsWindowEnabled(h)) return null;
+  let p = num(W.GetWindow(h, GW_ENABLEDPOPUP));
+  if (!p || p === h) p = num(W.GetLastActivePopup(h));
+  return p && p !== h ? { wid: p, title: title(p) } : { wid: null, title: '' };
+}
+
 function winJSON(h, ds){
   const minimized = !!W.IsIconic(h), maximized = !!W.IsZoomed(h);
   const r = minimized ? restoredRect(h, ds) : xywh(frameRect(h));
@@ -241,7 +254,7 @@ function winJSON(h, ds){
   const mon = ds[displayIndex(r, ds)];
   // 윈도우에는 맥 같은 "전체 화면" 상태가 따로 없다. 최대화가 아니면서 모니터 전체를 덮으면 전체 화면으로 본다 (슬라이드 쇼, F11).
   const fullscreen = !minimized && !maximized && !!mon && r.x <= mon.x && r.y <= mon.y && r.x + r.width >= mon.x + mon.width && r.y + r.height >= mon.y + mon.height;
-  return { wid: h, pid, app: exeName(pid), title: title(h), ...r, minimized, maximized, fullscreen, display: displayIndex(r, ds) };
+  return { wid: h, pid, app: exeName(pid), title: title(h), ...r, minimized, maximized, fullscreen, display: displayIndex(r, ds), waiting: waitingFor(h) };
 }
 
 /** 대화 상자(소유된 창)가 앞에 있으면, 목록에 나오는 바탕 창까지 거슬러 올라간다. */
@@ -315,6 +328,7 @@ function raise(h){
   }
   const ok = method ? true : waitUntil(isFront, 1000);
   detail.method = ok ? (method ?? 'late') : null;
+  detail.waiting = waitingFor(h);   // 답을 기다리는 창이 있으면 윈도우가 그 창을 앞으로 가져온다
   return { ok, front: frontInfo(), ms: Date.now() - t0, detail };
 }
 
@@ -346,7 +360,10 @@ function minimize(h){
 
 function close(h){
   // 정상 종료 요청만 보낸다. 저장 여부를 묻는 창이 뜨면 그대로 둔다.
-  return { ok: !!W.PostMessageW(h, WM_CLOSE, 0, 0) };
+  const ok = !!W.PostMessageW(h, WM_CLOSE, 0, 0);
+  if (ok) return { ok };
+  const err = W.GetLastError();
+  return { ok, error: `닫기 요청을 보내지 못했습니다 (오류 ${err}${err === 5 ? ': 관리자 권한으로 실행된 창일 수 있음' : ''})` };
 }
 
 async function watch(){
