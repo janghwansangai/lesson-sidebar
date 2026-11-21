@@ -1,0 +1,2280 @@
+<title>수업 사이드바 시안</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: page header with three views. "수업 진행" is a simulated monitor: a chalkboard-green sidebar docked left over a desktop of real-app windows. */
+:root{
+  --bg:#f2f4f1; --surface:#ffffff; --surface-2:#e9ede9; --line:#d3dbd5; --fg:#16211d; --muted:#56665f;
+  --accent:#1d6a56; --accent-ink:#ffffff; --accent-soft:#d9ebe3;
+  --ok:#1b7443; --ok-soft:#dbefe2; --warn:#8d5a00; --warn-soft:#f8ecd2; --bad:#b0281f; --bad-soft:#f8e0dc;
+
+  --sb-bg:#1b2f2a; --sb-bg-2:#26403a; --sb-fg:#edf3ee; --sb-muted:#a0b5ad; --sb-line:rgba(237,243,238,.10);
+  --chalk:#f2cd5c; --chalk-soft:rgba(242,205,92,.16); --live:#6fd39b; --live-soft:rgba(111,211,155,.18);
+  --rec:#ff5a4f; --rec-soft:rgba(255,90,79,.18);
+
+  --bezel:#141917; --wall-1:#cbd8d1; --wall-2:#9fb5ac; --wall-3:#e3ebe6; --taskbar:rgba(18,26,23,.92); --tb-fg:#e6ece8;
+  --win-bg:#ffffff; --win-fg:#1c2421; --win-chrome:#edf0ee; --win-line:#d7ddd9; --win-muted:#66716c; --page-bg:#e3e7e5; --win-shadow:rgba(8,18,14,.26);
+  --video-bg:#0d0f0e; --danger-solid:#d43a31; --on-solid:#ffffff;
+  --slide-bg:#ffffff; --slide-fg:#22201c;
+  --hl:rgba(255,212,0,.26); --hl-ring:rgba(255,196,0,.9); --spot-dim:rgba(6,10,8,.74); --pick-dim:rgba(6,10,8,.36);
+
+  --t-red:#c4302b; --t-blue:#2f6fd0; --t-green:#1e8a4c; --t-yellow:#9a6e00; --t-teal:#13806f; --t-violet:#7349cf;
+  --t-rose:#c2334d; --t-cyan:#0e7a90; --t-orange:#c4501d; --t-green2:#217346; --t-blue2:#2459a8; --t-pink:#b23b84;
+  --t-purple:#6a43b8; --t-stone:#5e6b66; --t-slate:#4b5b76; --t-slate2:#56606e; --app-chrome:#4a6fa5;
+
+  --font-ui:"IBM Plex Sans KR","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;
+  --font-mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0f1513; --surface:#161e1b; --surface-2:#1d2824; --line:#2b3934; --fg:#e4ebe7; --muted:#95a69f;
+    --accent:#7dd3b3; --accent-ink:#0c1a15; --accent-soft:#1b3830;
+    --ok:#79d39a; --ok-soft:#163223; --warn:#efb54e; --warn-soft:#352812; --bad:#ff8b80; --bad-soft:#3a1b18;
+    --wall-1:#2d3c37; --wall-2:#1a2521; --wall-3:#3a4c45;
+    --win-bg:#eef1ef; --win-chrome:#dce1de; --win-line:#c5cdc8; --win-muted:#5c6762; --page-bg:#cfd6d2; --slide-bg:#f4f4f2;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0f1513; --surface:#161e1b; --surface-2:#1d2824; --line:#2b3934; --fg:#e4ebe7; --muted:#95a69f;
+  --accent:#7dd3b3; --accent-ink:#0c1a15; --accent-soft:#1b3830;
+  --ok:#79d39a; --ok-soft:#163223; --warn:#efb54e; --warn-soft:#352812; --bad:#ff8b80; --bad-soft:#3a1b18;
+  --wall-1:#2d3c37; --wall-2:#1a2521; --wall-3:#3a4c45;
+  --win-bg:#eef1ef; --win-chrome:#dce1de; --win-line:#c5cdc8; --win-muted:#5c6762; --page-bg:#cfd6d2; --slide-bg:#f4f4f2;
+  color-scheme:dark;
+}
+
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--fg);font-family:var(--font-ui);font-size:14px;line-height:1.55;-webkit-font-smoothing:antialiased}
+button{font-family:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.sb :focus-visible{outline-color:var(--chalk)}
+@media (prefers-reduced-motion: reduce){*,*::before,*::after{transition:none!important;animation:none!important}}
+
+.page{max-width:1320px;margin:0 auto;padding-left:max(16px, env(safe-area-inset-left, 0px));padding-right:max(16px, env(safe-area-inset-right, 0px));padding-block:20px 56px;display:flex;flex-direction:column;gap:16px}
+
+/* header */
+.top{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px 20px}
+.brand{display:flex;align-items:center;gap:12px}
+.logo{width:38px;height:38px;border-radius:9px;background:var(--sb-bg);position:relative;flex:none;overflow:hidden}
+.logo::before{content:"";position:absolute;left:7px;top:8px;bottom:8px;width:9px;border-radius:3px;background:var(--sb-bg-2)}
+.logo::after{content:"";position:absolute;left:20px;top:11px;width:11px;height:3px;border-radius:2px;background:var(--chalk);box-shadow:0 6px 0 var(--sb-muted),0 12px 0 var(--sb-muted)}
+.brand h1{margin:0;font-size:19px;font-weight:700;letter-spacing:-.01em;line-height:1.2}
+.brand p{margin:2px 0 0;font-size:12.5px;color:var(--muted)}
+.views{display:flex;gap:4px;background:var(--surface-2);padding:4px;border-radius:10px;max-width:100%;overflow-x:auto}
+.views a{padding:7px 14px;border-radius:7px;color:var(--muted);text-decoration:none;font-weight:600;font-size:13.5px;white-space:nowrap}
+.views a:hover{color:var(--fg)}
+.views a[aria-current="page"]{background:var(--surface);color:var(--fg);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+
+.hint{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:13px;color:var(--muted);margin:0}
+.hint b{color:var(--fg);font-weight:600}
+kbd{font-family:var(--font-mono);font-size:11px;padding:0 5px;border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;background:var(--surface);color:var(--fg)}
+
+/* monitor */
+.mon-wrap{overflow-x:auto;padding-bottom:4px}
+.monitor{min-width:1000px;background:var(--bezel);border-radius:16px;padding:9px}
+.screen{position:relative;height:700px;border-radius:7px;overflow:hidden;--mx:-200px;--my:-200px;--sr:110px;user-select:none}
+.scr{position:absolute;inset:0}
+.desk{position:absolute;left:0;top:0;right:0;bottom:40px;z-index:1;overflow:hidden;
+  background:radial-gradient(ellipse at 78% 18%, var(--wall-3), transparent 55%),linear-gradient(160deg,var(--wall-1),var(--wall-2))}
+.desk::after{content:attr(data-hint);position:absolute;right:28px;bottom:18px;font-size:12px;color:var(--sb-bg);opacity:.35;pointer-events:none}
+.screen.recording::after{content:"";position:absolute;inset:0;border:3px solid var(--rec);border-radius:7px;pointer-events:none;z-index:40}
+.mon-note{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:12.5px;color:var(--muted);margin:0;align-items:center}
+.mon-note .lg{display:inline-flex;align-items:center;gap:6px}
+.lg-dot{width:8px;height:8px;border-radius:50%;background:var(--live)}
+.lg-dot.min{background:transparent;box-shadow:inset 0 0 0 2px var(--live)}
+.run-bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px 20px}
+.seg{display:inline-flex;background:var(--surface-2);padding:3px;border-radius:9px;gap:2px;flex:none}
+.seg button{border:0;background:transparent;color:var(--muted);font-weight:600;font-size:13px;padding:6px 12px;border-radius:7px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--fg);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.mon-label{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;font-size:12.5px;color:var(--muted);margin:16px 0 6px}
+.mon-label b{color:var(--fg);font-size:14px}
+.screen.s2{height:600px}
+.screen.s2 .desk{bottom:0}
+.sb-stu{padding:8px 12px 9px;border-bottom:1px solid var(--sb-line);display:flex;flex-direction:column;gap:6px}
+.screen:not(.dual) .sb-stu{display:none}
+.stu-h{display:flex;align-items:center;gap:5px;font-size:10.5px;letter-spacing:.07em;color:var(--sb-muted);font-weight:600}
+.stu-h .grow{flex:1}
+.stu-st{font-size:10px;font-weight:700;padding:1px 6px;border-radius:99px;background:var(--live-soft);color:var(--live);letter-spacing:0;white-space:nowrap}
+.stu-st.freeze{background:var(--chalk-soft);color:var(--chalk)}
+.stu-st.blank{background:var(--rec-soft);color:var(--rec)}
+.stu-b{border:1px solid var(--sb-line);background:var(--sb-bg-2);color:var(--sb-fg);font-size:10.5px;padding:2px 7px;border-radius:6px;cursor:pointer;letter-spacing:0}
+.stu-b:hover{border-color:var(--chalk)}
+.stu-b[aria-pressed="true"]{background:var(--chalk);color:var(--sb-bg);border-color:var(--chalk)}
+.stu-tg{border:0;background:transparent;color:var(--sb-muted);font-size:11px;width:20px;height:20px;border-radius:5px;cursor:pointer;padding:0}
+.stu-tg:hover{background:var(--sb-bg-2);color:var(--sb-fg)}
+.stu-prev{position:relative;height:112px;border-radius:5px;overflow:hidden;background:var(--video-bg);cursor:pointer;box-shadow:0 0 0 1px var(--sb-line)}
+.stu-prev:hover{box-shadow:0 0 0 2px var(--chalk)}
+.stu-prev.collapsed{display:none}
+.pv{position:absolute;left:0;top:0;transform-origin:0 0;pointer-events:none}
+.pv-tag{position:absolute;left:6px;bottom:6px;font-size:10px;font-weight:700;background:var(--chalk);color:var(--sb-bg);padding:1px 7px;border-radius:99px}
+.stu-to{display:flex;align-items:center;gap:4px;font-size:10.5px;color:var(--sb-muted)}
+.stu-to span{margin-right:2px;white-space:nowrap}
+.stu-to button{flex:1;border:1px solid var(--sb-line);background:transparent;color:var(--sb-muted);font-size:10.5px;padding:3px 4px;border-radius:6px;cursor:pointer;white-space:nowrap}
+.stu-to button[aria-pressed="true"]{background:var(--sb-bg-2);color:var(--sb-fg);border-color:var(--chalk)}
+.fx-cover{position:absolute;inset:0;z-index:16;overflow:hidden}
+.fx-blank{background:var(--video-bg);display:grid;place-items:center;color:var(--sb-muted);font-size:22px;font-weight:600}
+.fx-tag{position:absolute;right:12px;bottom:12px;z-index:2;font-size:11.5px;background:var(--chalk);color:var(--sb-bg);padding:3px 10px;border-radius:99px;font-weight:700}
+.clone .win{opacity:1;transform:none}
+.clone .win.out,.clone .divider{display:none}
+.lg-now{font-size:10px;font-weight:700;background:var(--chalk);color:var(--sb-bg);padding:0 6px;border-radius:99px}
+
+/* taskbar */
+.taskbar{position:absolute;left:0;right:0;bottom:0;height:40px;z-index:4;background:var(--taskbar);display:flex;align-items:center;gap:4px;padding:0 10px;color:var(--tb-fg)}
+.tb-app{width:36px;height:32px;border:0;border-radius:6px;background:transparent;display:grid;place-items:center;position:relative;cursor:pointer;padding:0}
+.tb-app:hover{background:rgba(255,255,255,.08)}
+.tb-app.on{background:rgba(255,255,255,.12)}
+.tb-app::after{content:"";position:absolute;bottom:2px;left:50%;width:6px;height:3px;margin-left:-3px;border-radius:2px;background:var(--sb-muted)}
+.tb-app.on::after{width:14px;margin-left:-7px;background:var(--chalk)}
+.tb-app.sbi .app-ico{background:var(--sb-bg-2);box-shadow:inset 3px 0 0 var(--chalk)}
+.tb-sep{width:1px;height:20px;background:rgba(255,255,255,.14);margin:0 4px}
+.tb-clock{margin-left:auto;font-size:11.5px;font-family:var(--font-mono);color:var(--tb-fg);opacity:.85}
+
+/* sidebar */
+.sb{position:absolute;left:0;top:0;bottom:40px;width:272px;z-index:5;background:var(--sb-bg);color:var(--sb-fg);display:flex;flex-direction:column;box-shadow:3px 0 22px rgba(0,0,0,.28);transition:transform .26s ease}
+.screen.autohide .sb{transform:translateX(-100%)}
+.screen.autohide.peek .sb{transform:none}
+.sb-edge{position:absolute;left:0;top:0;bottom:40px;width:12px;z-index:6;display:none}
+.screen.autohide:not(.peek) .sb-edge{display:block}
+.sb-edge::after{content:"";position:absolute;left:3px;top:50%;width:4px;height:70px;margin-top:-35px;border-radius:3px;background:var(--chalk);opacity:.85}
+.sb-head{padding:12px 12px 10px;border-bottom:1px solid var(--sb-line);display:flex;flex-direction:column;gap:3px}
+.sb-top{display:flex;align-items:center;gap:6px}
+.sb-name{flex:1;font-size:10.5px;letter-spacing:.09em;color:var(--sb-muted);font-weight:600}
+.rec-badge{font-family:var(--font-mono);font-size:10.5px;color:var(--on-solid);background:var(--rec);padding:1px 7px;border-radius:99px}
+.sb-ib{width:28px;height:28px;border-radius:7px;border:0;background:transparent;color:var(--sb-muted);display:grid;place-items:center;cursor:pointer;padding:0}
+.sb-ib svg{width:17px;height:17px}
+.sb-ib:hover{background:var(--sb-bg-2);color:var(--sb-fg)}
+.sb-ib[aria-pressed="true"]{background:var(--chalk-soft);color:var(--chalk)}
+.sb-lesson{font-size:15px;font-weight:700;line-height:1.35;text-wrap:balance}
+.sb-meta{font-size:11.5px;color:var(--sb-muted)}
+.sb-next{margin-top:7px;display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:8px;background:var(--sb-bg-2);border:0;color:var(--sb-fg);font-size:12px;text-align:left;cursor:pointer;width:100%}
+.sb-next:hover{box-shadow:inset 0 0 0 1px var(--chalk)}
+.nx-k{font-size:10.5px;color:var(--chalk);font-weight:700;flex:none}
+.nx-t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sb-list{flex:1;min-height:0;overflow-y:auto;padding:2px 8px 10px;scrollbar-width:thin;scrollbar-color:var(--sb-bg-2) transparent}
+.sec-h{display:flex;justify-content:space-between;padding:10px 6px 4px;font-size:10.5px;color:var(--sb-muted);letter-spacing:.07em;font-weight:600}
+.it{display:flex;align-items:center;gap:7px;padding:5px 6px;border-radius:8px;cursor:pointer;min-height:42px}
+.it:hover{background:var(--sb-bg-2)}
+.it.sel{background:var(--live-soft)}
+.it.front{background:var(--chalk-soft);box-shadow:inset 0 0 0 1px rgba(242,205,92,.35)}
+.it.front .it-title{color:var(--chalk)}
+.it-check{width:16px;height:16px;flex:none;border-radius:4px;border:1.5px solid var(--sb-muted);background:transparent;color:var(--sb-bg);font-size:11px;font-weight:700;line-height:1;padding:0;display:grid;place-items:center;cursor:pointer;opacity:.35}
+.it:hover .it-check,.sb.selecting .it-check{opacity:1}
+.it.sel .it-check{background:var(--live);border-color:var(--live);opacity:1}
+.badge{width:30px;height:22px;flex:none;border-radius:5px;background:var(--c);color:var(--on-solid);font-size:10.5px;font-weight:700;display:inline-grid;place-items:center;letter-spacing:-.02em}
+.it-text{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.3}
+.it-title{font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.it-sub{font-size:10.5px;color:var(--sb-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.it-state{flex:none;display:flex;align-items:center;min-width:8px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--live);box-shadow:0 0 0 3px var(--live-soft)}
+.dot.min{background:transparent;box-shadow:inset 0 0 0 2px var(--live)}
+.chip-now{font-size:10px;font-weight:700;color:var(--sb-bg);background:var(--chalk);padding:1px 6px;border-radius:99px;white-space:nowrap}
+.it-act{display:none;width:22px;height:22px;flex:none;border:0;border-radius:5px;background:transparent;color:var(--sb-muted);font-size:12px;cursor:pointer;padding:0}
+.it.open:hover .it-act{display:grid;place-items:center}
+.it.open:hover .it-state{display:none}
+.it-act:hover{background:var(--chalk);color:var(--sb-bg)}
+.it-act.x:hover{background:var(--danger-solid);color:var(--on-solid)}
+.it.on-t .it-sub{color:var(--chalk)}
+.spin{width:13px;height:13px;border:2px solid var(--sb-bg-2);border-top-color:var(--chalk);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.sb-dock{border-top:1px solid var(--sb-line);padding:10px 12px;display:flex;flex-direction:column;gap:8px;background:var(--sb-bg-2)}
+.dock-h{display:flex;align-items:baseline;justify-content:space-between;gap:8px;font-size:12px}
+.dock-h b{color:var(--chalk);font-size:12.5px}
+.dock-h span{color:var(--sb-muted);font-size:11px}
+.dock-tip{margin:0;font-size:11px;color:var(--sb-muted);line-height:1.45}
+.link{border:0;background:none;color:var(--sb-muted);font-size:11px;text-decoration:underline;cursor:pointer;padding:0}
+.lay-row{display:flex;gap:6px}
+.lay{flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:7px 4px 6px;border-radius:7px;background:var(--sb-bg);border:1px solid var(--sb-line);color:var(--sb-fg);font-size:11px;cursor:pointer}
+.lay:hover{border-color:var(--chalk);color:var(--chalk)}
+.li{display:grid;width:36px;height:22px;gap:2px}
+.li span{background:currentColor;opacity:.55;border-radius:2px}
+.li-half{grid-template-columns:1fr 1fr}.li-seventy{grid-template-columns:7fr 3fr}.li-thirds{grid-template-columns:1fr 1fr 1fr}
+.li-main2{grid-template-columns:3fr 2fr;grid-template-rows:1fr 1fr}.li-main2 span:first-child{grid-row:span 2}
+.li-grid{grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr}
+.dbtn{border:0;border-radius:7px;background:var(--chalk);color:var(--sb-bg);font-weight:700;font-size:12px;padding:7px 10px;cursor:pointer}
+
+.tools{display:grid;grid-template-columns:repeat(5,1fr);gap:3px;padding:8px 8px 4px;border-top:1px solid var(--sb-line)}
+.tool{display:flex;flex-direction:column;align-items:center;gap:3px;padding:7px 0 6px;border-radius:8px;border:0;background:transparent;color:var(--sb-muted);font-size:10.5px;cursor:pointer;white-space:nowrap}
+.tool svg{width:19px;height:19px}
+.tool:hover{background:var(--sb-bg-2);color:var(--sb-fg)}
+.tool[aria-pressed="true"]{background:var(--chalk-soft);color:var(--chalk)}
+.tool.rec[aria-pressed="true"]{background:var(--rec-soft);color:var(--rec)}
+.sb-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 12px 11px;font-size:11.5px;color:var(--sb-muted)}
+.switch{display:inline-flex;align-items:center;gap:7px;cursor:pointer}
+.switch input{appearance:none;width:30px;height:17px;border-radius:99px;background:var(--sb-bg-2);position:relative;margin:0;cursor:pointer;transition:background .15s}
+.switch input::after{content:"";position:absolute;left:2px;top:2px;width:13px;height:13px;border-radius:50%;background:var(--sb-muted);transition:transform .15s,background .15s}
+.switch input:checked{background:var(--chalk-soft)}
+.switch input:checked::after{transform:translateX(13px);background:var(--chalk)}
+.foot-btn{border:0;background:none;color:var(--sb-muted);font-size:11.5px;cursor:pointer;padding:3px 4px;border-radius:5px}
+.foot-btn:hover{color:var(--sb-fg);background:var(--sb-bg-2)}
+
+/* windows */
+.win{position:absolute;display:flex;flex-direction:column;background:var(--win-bg);color:var(--win-fg);border-radius:8px;overflow:hidden;
+  box-shadow:0 8px 24px var(--win-shadow),0 0 0 1px rgba(8,18,14,.14);
+  transition:left .22s ease,top .22s ease,width .22s ease,height .22s ease,opacity .16s ease,transform .16s ease;opacity:0;transform:scale(.97)}
+.win.in{opacity:1;transform:none}
+.win.out{opacity:0;transform:scale(.96);pointer-events:none}
+.win.front{box-shadow:0 16px 44px rgba(8,18,14,.36),0 0 0 1px rgba(8,18,14,.2)}
+.win.tiled{border-radius:2px}
+.win.flash{animation:flash .9s ease}
+@keyframes flash{0%,35%{outline:3px solid var(--chalk);outline-offset:0}100%{outline:3px solid transparent;outline-offset:8px}}
+.desk.dragging .win{transition:opacity .16s ease,transform .16s ease}
+.win-title{height:30px;flex:none;display:flex;align-items:center;gap:8px;padding:0 3px 0 10px;background:var(--win-chrome);border-bottom:1px solid var(--win-line);font-size:12px;cursor:default}
+.win:not(.front) .win-title{color:var(--win-muted)}
+.app-ico{width:17px;height:17px;flex:none;border-radius:4px;background:var(--c);color:var(--on-solid);font-size:9.5px;font-weight:700;display:grid;place-items:center;line-height:1}
+.win-name{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wbtn{width:30px;height:24px;flex:none;border:0;background:transparent;border-radius:4px;color:inherit;font-size:12px;cursor:pointer;padding:0}
+.wbtn:hover{background:rgba(8,18,14,.08)}
+.wbtn.x:hover{background:var(--danger-solid);color:var(--on-solid)}
+.win-body{flex:1;min-height:0;overflow:hidden;position:relative;background:var(--page-bg);container-type:size}
+
+.divider{position:absolute;z-index:9999;display:grid;place-items:center;touch-action:none}
+.divider.v{width:16px;margin-left:-8px;cursor:col-resize}
+.divider.h{height:16px;margin-top:-8px;cursor:row-resize}
+.divider::before{content:"";position:absolute;background:var(--chalk);opacity:.0;transition:opacity .15s}
+.divider.v::before{top:0;bottom:0;left:6px;width:4px}
+.divider.h::before{left:0;right:0;top:6px;height:4px}
+.divider:hover::before,.divider.drag::before{opacity:.9}
+.divider .grip{position:relative;background:var(--sb-bg);border:2px solid var(--chalk);border-radius:6px}
+.divider.v .grip{width:10px;height:46px}
+.divider.h .grip{width:46px;height:10px}
+.ratio{position:absolute;font-family:var(--font-mono);font-size:11px;background:var(--sb-bg);color:var(--chalk);padding:2px 7px;border-radius:5px;white-space:nowrap;opacity:0;transition:opacity .15s;pointer-events:none}
+.divider.v .ratio{top:calc(50% + 32px)}
+.divider.h .ratio{left:calc(50% + 32px)}
+.divider:hover .ratio,.divider.drag .ratio{opacity:1}
+
+/* overlays */
+.pins{position:absolute;inset:0;z-index:15;pointer-events:none}
+.pin{position:absolute;pointer-events:auto;border-radius:6px;overflow:hidden;background:var(--win-bg);box-shadow:0 12px 34px rgba(0,0,0,.4),0 0 0 2px var(--chalk);cursor:move;touch-action:none}
+.pin-inner{position:absolute;left:0;top:0;transform-origin:0 0;pointer-events:none}
+.pin-tag{position:absolute;left:6px;top:6px;z-index:2;font-size:10.5px;font-weight:700;background:var(--chalk);color:var(--sb-bg);padding:1px 7px;border-radius:99px}
+.pin-x{position:absolute;right:5px;top:5px;z-index:2;width:22px;height:22px;border:0;border-radius:5px;background:var(--sb-bg);color:var(--sb-fg);font-size:12px;cursor:pointer;padding:0}
+.fx-spot{position:absolute;inset:0;z-index:20;pointer-events:none;display:none;
+  background:radial-gradient(circle var(--sr) at var(--mx) var(--my), transparent calc(var(--sr) - 3px), var(--spot-dim) var(--sr))}
+.screen.spot-on .fx-spot{display:block}
+.fx-pointer{position:absolute;inset:0;z-index:21;pointer-events:none;display:none}
+.screen.pointer-on .fx-pointer{display:block}
+.halo{position:absolute;left:0;top:0;width:58px;height:58px;margin:-29px 0 0 -29px;border-radius:50%;background:var(--hl);box-shadow:0 0 0 2px var(--hl-ring);transform:translate(var(--mx),var(--my))}
+.ripple{position:absolute;width:22px;height:22px;margin:-11px 0 0 -11px;border-radius:50%;border:3px solid var(--hl-ring);animation:rip .55s ease-out forwards}
+@keyframes rip{to{transform:scale(3.6);opacity:0}}
+.fx-zoom{position:absolute;inset:0;z-index:30;overflow:hidden;cursor:zoom-out;background:var(--bezel)}
+.zoom-inner{position:absolute;inset:0;transition:transform .08s linear}
+.clone{pointer-events:none}
+.clone .win{transition:none}
+.fx-label{position:absolute;left:50%;top:12px;transform:translateX(-50%);z-index:3;background:var(--sb-bg);color:var(--sb-fg);font-size:12px;padding:6px 12px;border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,.3);white-space:nowrap;pointer-events:none}
+.fx-label b{color:var(--chalk)}
+.fx-pick{position:absolute;inset:0;z-index:30;cursor:crosshair;background:var(--pick-dim);touch-action:none}
+.pick-rect{position:absolute;border:2px dashed var(--chalk);background:rgba(242,205,92,.08)}
+.modal{position:absolute;inset:0;z-index:35;background:var(--pick-dim);display:grid;place-items:center}
+.dlg{width:min(440px,90%);background:var(--sb-bg);color:var(--sb-fg);border-radius:12px;padding:18px 20px;box-shadow:0 18px 50px rgba(0,0,0,.45);display:flex;flex-direction:column;gap:8px}
+.dlg h3{margin:0;font-size:16px}
+.dlg-path{margin:0;font-family:var(--font-mono);font-size:12px;color:var(--chalk)}
+.dlg-k{margin:6px 0 0;font-size:11px;letter-spacing:.07em;color:var(--sb-muted);font-weight:600}
+.chap{margin:0;padding:0;list-style:none;max-height:180px;overflow:auto;display:flex;flex-direction:column;gap:2px;font-size:13px}
+.chap li{display:flex;gap:12px;padding:4px 0;border-bottom:1px solid var(--sb-line)}
+.chap span{font-family:var(--font-mono);color:var(--chalk);font-size:12px;font-variant-numeric:tabular-nums}
+.dlg-note{margin:4px 0 0;font-size:12px;color:var(--sb-muted);line-height:1.5}
+.dlg-act{display:flex;justify-content:flex-end;margin-top:6px}
+
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom, 0px));transform:translate(-50%,20px);z-index:1000;background:var(--sb-bg);color:var(--sb-fg);font-size:13px;padding:10px 16px;border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.3);opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;max-width:min(560px, calc(100vw - 32px));text-align:center}
+.toast.on{opacity:1;transform:translate(-50%,0)}
+
+/* app bodies */
+.ln{display:block;height:7px;border-radius:4px;background:var(--win-line);width:100%;flex:none}
+.paper{background:var(--win-bg);width:min(86%,560px);margin:14px auto;padding:20px 24px;box-shadow:0 1px 3px var(--win-shadow);display:flex;flex-direction:column;gap:9px;font-size:12px;color:var(--win-fg)}
+.paper h4{margin:0 0 4px;font-size:16px;text-align:center}
+.docwrap,.doc-area,.pdf-doc{flex:1;min-height:0;height:100%;overflow:hidden;background:var(--page-bg)}
+.mini{width:100%;border-collapse:collapse;font-size:11.5px}
+.mini td{border:1px solid var(--win-line);padding:5px 7px}
+.form td:nth-child(odd){background:var(--win-chrome);width:18%;font-weight:600}
+.dq{margin:6px 0 0;font-weight:600}
+.dh{margin:6px 0 0;font-weight:600;color:var(--t-blue)}
+.dmeta{margin:0;text-align:center;color:var(--win-muted);font-size:11.5px}
+
+.chr{display:flex;flex-direction:column;height:100%}
+.chr-tabs{display:flex;align-items:flex-end;gap:2px;padding:5px 8px 0;background:var(--win-chrome);overflow:hidden}
+.ctab{display:flex;align-items:center;gap:6px;min-width:0;max-width:170px;flex:1 1 0;padding:6px 6px 6px 9px;border-radius:8px 8px 0 0;font-size:11.5px;color:var(--win-muted);cursor:pointer}
+.ctab:hover{background:rgba(8,18,14,.05)}
+.ctab.on{background:var(--win-bg);color:var(--win-fg)}
+.fav{width:12px;height:12px;border-radius:3px;background:var(--c);flex:none}
+.tt{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tx{border:0;background:none;color:inherit;font-size:10.5px;padding:1px 3px;border-radius:4px;cursor:pointer;opacity:.7}
+.tx:hover{background:rgba(8,18,14,.1);opacity:1}
+.ctab-new{padding:5px 8px;color:var(--win-muted);font-size:13px}
+.chr-bar{display:flex;align-items:center;gap:8px;padding:5px 10px;background:var(--win-bg);border-bottom:1px solid var(--win-line);font-size:11.5px}
+.chr-nav{color:var(--win-muted);letter-spacing:4px}
+.chr-url{flex:1;min-width:0;background:var(--win-chrome);border-radius:12px;padding:3px 12px;color:var(--win-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:var(--font-mono);font-size:10.5px}
+.ext{display:flex;align-items:center;gap:5px;font-size:10.5px;color:var(--t-green);white-space:nowrap}
+.ext i{width:7px;height:7px;border-radius:50%;background:var(--t-green)}
+.chr-page{flex:1;min-height:0;overflow:hidden;background:var(--win-bg);display:flex;flex-direction:column}
+.chr-page > *{flex:1;min-height:0}
+
+.yt{display:flex;flex-direction:column;gap:6px;padding:12px 14px;background:var(--win-bg)}
+.yt-stage{flex:1;min-height:0;container-type:size;display:grid;place-items:center}
+.yt-video{position:relative;width:min(100cqw, calc(100cqh * 16 / 9));aspect-ratio:16/9;background:var(--video-bg);border-radius:10px;overflow:hidden;display:grid;place-items:center}
+.yt-art{position:absolute;inset:0;background:radial-gradient(circle at 28% 42%, color-mix(in srgb, var(--chalk) 38%, transparent), transparent 38%),radial-gradient(circle at 72% 62%, color-mix(in srgb, var(--live) 30%, transparent), transparent 44%),linear-gradient(135deg,var(--sb-bg-2),var(--video-bg))}
+.yt-play{position:relative;width:64px;height:44px;border-radius:12px;background:var(--t-red)}
+.yt-play::after{content:"";position:absolute;left:26px;top:12px;border-left:17px solid var(--on-solid);border-top:10px solid transparent;border-bottom:10px solid transparent}
+.yt-start{position:absolute;left:12px;top:12px;font-size:11px;background:color-mix(in srgb, var(--video-bg) 70%, transparent);color:var(--on-solid);padding:3px 8px;border-radius:6px}
+.yt-prog{position:absolute;left:0;right:0;bottom:0;height:4px;background:color-mix(in srgb, var(--on-solid) 25%, transparent)}
+.yt-prog i{display:block;width:18%;height:100%;background:var(--t-red)}
+.yt-title{font-weight:700;font-size:13px;flex:none}
+.yt-ch{font-size:11.5px;color:var(--win-muted);flex:none}
+
+.sheet{display:flex;flex-direction:column;background:var(--win-bg);font-size:11.5px}
+.sh-fx{padding:5px 10px;border-bottom:1px solid var(--win-line);font-family:var(--font-mono);font-size:10.5px;color:var(--win-muted);white-space:nowrap;overflow:hidden;flex:none}
+.sh-fx b{color:var(--win-fg);margin-right:8px}
+.grid{border-collapse:collapse;width:100%}
+.grid th,.grid td{border:1px solid var(--win-line);padding:4px 8px;text-align:left;white-space:nowrap}
+.grid thead th,.grid tbody th{background:var(--win-chrome);color:var(--win-muted);font-weight:500;font-size:10.5px;text-align:center;width:28px}
+.grid tbody tr:first-child td{font-weight:700}
+.grid td+td{text-align:right;font-variant-numeric:tabular-nums}
+.grid .on{outline:2px solid var(--c, var(--t-green));outline-offset:-2px}
+
+.canva{background:var(--page-bg);display:grid;place-items:center;container-type:size}
+.poster{width:min(70cqw, calc(88cqh * .75));aspect-ratio:3/4;border-radius:6px;background:linear-gradient(160deg,var(--t-violet),var(--t-teal));color:var(--on-solid);padding:8% 9%;display:flex;flex-direction:column;gap:5%;container-type:inline-size;box-shadow:0 6px 20px var(--win-shadow)}
+.poster .pk{font-size:6cqw;background:var(--chalk);color:var(--sb-bg);align-self:flex-start;padding:1cqw 3.5cqw;border-radius:99px;font-weight:700}
+.poster b{font-size:12cqw;line-height:1.15}
+.dots{display:flex;gap:3cqw;margin-top:auto}
+.dots i{width:16cqw;height:16cqw;border-radius:50%;background:color-mix(in srgb, var(--on-solid) 28%, transparent)}
+.poster .pf{font-size:4.5cqw;opacity:.9}
+
+.drive{background:var(--win-bg);padding:12px 14px;display:flex;flex-direction:column;font-size:12px}
+.dr-h{font-size:14px;font-weight:600;margin-bottom:8px}
+.dr-row{display:flex;align-items:center;gap:10px;padding:7px 6px;border-bottom:1px solid var(--win-line)}
+.dr-row span{margin-left:auto;color:var(--win-muted);font-size:11px}
+.dr-i{width:16px;height:13px;border-radius:2px;background:var(--win-muted);flex:none}
+.dr-i.f{background:var(--t-yellow)}
+
+.pdfv{display:flex;flex-direction:column;background:var(--page-bg)}
+.pdf-bar{display:flex;justify-content:space-between;gap:10px;padding:6px 12px;background:var(--sb-bg);color:var(--sb-fg);font-size:11.5px;flex:none}
+.pdf-bar span:first-child{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+.photo{background:var(--video-bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:12px;container-type:size}
+.ph-art{width:min(94cqw, calc(82cqh * 16 / 9));aspect-ratio:16/9;border-radius:4px;
+  background:radial-gradient(circle at 24% 62%, var(--t-orange) 0 9%, transparent 9.4%),radial-gradient(circle at 42% 58%, var(--t-blue) 0 9%, transparent 9.4%),radial-gradient(circle at 60% 62%, var(--t-green) 0 9%, transparent 9.4%),radial-gradient(circle at 77% 57%, var(--t-pink) 0 9%, transparent 9.4%),linear-gradient(transparent 70%, var(--wall-2) 70% 100%),linear-gradient(170deg, var(--wall-3), var(--wall-1))}
+.ph-cap{font-size:11px;color:var(--sb-muted);flex:none}
+
+.site{background:var(--win-bg);display:flex;flex-direction:column}
+.s-nav{display:flex;align-items:center;gap:14px;padding:10px 16px;border-bottom:1px solid var(--win-line);font-size:12px}
+.s-hero{padding:18px 16px;background:var(--win-chrome);display:flex;flex-direction:column;gap:8px}
+.s-hero h4{margin:0;font-size:16px}
+.s-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding:14px 16px}
+.s-cards i{height:72px;border-radius:8px;background:var(--win-chrome);border:1px solid var(--win-line)}
+
+.media{background:var(--sb-bg);color:var(--sb-fg);display:flex;flex-direction:column;gap:12px;padding:16px;justify-content:center}
+.m-top{display:flex;gap:12px;align-items:center}
+.m-art{width:56px;height:56px;border-radius:8px;background:linear-gradient(135deg,var(--t-pink),var(--t-purple));flex:none}
+.m-info{display:flex;flex-direction:column;min-width:0}
+.m-info b{font-size:14px}
+.m-info span{font-size:11px;color:var(--sb-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wave{display:flex;align-items:center;gap:2px;height:54px}
+.wave i{flex:1;background:var(--sb-muted);border-radius:2px;opacity:.55}
+.wave i.p{background:var(--chalk);opacity:1}
+.m-ctl{display:flex;align-items:center;gap:14px;font-size:13px;color:var(--sb-muted)}
+.m-pp{width:34px;height:34px;border-radius:50%;background:var(--chalk);color:var(--sb-bg);display:grid;place-items:center;font-size:12px}
+.m-t{margin-left:auto;font-family:var(--font-mono);font-size:11px}
+
+.explorer{background:var(--win-bg);display:flex;flex-direction:column;font-size:12px}
+.ex-path{padding:7px 12px;border-bottom:1px solid var(--win-line);background:var(--win-chrome);color:var(--win-muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:none}
+.ex-row{display:grid;grid-template-columns:16px minmax(0,1fr) auto;gap:9px;align-items:center;padding:6px 12px;border-bottom:1px solid var(--win-line)}
+.ex-row span:nth-child(2){white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ex-row span:last-child{color:var(--win-muted);font-size:11px}
+.ex-i{width:15px;height:12px;border-radius:2px;background:var(--t-yellow)}
+.ex-i.file{background:var(--win-line);width:12px;height:15px}
+
+.notepad{background:var(--win-bg);padding:12px 14px;font-family:var(--font-mono);font-size:12px;line-height:1.8}
+.notepad p{margin:0}
+
+.app{height:100%;display:flex;flex-direction:column;background:var(--win-chrome)}
+.ribbon{display:flex;gap:2px;padding:4px 8px;font-size:11px;border-bottom:1px solid var(--win-line);background:var(--win-bg);overflow:hidden;white-space:nowrap;flex:none}
+.ribbon span{padding:3px 8px;border-radius:4px;color:var(--win-muted)}
+.ribbon .on{color:var(--app-c);font-weight:700;box-shadow:inset 0 -2px var(--app-c)}
+.tbar{display:flex;gap:6px;padding:6px 10px;background:var(--win-bg);border-bottom:1px solid var(--win-line);overflow:hidden;flex:none}
+.tbar i{width:18px;height:16px;border-radius:3px;background:var(--win-line);flex:none}
+.tbar i:nth-child(5n){margin-right:8px}
+.ppt-main{flex:1;min-height:0;display:flex}
+.thumbs{width:86px;flex:none;padding:8px;display:flex;flex-direction:column;gap:8px;overflow:hidden;border-right:1px solid var(--win-line)}
+.thumbs i{aspect-ratio:16/9;background:var(--win-bg);border:1px solid var(--win-line);border-radius:2px;flex:none}
+.thumbs i.on{outline:2px solid var(--t-orange)}
+@container (max-width: 430px){.thumbs{display:none}}
+.stage{flex:1;min-width:0;container-type:size;display:grid;place-items:center;background:var(--page-bg)}
+.app.show .stage{background:var(--video-bg)}
+.slide{width:min(92cqw, calc(88cqh * 16 / 9));aspect-ratio:16/9;background:var(--slide-bg);color:var(--slide-fg);box-shadow:0 2px 8px var(--win-shadow);container-type:inline-size;padding:6cqw 7cqw;display:flex;flex-direction:column;gap:2cqw;position:relative;overflow:hidden}
+.app.show .slide{width:min(100cqw, calc(100cqh * 16 / 9))}
+.slide::after{content:"";position:absolute;right:-8cqw;top:-10cqw;width:36cqw;height:36cqw;border-radius:50%;background:color-mix(in srgb, var(--sc, var(--t-orange)) 14%, transparent)}
+.s-k{font-size:2.8cqw;color:var(--sc, var(--t-orange));font-weight:700;letter-spacing:.04em}
+.slide b{font-size:6cqw;line-height:1.2}
+.slide ul{margin:1cqw 0 0;padding-left:4cqw;display:flex;flex-direction:column;gap:1.2cqw}
+.slide li{font-size:3.3cqw}
+.s-no{position:absolute;right:4cqw;bottom:3cqw;font-size:2.6cqw;color:var(--win-muted)}
+.generic{display:grid;place-content:center;justify-items:center;gap:8px;background:var(--win-bg);color:var(--win-muted);text-align:center;padding:16px}
+.generic b{color:var(--win-fg)}
+.badge.big{width:54px;height:40px;font-size:15px;border-radius:8px}
+
+/* prep */
+.prep{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(0,1fr);gap:16px;align-items:start}
+@media (max-width: 940px){.prep{grid-template-columns:minmax(0,1fr)}}
+.side-col{display:flex;flex-direction:column;gap:16px;min-width:0}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.card h2{font-size:15px;font-weight:700;margin:0}
+.sub{font-size:12.5px;color:var(--muted);margin:0;line-height:1.5}
+.lbl{display:block;font-size:11.5px;color:var(--muted);font-weight:600;margin-bottom:3px}
+input,select{font:inherit;font-size:13px;color:var(--fg);background:var(--surface);border:1px solid var(--line);border-radius:7px;padding:6px 9px;min-width:0;width:100%}
+input:disabled,select:disabled{background:var(--surface-2);color:var(--muted)}
+input[type="checkbox"]{width:auto}
+.btn{font-weight:600;font-size:13px;padding:7px 13px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--fg);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;white-space:nowrap}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.primary:hover{filter:brightness(1.08)}
+.btn.sm{font-size:12px;padding:5px 10px}
+.lesson-head{display:grid;grid-template-columns:minmax(0,1fr) 150px auto;gap:10px;align-items:end}
+.lh-total{grid-column:1 / -1;font-size:12.5px;color:var(--muted);display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between}
+@media (max-width: 560px){.lesson-head{grid-template-columns:minmax(0,1fr)}}
+.addbar{display:flex;flex-direction:column;gap:8px;padding:12px;border-radius:10px;background:var(--surface-2)}
+.add-row{display:grid;grid-template-columns:110px minmax(0,1fr) auto;gap:8px}
+@media (max-width: 560px){.add-row{grid-template-columns:minmax(0,1fr) auto}.add-row select{grid-column:1 / -1}}
+.detect{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:8px;min-height:22px}
+.detect.ok{color:var(--fg)}
+.detect.err{color:var(--bad)}
+.drop{border:1.5px dashed var(--line);border-radius:10px;padding:14px 12px;text-align:center;color:var(--fg);font-size:13px;font-weight:600;cursor:pointer;background:var(--surface);display:flex;flex-direction:column;gap:3px}
+.drop span{font-size:12px;color:var(--muted);font-weight:400}
+.drop.over,.drop:hover{border-color:var(--accent);background:var(--accent-soft)}
+.add-more{display:flex;gap:8px;flex-wrap:wrap}
+.flow{display:flex;flex-direction:column;gap:10px}
+.p-sec{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--surface)}
+.p-sec.drop-in{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
+.p-sec-h{display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--surface-2)}
+.p-sec-h .p-sec-t{font-weight:700;max-width:180px;background:transparent;border-color:transparent}
+.p-sec-h .p-sec-t:hover,.p-sec-h .p-sec-t:focus{background:var(--surface);border-color:var(--line)}
+.p-min{display:flex;align-items:center;gap:4px;font-size:12px;color:var(--muted)}
+.p-min input{width:58px;padding:4px 6px}
+.p-cnt{margin-left:auto;font-size:12px;color:var(--muted)}
+.icon-x{width:26px;height:26px;border:0;border-radius:6px;background:transparent;color:var(--muted);cursor:pointer;flex:none;padding:0}
+.icon-x:hover{background:var(--bad-soft);color:var(--bad)}
+.p-row{display:grid;grid-template-columns:16px 30px minmax(0,1fr) minmax(0,150px) minmax(0,96px) minmax(0,100px) 26px;grid-template-areas:"g b t o s c d";align-items:center;gap:8px;padding:7px 10px;border-top:1px solid var(--line)}
+.p-row > .grip{grid-area:g}.p-row > .badge{grid-area:b}.p-t{grid-area:t;min-width:0;display:flex;flex-direction:column;gap:2px}.p-open{grid-area:o}.p-start{grid-area:s}.p-scr{grid-area:c}.p-row > .icon-x{grid-area:d}
+@media (max-width: 1100px){.p-row{grid-template-columns:16px 30px minmax(0,1fr) minmax(0,140px) 26px;grid-template-areas:"g b t o d" ". . s c ."}}
+@media (max-width: 720px){.p-row{grid-template-columns:16px 30px minmax(0,1fr) 26px;grid-template-areas:"g b t d" ". . o ." ". . s ." ". . c ."}}
+.p-t input{font-weight:500}
+.p-src{font-size:11px;color:var(--muted);font-family:var(--font-mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-left:2px}
+.grip{cursor:grab;color:var(--muted);font-size:13px;letter-spacing:-2px;text-align:center}
+.grip:active{cursor:grabbing}
+.p-row.dragging{opacity:.4}
+.p-row.drop-before{box-shadow:inset 0 3px 0 var(--accent)}
+.p-row.drop-after{box-shadow:inset 0 -3px 0 var(--accent)}
+.p-empty{padding:12px;font-size:12.5px;color:var(--muted);text-align:center;border-top:1px dashed var(--line)}
+.tree{font-family:var(--font-mono);font-size:11.5px;line-height:1.75;background:var(--surface-2);border-radius:8px;padding:12px 14px;overflow-x:auto;white-space:pre;margin:0;color:var(--fg)}
+.tree .d{color:var(--accent);font-weight:500}
+.tree .m{color:var(--muted)}
+.tree .new{background:var(--accent-soft);border-radius:3px;box-shadow:0 0 0 2px var(--accent-soft)}
+.zrow{display:flex;gap:8px;flex-wrap:wrap}
+.card-h{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.sync{font-size:11.5px;font-weight:600;padding:2px 9px;border-radius:99px;white-space:nowrap}
+.sync.ok{background:var(--ok-soft);color:var(--ok)}
+.sync.busy{background:var(--warn-soft);color:var(--warn)}
+.lib{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.lib li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:1px 10px;padding:9px 12px;border-top:1px solid var(--line);cursor:pointer;align-items:center}
+.lib li:first-child{border-top:0}
+.lib li:hover{background:var(--surface-2)}
+.lib li.cur{background:var(--accent-soft);cursor:default}
+.lib-t{font-family:var(--font-mono);font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lib-d{grid-column:1;font-size:11.5px;color:var(--muted)}
+.tag{grid-row:1 / span 2;grid-column:2;font-size:11px;font-weight:700;padding:2px 8px;border-radius:99px;white-space:nowrap}
+.tag.cur{background:var(--accent);color:var(--accent-ink)}
+.tag.lock{background:var(--warn-soft);color:var(--warn)}
+.tag.wait{background:var(--surface-2);color:var(--muted)}
+.tag.idle{color:var(--muted);font-weight:500}
+.locknote{background:var(--warn-soft);border-radius:10px;padding:10px 12px;font-size:12.5px;line-height:1.55;display:flex;flex-direction:column;gap:4px}
+.locknote b{color:var(--warn)}
+.savedby{margin:0;font-size:12px;color:var(--muted)}
+.savedby b{color:var(--fg);font-weight:600}
+.zpanel{display:flex;flex-direction:column;gap:8px;padding:12px;border-radius:10px;background:var(--surface-2)}
+.ck{display:flex;align-items:center;gap:8px;font-size:13px}
+.ck .m{color:var(--muted);font-size:12px;margin-left:auto}
+.zfile{margin:2px 0 0;font-family:var(--font-mono);font-size:12px;color:var(--accent);word-break:break-all}
+.warnbox{background:var(--warn-soft);color:var(--fg);border-radius:8px;padding:9px 11px;font-size:12px;line-height:1.5}
+.warnbox b{color:var(--warn)}
+.warnbox ul{margin:4px 0 0;padding-left:18px}
+.progress{height:6px;border-radius:3px;background:var(--line);overflow:hidden}
+.progress i{display:block;height:100%;width:0;background:var(--accent);transition:width .3s}
+.zstep{font-size:12px;color:var(--muted);margin:0;min-height:18px}
+.zres{margin:0;font-size:12.5px;line-height:1.55;background:var(--ok-soft);border-radius:8px;padding:9px 11px}
+.zres b{color:var(--ok)}
+.drop.small{padding:12px;font-size:12.5px}
+.checks{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:0}
+.checks li{display:grid;grid-template-columns:44px minmax(0,1fr);gap:10px;align-items:start;padding:7px 0;border-bottom:1px solid var(--line);font-size:12.5px;animation:fadein .2s ease}
+@keyframes fadein{from{opacity:0;transform:translateY(3px)}}
+.checks li b{font-weight:600}
+.checks li span.d{display:block;color:var(--muted);font-size:12px}
+.checks li.conflict{grid-template-columns:minmax(0,1fr);background:var(--warn-soft);border-radius:8px;padding:10px 12px;border:0;margin-top:6px}
+.st{font-size:11px;font-weight:700;padding:1px 0;border-radius:99px;text-align:center}
+.st.ok{background:var(--ok-soft);color:var(--ok)}
+.st.warn{background:var(--warn-soft);color:var(--warn)}
+.st.bad{background:var(--bad-soft);color:var(--bad)}
+.c-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+
+/* review */
+.rv{display:flex;flex-direction:column;gap:28px;max-width:1080px}
+.rv h2{margin:0;font-size:22px;line-height:1.35;text-wrap:balance;letter-spacing:-.01em}
+.rv h3{margin:0 0 10px;font-size:16px;text-wrap:balance}
+.rv p{margin:0;max-width:68ch}
+.eyebrow{font-size:11.5px;letter-spacing:.09em;font-weight:700;color:var(--accent);margin:0 0 6px}
+.verdict{background:var(--accent-soft);border-radius:14px;padding:22px 24px;display:flex;flex-direction:column;gap:12px}
+.why{margin:0;padding:0;list-style:none;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+@media (max-width: 760px){.why{grid-template-columns:minmax(0,1fr)}}
+.why li{background:var(--surface);border-radius:10px;padding:12px 14px;font-size:13px;line-height:1.55}
+.why b{display:block;margin-bottom:3px}
+.tbl{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+.tbl table{border-collapse:collapse;width:100%;font-size:13px;min-width:620px}
+.tbl th,.tbl td{padding:9px 12px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top;line-height:1.5}
+.tbl tr:last-child td{border-bottom:0}
+.tbl thead th{font-size:12px;color:var(--muted);font-weight:600;background:var(--surface-2)}
+.tbl thead th.pick{color:var(--accent)}
+.tbl td.pick{background:color-mix(in srgb, var(--accent-soft) 55%, transparent)}
+.tbl td:first-child{font-weight:600;white-space:nowrap}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+.box{border:1px solid var(--line);border-radius:10px;padding:14px 16px;background:var(--surface);font-size:13px;line-height:1.6}
+.box h4{margin:0 0 6px;font-size:13.5px}
+.box ol,.box ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:3px}
+.box code,.rv code{font-family:var(--font-mono);font-size:12px;background:var(--surface-2);padding:0 4px;border-radius:4px}
+.arch{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;font-size:13px}
+.arch .a-top{grid-column:1 / -1;background:var(--sb-bg);color:var(--sb-fg);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:8px}
+.arch .a-top b{color:var(--chalk)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chips span{font-size:12px;background:var(--sb-bg-2);padding:3px 9px;border-radius:99px}
+.a-mid{border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:var(--surface);display:flex;flex-direction:column;gap:4px}
+.a-mid small{color:var(--muted);font-size:12px}
+.a-arrow{grid-column:span 1;text-align:center;color:var(--muted);font-size:12px;line-height:1}
+.a-low{border:1px dashed var(--line);border-radius:10px;padding:12px 14px;background:var(--surface-2)}
+.a-store{grid-column:1 / -1;display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:12.5px;color:var(--muted)}
+.a-store span{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:5px 10px;color:var(--fg)}
+.steps{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}
+@media (max-width: 900px){.steps{grid-template-columns:minmax(0,1fr)}}
+.step{border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:var(--surface);font-size:12.5px;line-height:1.55;display:flex;flex-direction:column;gap:6px}
+.step .n{font-family:var(--font-mono);font-size:11px;color:var(--accent);font-weight:500}
+.step b{font-size:13.5px}
+.step ul{margin:0;padding-left:16px}
+.decide{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px;font-size:13.5px;max-width:78ch}
+.rv-foot{font-size:12.5px;color:var(--muted)}
+</style>
+
+<div class="page">
+  <header class="top">
+    <div class="brand">
+      <span class="logo" aria-hidden="true"></span>
+      <div>
+        <h1>수업 사이드바</h1>
+        <p>설계 시안 v0.3 · 2026.11.21 · 제작 전 검토용</p>
+      </div>
+    </div>
+    <nav class="views" aria-label="시안 화면">
+      <a href="#run">수업 진행</a>
+      <a href="#prep">수업 준비</a>
+      <a href="#review">설계 검토</a>
+    </nav>
+  </header>
+
+  <!-- ===================== 수업 진행 ===================== -->
+  <section id="v-run">
+    <div class="run-bar">
+      <div class="seg" role="group" aria-label="화면 구성">
+        <button type="button" data-disp="1" aria-pressed="false">모니터 1개</button>
+        <button type="button" data-disp="2" aria-pressed="true">듀얼 모니터</button>
+      </div>
+      <p class="hint">
+        <span><b>해 보기</b> 목록을 누르면 자료가 학생 화면에 뜨거나 맨 앞으로 옵니다</span>
+        <span><b>⇄</b> 다른 화면으로 보내기</span>
+        <span><kbd>Ctrl</kbd>/<kbd>⌘</kbd>+클릭이나 체크로 2~4개 → 배치 선택 → <b>화면 분할</b></span>
+        <span><kbd>Esc</kbd> 도구 끄기</span>
+      </p>
+    </div>
+
+    <div class="mon-label"><b>교사 화면</b><span id="mon1-sub">노트북 · 학생에게 보이지 않습니다</span></div>
+    <div class="mon-wrap">
+      <div class="monitor">
+        <div class="screen" id="screen">
+          <div class="scr" id="scr">
+            <div class="desk" id="desk" data-hint="교사 화면 · 사이드바와 진행 메모"></div>
+
+            <aside class="sb" id="sb" aria-label="수업 사이드바">
+              <div class="sb-head">
+                <div class="sb-top">
+                  <span class="sb-name">수업 사이드바</span>
+                  <span class="rec-badge" id="rec-badge" hidden>● REC 00:00</span>
+                  <button class="sb-ib" data-act="autohide" id="btn-autohide" aria-pressed="false" title="자동 숨김" aria-label="자동 숨김">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16M15 10l-2 2 2 2"/></svg>
+                  </button>
+                </div>
+                <div class="sb-lesson" id="sb-lesson"></div>
+                <div class="sb-meta" id="sb-meta"></div>
+                <button class="sb-next" id="sb-next" data-act="next"></button>
+              </div>
+              <div class="sb-stu" id="sb-stu">
+                <div class="stu-h">
+                  <span class="grow">학생 화면</span>
+                  <span class="stu-st" id="stu-st">실시간</span>
+                  <button class="stu-b" data-act="freeze" aria-pressed="false" title="학생 화면을 지금 장면으로 멈춥니다">정지</button>
+                  <button class="stu-b" data-act="blank" aria-pressed="false" title="학생 화면을 가립니다">가리기</button>
+                  <button class="stu-tg" id="stu-tg" data-act="stutoggle" aria-expanded="true" aria-label="미리보기 접기">▾</button>
+                </div>
+                <div class="stu-prev" id="stu-prev" data-act="stuview" title="학생 화면으로 이동"></div>
+                <div class="stu-to" role="group" aria-label="새로 여는 자료를 띄울 곳">
+                  <span>여는 곳</span>
+                  <button type="button" data-act="opento" data-to="student" aria-pressed="true">학생 화면</button>
+                  <button type="button" data-act="opento" data-to="teacher" aria-pressed="false">교사 화면에서 먼저</button>
+                </div>
+              </div>
+              <div class="sb-list" id="sb-list"></div>
+              <div class="sb-dock" id="sb-dock" hidden></div>
+              <div class="tools" role="toolbar" aria-label="발표 도구">
+                <button class="tool" data-tool="zoom" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21M10.5 7.8v5.4M7.8 10.5h5.4"/></svg>확대</button>
+                <button class="tool" data-tool="pointer" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8.5" opacity=".5"/><path d="M8.5 6.5l8 5.2-3.6 1-1.5 3.6z" fill="currentColor"/></svg>포인터</button>
+                <button class="tool" data-tool="pin" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6l-1 6 3.5 3.5h-11L10 9z"/><path d="M12 12.5V21"/></svg>캡처 핀</button>
+                <button class="tool" data-tool="spot" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8"/></svg>스포트</button>
+                <button class="tool rec" data-tool="rec" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4" fill="currentColor"/></svg>녹화</button>
+              </div>
+              <div class="sb-foot">
+                <label class="switch"><input type="checkbox" id="sw-autohide"> 자동 숨김</label>
+                <button class="foot-btn" data-act="hideothers">다른 창 숨기기</button>
+              </div>
+            </aside>
+            <div class="sb-edge" id="sb-edge" aria-hidden="true"></div>
+
+            <div class="taskbar" id="taskbar">
+              <button class="tb-app sbi" data-tb="sb" title="수업 사이드바"><span class="app-ico">수</span></button>
+              <span class="tb-sep"></span>
+              <span id="tb-apps" style="display:flex;gap:4px"></span>
+              <span class="tb-clock" id="tb-clock"></span>
+            </div>
+          </div>
+
+          <div class="pins"></div>
+          <div class="fx-spot" aria-hidden="true"></div>
+          <div class="fx-pointer" aria-hidden="true"><div class="halo"></div></div>
+          <div class="fx-zoom" hidden></div>
+          <div class="fx-pick" hidden><div class="pick-rect" hidden></div><div class="fx-label"><b>캡처 핀</b> · 끌어서 영역을 고르세요 · Esc 취소</div></div>
+          <div class="modal" id="modal" hidden></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="mon2-block">
+      <div class="mon-label"><b>학생 화면</b><span>프로젝터 1920×1080 · 확장 모드 · 학생들이 보는 화면</span></div>
+      <div class="mon-wrap">
+        <div class="monitor">
+          <div class="screen s2" id="screen2">
+            <div class="scr" id="scr2">
+              <div class="desk" id="desk2" data-hint="학생 화면 · 자료가 뜨는 곳"></div>
+            </div>
+            <div class="pins"></div>
+            <div class="fx-cover" id="fx-freeze" hidden></div>
+            <div class="fx-cover fx-blank" id="fx-blank" hidden><span>잠시 후 계속합니다</span></div>
+            <div class="fx-spot" aria-hidden="true"></div>
+            <div class="fx-pointer" aria-hidden="true"><div class="halo"></div></div>
+            <div class="fx-zoom" hidden></div>
+            <div class="fx-pick" hidden><div class="pick-rect" hidden></div><div class="fx-label"><b>캡처 핀</b> · 끌어서 영역을 고르세요 · Esc 취소</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <p class="mon-note" style="margin-top:10px">
+      <span class="lg"><i class="lg-dot"></i>열림</span>
+      <span class="lg"><i class="lg-dot min"></i>열림 · 숨겨짐</span>
+      <span class="lg"><span class="lg-now">보는 중</span>지금 맨 앞 창</span>
+      <span>듀얼 모니터에서는 자료가 학생 화면에 뜨고, 교사 화면에는 사이드바와 진행 메모만 남습니다. 사이드바 위쪽 미리보기로 학생 화면을 확인하고, 정지·가리기로 학생에게 보이는 장면을 조절합니다. 오른쪽 창들은 실제로는 한글·파워포인트·브라우저 같은 진짜 프로그램 창입니다.</span>
+    </p>
+  </section>
+
+  <!-- ===================== 수업 준비 ===================== -->
+  <section id="v-prep" hidden>
+    <div class="prep">
+      <div class="card">
+        <div class="lesson-head">
+          <label><span class="lbl">수업 이름</span><input id="p-title" autocomplete="off"></label>
+          <label><span class="lbl">날짜</span><input id="p-date" type="date"></label>
+          <button class="btn" id="p-clone" type="button">이 수업으로 2차 만들기</button>
+          <div class="lh-total"><span id="p-total"></span><span>⋮⋮ 손잡이를 끌어 순서와 구간을 바꿉니다</span></div>
+        </div>
+        <div class="addbar">
+          <div class="add-row">
+            <select id="p-sec" aria-label="넣을 구간"></select>
+            <input id="p-url" placeholder="링크 붙여넣기 · 유튜브, 구글 문서, 캔바, 웹사이트" autocomplete="off" aria-label="링크">
+            <button class="btn primary" id="p-add" type="button">추가</button>
+          </div>
+          <div class="detect" id="p-detect">링크를 붙여넣으면 종류를 알아서 알아봅니다</div>
+          <div class="drop" id="p-drop" role="button" tabindex="0">파일을 끌어다 놓거나 눌러서 고르세요
+            <span>ppt · hwp · pdf · xlsx · mp3 · mp4 · 그림 → 수업 폴더로 복사되고 원본은 그대로 남습니다</span>
+          </div>
+          <input type="file" id="p-file" multiple hidden>
+          <div class="add-more">
+            <button class="btn sm" id="p-memo" type="button">메모 추가</button>
+            <button class="btn sm" id="p-addsec" type="button">구간 추가</button>
+          </div>
+        </div>
+        <div class="flow" id="p-flow"></div>
+      </div>
+
+      <div class="side-col">
+        <div class="card">
+          <div class="card-h"><h2>수업 보관함</h2><span class="sync ok" id="lib-sync">구글 드라이브 데스크톱 · 동기화됨</span></div>
+          <p class="sub">위치: 내 드라이브 › 수업 사이드바 · 윈도우와 맥의 수업 사이드바가 같은 폴더를 봅니다. 수업 하나가 폴더 하나입니다.</p>
+          <ul class="lib" id="lib"></ul>
+          <div id="lib-note"></div>
+          <div class="zrow">
+            <button class="btn sm" id="lib-new" type="button">새 수업 폴더</button>
+            <button class="btn sm" id="lib-open" type="button">다른 위치의 폴더 열기</button>
+          </div>
+        </div>
+        <div class="card">
+          <h2>이 수업 폴더</h2>
+          <p class="sub" id="p-root"></p>
+          <p class="savedby" id="p-saved"></p>
+          <pre class="tree" id="p-tree"></pre>
+          <p class="sub">파일 이름 앞 순번은 "정리하기" 때 한꺼번에 맞춥니다. 수업 중 열려 있는 파일은 건드리지 않습니다.</p>
+        </div>
+        <div class="card">
+          <h2>수업 꾸러미 (.zip)</h2>
+          <p class="sub">클라우드 폴더를 못 쓰는 PC나 동료에게 넘길 때 씁니다. 드라이브 웹에서 폴더째 내려받은 zip도 그대로 가져옵니다.</p>
+          <div class="zrow">
+            <button class="btn primary" id="z-export" type="button">꾸러미로 내보내기</button>
+            <button class="btn" id="z-import" type="button">꾸러미 가져오기</button>
+          </div>
+          <div id="z-panel"></div>
+          <input type="file" id="z-file" accept=".zip" hidden>
+        </div>
+        <div class="card">
+          <h2>사전 점검</h2>
+          <p class="sub">수업 전에 링크·파일·필요한 프로그램·권한을 한 번에 확인합니다.</p>
+          <div class="zrow">
+            <button class="btn" id="c-run" type="button">점검 실행</button>
+            <button class="btn primary" id="c-start" type="button">수업 시작 · 모두 미리 열기</button>
+          </div>
+          <ul class="checks" id="c-list"></ul>
+          <p class="sub" id="c-sum"></p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 설계 검토 ===================== -->
+  <section id="v-review" hidden>
+    <div class="rv">
+      <div class="verdict">
+        <p class="eyebrow">검토 결론</p>
+        <h2>차선책이던 사이드바 방식을 기본 구조로 정합니다</h2>
+        <p>자료를 보여주는 일은 한글·파워포인트·크롬처럼 오래 검증된 프로그램에 맡기고, 수업 사이드바는 열기·찾기·앞으로·배치·닫기만 합니다. 우리가 만드는 코드가 적을수록 수업 중 사고도 적습니다. 프로그램은 설치형 하나이며 확장 프로그램은 없습니다. 수업은 폴더 하나로 관리합니다. 이 폴더를 구글 드라이브 데스크톱 폴더에 두면 윈도우에서 준비하다가 맥에서 이어서 편집할 수 있고, 클라우드를 못 쓰는 PC는 꾸러미(.zip)로 오갑니다.</p>
+        <ul class="why">
+          <li><b>고장 범위가 작다</b>한 프로그램이 멈춰도 그 창만 멈춥니다. 사이드바와 나머지 자료는 그대로입니다.</li>
+          <li><b>표시 품질이 원래 그대로다</b>PPT 애니메이션, 한글 서식, 구글·캔바 로그인이 평소와 똑같이 동작합니다.</li>
+          <li><b>원래 문제를 정확히 푼다</b>창이 몇 개든 사이드바 하나가 리모컨이 되어, 수업 중 창을 찾느라 시간을 쓰지 않습니다.</li>
+        </ul>
+      </div>
+
+      <section>
+        <h3>두 방식 비교</h3>
+        <div class="tbl"><table>
+          <thead><tr><th>기준</th><th>한 창 통합형 (v0.1)</th><th class="pick">수업 사이드바형 (채택)</th></tr></thead>
+          <tbody>
+            <tr><td>자료를 보여주는 곳</td><td>우리 앱이 웹·PDF·미디어·문서 변환을 모두 처리</td><td class="pick">한글·파워포인트·엑셀·브라우저 등 원래 프로그램</td></tr>
+            <tr><td>표시 품질</td><td>PPT 애니메이션, 한글 서식 재현 불가</td><td class="pick">원래 그대로</td></tr>
+            <tr><td>구글·캔바 로그인</td><td>내장 브라우저 로그인이 막힐 위험</td><td class="pick">평소 쓰는 브라우저 그대로</td></tr>
+            <tr><td>하나가 멈추면</td><td>앱 전체가 흔들릴 수 있음</td><td class="pick">그 프로그램만 멈춤</td></tr>
+            <tr><td>만들 양</td><td>많음 (종류별 뷰어, 탭, 문서 변환)</td><td class="pick">적음 (열기·찾기·앞으로·배치·닫기)</td></tr>
+            <tr><td>창 전환 속도</td><td>빠름</td><td class="pick">미리 열어 두면 빠름, 처음 켤 때만 느림</td></tr>
+            <tr><td>확대·포인터·캡처 핀·스포트라이트·녹화</td><td>가능</td><td class="pick">똑같이 가능 (화면 전체에 동작)</td></tr>
+            <tr><td>필요 조건</td><td>없음</td><td class="pick">해당 프로그램 설치, 맥은 접근성 권한</td></tr>
+          </tbody>
+        </table></div>
+      </section>
+
+      <section>
+        <h3>사이드바 방식의 약점과 보완</h3>
+        <div class="tbl"><table>
+          <thead><tr><th>약점</th><th>보완</th></tr></thead>
+          <tbody>
+            <tr><td>처음 켤 때 느림 (PPT 3~5초)</td><td><b>수업 시작 · 모두 미리 열기</b>로 수업 직전에 전부 열어 두고, 수업 중 클릭은 앞으로 가져오기만 합니다 (0.3초 이내).</td></tr>
+            <tr><td>다른 프로그램 창을 정확히 찾아야 함</td><td>프로그램 이름 + 창 제목 속 파일 이름으로 연결합니다. 제목이 바뀌면 다시 찾고, 못 찾으면 열린 창 목록에서 직접 연결합니다.</td></tr>
+            <tr><td>웹 자료가 탭이 아니라 창으로 열림</td><td>사이드바로 전환하므로 창이 많아도 찾을 일이 없고, 화면 분할 때 탭을 떼어낼 필요도 없습니다. 탭 하나만 골라 닫는 기능은 없습니다 (창 단위).</td></tr>
+            <tr><td>수업 PC에 프로그램이 있어야 함</td><td>사전 점검에서 확인하고, 없으면 대안을 안내합니다 (한글 뷰어, PDF·그림·영상은 브라우저).</td></tr>
+            <tr><td>맥은 "손쉬운 사용" 권한 필요</td><td>첫 실행 때 안내 화면으로 한 번 허용합니다.</td></tr>
+            <tr><td>창이 여러 개라 어수선함</td><td>사이드바로만 전환, "다른 창 숨기기", 화면 분할로 정리합니다.</td></tr>
+          </tbody>
+        </table></div>
+      </section>
+
+      <section>
+        <h3>화면 분할은 이렇게 동작합니다</h3>
+        <div class="cols">
+          <div class="box"><h4>사용 흐름</h4><ol>
+            <li>사이드바에서 체크나 Ctrl/⌘+클릭으로 2~4개 선택 (닫혀 있으면 자동으로 엽니다)</li>
+            <li>배치 선택: 반반 · 7:3 · 3분할 · 큰 화면+2 · 4분할</li>
+            <li>고른 순서대로 왼쪽부터 배치. 듀얼 모니터면 학생 화면에, 모니터 한 대면 사이드바를 뺀 영역에 놓습니다</li>
+            <li>창 경계의 조절 바를 끌면 양쪽 창 크기가 함께 바뀝니다</li>
+            <li>분할 해제를 누르면 원래 위치와 크기로 돌아갑니다</li>
+          </ol></div>
+          <div class="box"><h4>구현</h4><ul>
+            <li>Windows: <code>SetWindowPos</code>로 위치·크기 지정, 최대화 창은 먼저 복원, 모니터 배율(DPI)과 창 그림자 테두리 보정</li>
+            <li>macOS: 접근성 API로 위치·크기 설정, 전체 화면 창은 먼저 해제</li>
+            <li>웹 자료는 처음부터 각자 브라우저 창이라 그대로 배치</li>
+            <li>조절 바는 경계에 띄운 얇은 항상 위 창</li>
+            <li>자주 쓰는 배치는 수업 흐름에 저장해 한 번에 다시 배치</li>
+          </ul></div>
+          <div class="box"><h4>주의할 점</h4><ul>
+            <li>PPT 전체 화면 슬라이드쇼는 반쪽에 넣을 수 없어 창 모드 슬라이드 쇼로 바꿔 배치합니다</li>
+            <li>프로그램마다 최소 크기가 있어 조절 바는 그 이하로 끌리지 않습니다</li>
+            <li>무거운 프로그램은 끄는 동안 안내선만 보여 주고 놓을 때 적용하는 방식도 고를 수 있게 합니다</li>
+            <li>듀얼 모니터면 기본으로 학생 화면에 배치하고, 다른 화면을 고를 수도 있습니다</li>
+          </ul></div>
+        </div>
+      </section>
+
+      <section>
+        <h3>듀얼 모니터: 교사 화면과 학생 화면</h3>
+        <p class="sub" style="margin-bottom:12px">노트북·교탁 모니터(교사 화면)와 프로젝터·전자칠판·TV(학생 화면)를 기본으로 생각합니다. 처음 연결할 때 학생 화면을 한 번 고르면 모니터 이름으로 기억해, 같은 교실에서는 다음부터 자동입니다.</p>
+        <div class="cols">
+          <div class="box"><h4>학생 화면에 띄우기</h4><ul>
+            <li>목록에서 누르면 자료가 학생 화면에 바로 뜹니다</li>
+            <li>진행 메모·수업 폴더는 교사 화면에 열립니다 (자료마다 바꿀 수 있음)</li>
+            <li>"교사 화면에서 먼저"로 바꾸면 내 화면에서 확인한 뒤 ⇄로 학생 화면에 보냅니다</li>
+            <li>열린 창은 ⇄ 한 번으로 다른 화면으로 옮기고, 학생 화면에서는 꽉 차게 놓습니다</li>
+          </ul></div>
+          <div class="box"><h4>학생 화면 관리</h4><ul>
+            <li>미리보기: 사이드바 위쪽에 학생 화면을 작게 실시간으로 보여 줌</li>
+            <li>정지: 지금 장면을 학생 화면에 고정해 두고 뒤에서 창 정리</li>
+            <li>가리기: 검은 화면 + "잠시 후 계속합니다"</li>
+          </ul></div>
+          <div class="box"><h4>도구와 녹화</h4><ul>
+            <li>화면 분할·확대·캡처 핀: 학생 화면 기준</li>
+            <li>포인터 강조·스포트라이트: 마우스가 있는 화면</li>
+            <li>녹화: 학생 화면 (교사 화면·두 화면 모두로 바꿀 수 있음)</li>
+            <li>PPT 슬라이드 쇼는 학생 화면, 발표자 보기는 교사 화면 (기술 검증 대상)</li>
+          </ul></div>
+          <div class="box"><h4>연결이 바뀔 때</h4><ul>
+            <li>프로젝터 연결이 끊기면 창을 교사 화면으로 모으고, 다시 연결되면 돌려놓기</li>
+            <li>화면마다 다른 배율(노트북 200%, 프로젝터 100%) 보정</li>
+            <li>복제(미러) 모드면 사전 점검에서 알리고 자동 숨김 권장</li>
+            <li>분할 배치는 "학생 화면 + 비율"로 저장해 교실이 바뀌어도 같은 모양</li>
+          </ul></div>
+        </div>
+      </section>
+
+      <section>
+        <h3>앱은 도구, 수업은 폴더: 윈도우와 맥을 오가며 편집</h3>
+        <p class="sub" style="margin-bottom:12px">수업에 필요한 모든 것은 수업 폴더 안에만 저장합니다. 문서 프로그램이 파일을 열듯 수업 사이드바는 수업 폴더를 엽니다. 동기화는 구글 드라이브 데스크톱 앱이 맡으므로 사이드바는 드라이브 API·구글 로그인·토큰을 다루지 않습니다. OneDrive, Dropbox, NAS, USB도 똑같이 됩니다.</p>
+        <div class="cols">
+          <div class="box"><h4>사용 흐름</h4><ol>
+            <li>윈도우 PC와 맥에 구글 드라이브 데스크톱 앱 설치, 같은 계정 로그인</li>
+            <li>사이드바 설정에서 수업 보관함 위치를 <code>내 드라이브/수업 사이드바</code>로 한 번 지정</li>
+            <li>윈도우에서 준비하고 저장하면 폴더째 드라이브에 올라감</li>
+            <li>맥의 사이드바 보관함에 같은 수업이 보이고, 열어서 이어서 편집</li>
+          </ol></div>
+          <div class="box"><h4>폴더 안 / 이 PC에만</h4><ul>
+            <li><b>폴더 안</b>: lesson.json(흐름·메모·시작 위치·분할 배치), 자료, 캡처, 녹화와 챕터, 수업안내.html, <code>.sidebar/</code> 잠금·백업</li>
+            <li><b>이 PC에만</b>: 최근 연 폴더, 프로그램 실제 위치(윈도우 <code>Hwp.exe</code> / 맥 한컴오피스), 모니터 배치, 단축키, 미리보기 캐시</li>
+            <li>lesson.json에는 "한글로 열기"처럼 프로그램 종류만 적어 두 PC에서 각자 동작</li>
+          </ul></div>
+          <div class="box"><h4>두 PC가 부딪히지 않게</h4><ul>
+            <li>잠금 파일: "윈도우 PC에서 편집 중 · 1분 전" → 읽기 전용 / 그래도 편집</li>
+            <li>바깥 변경 감지: 다른 PC의 저장이 도착하면 다시 불러오기</li>
+            <li>충돌 사본(<code>lesson (1).json</code>)이 생기면 나란히 비교해 고르기</li>
+            <li>원자적 저장 + 최근 10개 백업</li>
+          </ul></div>
+          <div class="box"><h4>동기화가 덜 됐을 때</h4><ul>
+            <li>아직 안 내려온 파일은 "동기화 기다리는 중", 도착하면 자동 반영</li>
+            <li>스트리밍 모드 대비: 사전 점검 "수업 전에 모두 내려받기"</li>
+            <li>녹화는 이 PC 임시 폴더에 기록한 뒤 끝나면 <code>_녹화/</code>로 옮김</li>
+            <li>한글 파일 이름 NFC/NFD 차이를 같은 이름으로 취급</li>
+          </ul></div>
+        </div>
+      </section>
+
+      <section>
+        <h3>수업 꾸러미 (.zip): 클라우드를 못 쓸 때</h3>
+        <div class="cols">
+          <div class="box"><h4>내보내기</h4><ul>
+            <li>파일 하나: <code>2026-11-28_AI활용수업설계연수_1차.zip</code></li>
+            <li>lesson.json, 자료 파일, 메모, 링크, 수업안내.html, 캡처, manifest.json</li>
+            <li>녹화 영상은 용량이 커서 선택 사항</li>
+            <li>보내기 전에 순번 정리를 자동 실행</li>
+            <li>받는 사람 권한이 필요한 구글·캔바 링크를 미리 알려 줌</li>
+          </ul></div>
+          <div class="box"><h4>가져오기</h4><ul>
+            <li>manifest 확인 → 파일 손상 검사(해시) → 위험한 경로·실행 파일 차단 → 압축 해제 용량 제한</li>
+            <li>같은 수업이 있으면 사본으로 / 덮어쓰기(기존 백업) / 취소</li>
+            <li>가져오자마자 편집 가능, 이 PC에 필요한 프로그램이 있는지 사전 점검 자동 실행</li>
+          </ul></div>
+          <div class="box"><h4>PC를 옮겨도 안 깨지게</h4><ul>
+            <li>파일 위치는 모두 수업 폴더 기준 상대 경로</li>
+            <li>맥의 한글 파일 이름(자모 분리 NFD)을 NFC로 바꾸고 zip UTF-8 표시를 켜서 Windows에서 깨지지 않게</li>
+            <li>Windows 금지 문자(<code>: * ? " &lt; &gt; |</code>)와 너무 긴 경로는 내보낼 때 미리 고침</li>
+          </ul></div>
+        </div>
+      </section>
+
+      <section>
+        <h3>윈도우와 맥 함께 지원</h3>
+        <p class="sub" style="margin-bottom:12px">준비 화면, 수업 폴더, 사이드바 화면, 모니터 감지, 화면 위 도구, 녹화, 꾸러미는 한 번 만들면 두 OS에서 함께 동작합니다. OS마다 따로 만드는 것은 창 관리 도우미, 사이드바 고정 방식, 권한 안내, 설치 파일·서명 네 가지입니다.</p>
+        <div class="tbl"><table>
+          <thead><tr><th>기능</th><th>윈도우</th><th>맥</th></tr></thead>
+          <tbody>
+            <tr><td>창 찾기·앞으로·닫기</td><td>user32 API, 따로 허용할 권한 없음</td><td>접근성 API, "손쉬운 사용" 권한 한 번 허용</td></tr>
+            <tr><td>화면 분할</td><td><code>SetWindowPos</code>, 모니터 배율 보정</td><td>접근성 API로 위치·크기, 전체 화면 창은 먼저 해제</td></tr>
+            <tr><td>사이드바 고정</td><td>AppBar 등록: 다른 창이 사이드바를 덮지 않음</td><td>항상 위 패널, 분할할 때 사이드바 폭을 빼고 배치</td></tr>
+            <tr><td>PPT 슬라이드 쇼 위 표시</td><td>최상위 창</td><td>전체 화면 공간 위에도 보이는 패널 (기술 검증 대상)</td></tr>
+            <tr><td>PPT 시작 슬라이드</td><td>COM 자동화</td><td>AppleScript</td></tr>
+            <tr><td>녹화 권한</td><td>따로 없음</td><td>"화면 기록" 권한 한 번 허용</td></tr>
+            <tr><td>단축키</td><td>Ctrl 기준</td><td>⌘ 기준으로 자동 변환</td></tr>
+            <tr><td>설치 파일</td><td>설치형 .exe + 설치 없이 실행하는 portable .exe</td><td>.dmg (Apple Silicon·Intel 겸용)</td></tr>
+            <tr><td>서명</td><td>미서명이면 첫 실행 때 경고만 (통과 가능)</td><td>미서명이면 새 버전마다 권한이 풀림 → 자체 서명 인증서로 유지, 나눌 때는 Apple 개발자 등록</td></tr>
+          </tbody>
+        </table></div>
+        <p class="sub" style="margin-top:10px">맥과 윈도우 PC에서 각각 Claude가 같은 GitHub 비공개 저장소로 협업합니다. 맥의 Claude는 공통 코드와 맥 부분을, 윈도우의 Claude는 윈도우 부분을 맡아 그 자리에서 실행하고 고칩니다. 기술 검증은 두 OS 모두 통과해야 다음 단계로 갑니다.</p>
+      </section>
+
+      <section>
+        <h3>구조</h3>
+        <div class="arch">
+          <div class="a-top"><b>수업 사이드바 (설치형 프로그램 하나 · Electron)</b>
+            <div class="chips"><span>준비 화면</span><span>사이드바 목록</span><span>창 관리</span><span>화면 분할</span><span>확대·포인터·캡처 핀·스포트라이트</span><span>녹화·챕터</span><span>꾸러미 zip</span></div>
+          </div>
+          <div class="a-arrow">↓ 창 찾기·앞으로·배치·닫기</div>
+          <div class="a-arrow">↓ 화면 역할·연결 감지·미리보기</div>
+          <div class="a-mid"><b>창 관리 도우미</b><small>Windows user32 · macOS 접근성 API · 별도 프로세스, 멈추면 자동 재시작</small></div>
+          <div class="a-mid"><b>모니터 관리</b><small>교사 화면·학생 화면, 연결 끊김 처리, 화면마다 오버레이</small></div>
+          <div class="a-arrow">↓</div>
+          <div class="a-arrow">↓</div>
+          <div class="a-low">한글 · 파워포인트 · 엑셀 · 플레이어 · 탐색기 · 브라우저 새 창 (웹·유튜브·구글·캔바·PDF)</div>
+          <div class="a-low">교사 화면: 사이드바·진행 메모 / 학생 화면: 자료</div>
+          <div class="a-store"><span>수업 폴더 (lesson.json + 자료)</span>↔<span>구글 드라이브 데스크톱 · OneDrive · Dropbox</span>↔<span>다른 PC의 수업 사이드바</span>클라우드를 못 쓰면 <span>꾸러미 .zip</span></div>
+        </div>
+      </section>
+
+      <section>
+        <h3>자료 종류별로 여는 프로그램</h3>
+        <div class="tbl"><table>
+          <thead><tr><th>종류</th><th>기본으로 여는 곳</th><th>추적 방법</th><th>시작 위치</th></tr></thead>
+          <tbody>
+            <tr><td>웹, 유튜브, 구글 문서·시트·슬라이드, 드라이브, 캔바</td><td>브라우저 새 창 (크롬·엣지·웨일)</td><td>새로 생긴 창을 바로 연결</td><td>유튜브 <code>t=45s</code></td></tr>
+            <tr><td>PDF</td><td>브라우저 새 창 (추천) 또는 기본 PDF 프로그램</td><td>새 창 연결 / 창 제목</td><td>브라우저 <code>#page=3</code></td></tr>
+            <tr><td>그림</td><td>브라우저 새 창 (추천) 또는 사진 앱</td><td>새 창 연결 / 창 제목</td><td>—</td></tr>
+            <tr><td>mp3 · 음악 · mp4</td><td>기본 플레이어 또는 브라우저 새 창</td><td>창 제목 / 새 창 연결</td><td>—</td></tr>
+            <tr><td>파워포인트</td><td>파워포인트 (바로 슬라이드 쇼 옵션)</td><td>프로그램 + 창 제목</td><td>시작 슬라이드 (Windows 자동화)</td></tr>
+            <tr><td>엑셀</td><td>엑셀</td><td>프로그램 + 창 제목</td><td>—</td></tr>
+            <tr><td>한글 hwp · hwpx</td><td>한글</td><td>프로그램 + 창 제목</td><td>—</td></tr>
+            <tr><td>파일 탐색기</td><td>탐색기 / Finder (수업 폴더)</td><td>창 제목</td><td>—</td></tr>
+          </tbody>
+        </table></div>
+      </section>
+
+      <section>
+        <h3>만드는 순서</h3>
+        <div class="steps">
+          <div class="step"><span class="n">0단계 · 2~3주</span><b>기술 검증 (윈도우·맥 각각)</b><ul><li>한글·PPT·엑셀 창 찾기·앞으로·배치·닫기</li><li>브라우저 새 창 추적</li><li>듀얼 모니터 창 이동</li><li>슬라이드쇼 위 사이드바</li><li>60분 녹화</li><li>드라이브 폴더 윈도우↔맥 왕복</li><li>학교 PC 실행</li></ul></div>
+          <div class="step"><span class="n">1단계</span><b>수업에 쓸 최소 버전</b><ul><li>준비 화면, 폴더 정리</li><li>수업 보관함·잠금·변경 감지</li><li>자료를 학생 화면에 띄우기·⇄ 옮기기</li><li>꾸러미 zip 내보내기·가져오기</li><li>사이드바 열기·앞으로·강조·닫기·자동 숨김</li><li>모두 미리 열기</li></ul></div>
+          <div class="step"><span class="n">2단계</span><b>수업 도구</b><ul><li>화면 분할·조절 바·복원</li><li>확대·포인터·캡처 핀·스포트라이트</li><li>녹화 + 챕터</li></ul></div>
+          <div class="step"><span class="n">3단계</span><b>정리와 재사용</b><ul><li>사전 점검, 수업 복제</li><li>충돌 사본 비교 화면</li><li>수업안내.html, 검색</li></ul></div>
+          <div class="step"><span class="n">4단계</span><b>확장</b><ul><li>교사 화면 발표자 모드</li><li>판서 펜, 휴대폰 리모컨</li><li>서명·자동 업데이트</li></ul></div>
+        </div>
+        <p class="sub" style="margin-top:10px">각 단계가 끝나면 실제 연수에서 한 번 써 보고 다음 단계로 갑니다.</p>
+      </section>
+
+      <section>
+        <h3>제작 전에 정할 것</h3>
+        <ol class="decide">
+          <li><b>운영체제</b> — 정해짐: 윈도우와 맥 모두. 테스트용 윈도우 PC(한글·파워포인트 설치) 있음</li>
+          <li><b>화면 구성</b> — 정해짐: 듀얼 모니터(교사 화면 + 학생 화면)를 기본으로, 모니터 한 대도 지원</li>
+          <li><b>프로그램 형태</b> — 정해짐: 설치형 프로그램 하나 (확장 프로그램 없음, 학교 PC용 설치 없이 실행 버전 포함)</li>
+          <li><b>학교 PC 조건</b> — 프로그램 설치 가능 여부, 재부팅 시 초기화 프로그램 유무</li>
+          <li><b>사용 범위</b> — 혼자 쓸지, 동료 선생님께 나눌지</li>
+          <li><b>클라우드</b> — 준비하는 PC들(윈도우·맥)에 구글 드라이브 데스크톱 앱을 설치할 수 있는지, 개인 계정인지 학교 Workspace인지 (못 깔면 그 PC는 꾸러미로)</li>
+        </ol>
+      </section>
+
+      <section>
+        <h3>보완 제안</h3>
+        <div class="cols">
+          <div class="box"><h4>꼭 넣기를 권하는 것</h4><ul>
+            <li>수업 시작 · 모두 미리 열기</li>
+            <li>사전 점검 (링크·파일·프로그램·브라우저·모니터·권한)</li>
+            <li>자료별 시작 위치 (유튜브 시간, PDF 쪽, PPT 슬라이드)</li>
+            <li>분할 배치 저장 ("설문 결과 + 활동지")</li>
+            <li>다음/이전 자료 단축키, 클리커 지원</li>
+            <li>수업 복제 ("2차 만들기")</li>
+            <li>수업안내.html + 녹화 챕터</li>
+            <li>웹 자료 PDF 스냅샷 (인터넷 끊김 대비)</li>
+          </ul></div>
+          <div class="box"><h4>있으면 좋은 것</h4><ul>
+            <li>교사 화면 발표자 모드 (진행 메모·구간 타이머·다음 자료 미리보기)</li>
+            <li>자료별 진행 메모와 구간 타이머</li>
+            <li>지금 자료 링크를 큰 QR로 띄우기</li>
+            <li>판서 펜, 태그·검색, 수업 후 회고 메모</li>
+            <li>휴대폰 리모컨</li>
+          </ul></div>
+          <div class="box"><h4>개인정보·안전</h4><ul>
+            <li>녹화 중 REC 표시, 시작 시 안내 문구</li>
+            <li>학생 얼굴·목소리·이름이 담긴 녹화와 캡처는 공유 전 확인</li>
+            <li>유튜브 영상은 내려받지 않고 링크만 저장</li>
+            <li>꾸러미 가져올 때 실행 파일과 폴더 밖 경로 차단</li>
+          </ul></div>
+        </div>
+      </section>
+
+      <p class="rv-foot">전체 설계 문서: <code>docs/PLAN.md</code> (v0.2). 이 시안의 화면은 브라우저 안에서 흉내 낸 것이며, 실제 앱은 진짜 프로그램 창을 다룹니다.</p>
+    </div>
+  </section>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(() => {
+'use strict';
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const pct = v => (v * 100).toFixed(3) + '%';
+const mmss = ms => { const s = Math.max(0, Math.floor(ms / 1000)); return String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0'); };
+const fmtBytes = b => b >= 1e9 ? (b / 1e9).toFixed(1) + 'GB' : b >= 1e6 ? Math.round(b / 1e6) + 'MB' : Math.max(1, Math.round(b / 1e3)) + 'KB';
+
+/* ---------- data ---------- */
+const TYPES = {
+  youtube:{b:'YT',  n:'유튜브',        c:'--t-red',    link:true, ph:'0:45'},
+  web:    {b:'웹',  n:'웹사이트',      c:'--t-slate',  link:true},
+  gdoc:   {b:'문서',n:'구글 문서',     c:'--t-blue',   link:true},
+  gsheet: {b:'시트',n:'구글 시트',     c:'--t-green',  link:true},
+  gslides:{b:'슬라',n:'구글 슬라이드', c:'--t-yellow', link:true, ph:'3번 슬라이드'},
+  gdrive: {b:'드라',n:'구글 드라이브', c:'--t-teal',   link:true},
+  canva:  {b:'캔바',n:'캔바',          c:'--t-violet', link:true},
+  pdf:    {b:'PDF', n:'PDF',           c:'--t-rose',   ext:'pdf',  ph:'3쪽'},
+  img:    {b:'사진',n:'그림',          c:'--t-cyan',   ext:'jpg'},
+  ppt:    {b:'PPT', n:'파워포인트',    c:'--t-orange', ext:'pptx', ph:'3번 슬라이드'},
+  xls:    {b:'XLS', n:'엑셀',          c:'--t-green2', ext:'xlsx'},
+  hwp:    {b:'한글',n:'한글 문서',     c:'--t-blue2',  ext:'hwp'},
+  audio:  {b:'음악',n:'음악',          c:'--t-pink',   ext:'mp3'},
+  video:  {b:'영상',n:'동영상',        c:'--t-purple', ext:'mp4',  ph:'1:20'},
+  folder: {b:'폴더',n:'수업 폴더',     c:'--t-stone'},
+  memo:   {b:'메모',n:'메모',          c:'--t-slate2', ext:'md'},
+  file:   {b:'파일',n:'기타 파일',     c:'--t-stone',  ext:'bin'},
+};
+const OPENERS = {
+  youtube:[['chrome','브라우저 새 창']], web:[['chrome','브라우저 새 창']], gdoc:[['chrome','브라우저 새 창']], gsheet:[['chrome','브라우저 새 창']],
+  gslides:[['chrome','브라우저 새 창']], gdrive:[['chrome','브라우저 새 창']], canva:[['chrome','브라우저 새 창']],
+  pdf:[['chrome','브라우저 (추천)'],['pdfapp','기본 PDF 프로그램']],
+  img:[['chrome','브라우저 (추천)'],['photo','사진 앱']],
+  ppt:[['ppt','파워포인트'],['pptshow','파워포인트 · 바로 슬라이드 쇼']],
+  xls:[['xls','엑셀']], hwp:[['hwp','한글']],
+  audio:[['media','기본 플레이어'],['chrome','브라우저']],
+  video:[['media','기본 플레이어'],['chrome','브라우저']],
+  folder:[['explorer','파일 탐색기']], memo:[['text','메모장']], file:[['other','기본 프로그램']],
+};
+const APPS = {
+  chrome:{n:'Chrome', l:'C', c:'--app-chrome', d:350},
+  ppt:{n:'PowerPoint', l:'P', c:'--t-orange', d:1000},
+  pptshow:{n:'PowerPoint 슬라이드 쇼', l:'P', c:'--t-orange', d:1100},
+  hwp:{n:'한글', l:'한', c:'--t-blue2', d:900},
+  xls:{n:'Excel', l:'X', c:'--t-green2', d:900},
+  media:{n:'미디어 플레이어', l:'▶', c:'--t-purple', d:450},
+  explorer:{n:'파일 탐색기', l:'F', c:'--t-stone', d:300},
+  text:{n:'메모장', l:'M', c:'--t-slate2', d:300},
+  photo:{n:'사진', l:'사', c:'--t-cyan', d:400},
+  pdfapp:{n:'PDF 뷰어', l:'P', c:'--t-rose', d:600},
+  other:{n:'기본 프로그램', l:'?', c:'--t-stone', d:500},
+};
+const EXT = {ppt:'ppt',pptx:'ppt',xls:'xls',xlsx:'xls',csv:'xls',hwp:'hwp',hwpx:'hwp',pdf:'pdf',
+  mp3:'audio',wav:'audio',m4a:'audio',ogg:'audio',flac:'audio',mp4:'video',mov:'video',webm:'video',avi:'video',mkv:'video',wmv:'video',
+  jpg:'img',jpeg:'img',png:'img',gif:'img',webp:'img',heic:'img',svg:'img',txt:'memo',md:'memo'};
+const BLOCKED = /\.(exe|bat|cmd|com|msi|app|command|sh|ps1|vbs|jar|scr|dmg|pkg)$/i;
+const FAKE_SIZE = {ppt:38e6,hwp:2.1e6,pdf:4.3e6,xls:2.4e5,img:3.4e6,audio:7.8e6,video:1.2e8,memo:4e3,file:1e6};
+
+const L = {
+  title:'AI 활용 수업 설계 연수 (1차)', date:'2026-11-28',
+  secs:[{id:'s1',t:'도입',m:10},{id:'s2',t:'전개',m:35},{id:'s3',t:'정리',m:10}],
+  items:[
+    {id:'i0', sec:'s1', type:'memo',    title:'진행 메모',          src:'', start:''},
+    {id:'i1', sec:'s1', type:'youtube', title:'오프닝 영상',       src:'https://www.youtube.com/watch?v=VIDEO_ID&t=45s', start:'0:45'},
+    {id:'i2', sec:'s1', type:'pdf',     title:'연수 안내',         src:'연수안내.pdf', start:'3쪽'},
+    {id:'i3', sec:'s2', type:'ppt',     title:'1부 생성형 AI 이해', src:'생성형AI이해.pptx', start:'3번 슬라이드'},
+    {id:'i4', sec:'s2', type:'hwp',     title:'활동지: AI 수업 설계', src:'활동지_AI수업설계.hwp'},
+    {id:'i5', sec:'s2', type:'gsheet',  title:'사전 설문 결과',     src:'https://docs.google.com/spreadsheets/d/SHEET_ID'},
+    {id:'i6', sec:'s2', type:'gdoc',    title:'수업 설계 템플릿',   src:'https://docs.google.com/document/d/DOC_ID'},
+    {id:'i7', sec:'s2', type:'canva',   title:'우수 사례 포스터',   src:'https://www.canva.com/design/DESIGN_ID/view'},
+    {id:'i8', sec:'s2', type:'xls',     title:'모둠 편성표',        src:'모둠편성표.xlsx'},
+    {id:'i9', sec:'s2', type:'img',     title:'활동 예시 사진',     src:'모둠토의.jpg'},
+    {id:'i10',sec:'s3', type:'audio',   title:'마무리 음악',        src:'마무리음악.mp3'},
+    {id:'i11',sec:'s3', type:'gdrive',  title:'연수 자료실',        src:'https://drive.google.com/drive/folders/FOLDER_ID'},
+    {id:'i12',sec:'s3', type:'folder',  title:'수업 폴더',          src:''},
+  ]
+};
+let seq = 100;
+const nid = p => p + (++seq);
+const item = id => L.items.find(i => i.id === id);
+const appOf = it => (OPENERS[it.type] || OPENERS.file)[it.op || 0][0];
+const ordered = () => L.secs.flatMap(s => L.items.filter(i => i.sec === s.id));
+const totalMin = () => L.secs.reduce((a, s) => a + (+s.m || 0), 0);
+const fmtDate = d => { const dt = new Date(d + 'T00:00:00'); return isNaN(dt) ? d : `${dt.getMonth() + 1}.${dt.getDate()}(${'일월화수목금토'[dt.getDay()]})`; };
+function extOf(it){
+  const T = TYPES[it.type];
+  if (T.link) return 'url';
+  if (it.type === 'folder') return '';
+  if (it.type === 'memo' && !it.src) return 'md';
+  const m = /\.([a-z0-9]+)$/i.exec(it.src || '');
+  return m ? m[1].toLowerCase() : (T.ext || '');
+}
+const slug = t => (t || '').replace(/\s*[:·]\s*/g, '_').replace(/[\\/*?"<>|]/g, '').replace(/\s+/g, '') || '자료';
+const num = it => String(ordered().indexOf(it) + 1).padStart(2, '0');
+function fileName(it){ const e = extOf(it); return `${num(it)}_${slug(it.title)}${e ? '.' + e : ''}`; }
+function folderName(){ return `${L.date}_${L.title.replace(/\s*\((.*?)\)\s*/g, '_$1').replace(/[\\/:*?"<>|]/g, '').replace(/\s+/g, '')}`; }
+
+/* ---------- desktop state ---------- */
+const D = { wins:[], front:null, z:10, wseq:0, cascade:[0, 0], sel:new Set(), busy:new Set(), tile:null,
+  dual:true, openTo:'student', cover:null, stuOpen:true,
+  autoHide:false, peek:false, tools:{pointer:false, spot:false}, mode:null, modeDisp:0, zoom:2, spotR:110,
+  rec:null, recTimer:0, recN:0, capN:0, pinN:0, flash:null, peekT:0 };
+const screen = $('#screen'), screen2 = $('#screen2'), deskEl = $('#desk'), desk2 = $('#desk2'), sb = $('#sb');
+const SCREENS = [screen, screen2], DESKS = [deskEl, desk2];
+const Ms = [{ x:-200, y:-200 }, { x:-200, y:-200 }];
+const scrOf = it => it.scr || (['memo', 'folder'].includes(it.type) ? 'teacher' : 'student');
+const homeOf = it => scrOf(it) === 'teacher' ? 0 : 1;
+const dispFor = it => !D.dual ? 0 : (D.openTo === 'teacher' ? 0 : homeOf(it));
+const toolDisp = () => D.dual ? 1 : 0;
+const scrName = d => d === 1 ? '학생 화면' : '교사 화면';
+const fxOf = (d, cls) => SCREENS[d].querySelector(':scope > .' + cls);
+
+const winById = id => D.wins.find(w => w.id === id);
+const winOf = iid => D.wins.find(w => w.items.includes(iid));
+function frontWin(){ const w = winById(D.front); return w && !w.min ? w : null; }
+function frontItemId(){ const w = frontWin(); return w ? w.active : null; }
+function topVisible(except){ return D.wins.filter(w => !w.min && w.id !== except).sort((a, b) => b.z - a.z)[0] || null; }
+const winEl = id => { const s = `.win[data-id="${id}"]:not(.out)`; return deskEl.querySelector(s) || desk2.querySelector(s); };
+
+function deskSize(d = 0){ const r = DESKS[d].getBoundingClientRect(); return { W: r.width || 1240, H: r.height || 620, r }; }
+function area(d = 0){
+  if (d === 1) return { x:0, y:0, w:1, h:1 };
+  const W = deskEl.offsetWidth || 1240;
+  const x = D.autoHide ? 0 : Math.min(0.5, sb.offsetWidth / W);
+  return { x, y:0, w:1 - x, h:1 };
+}
+function cascadeRect(d = 0){
+  const a = area(d); const k = D.cascade[d]++ % 6;
+  const x = a.x + 0.035 + k * 0.03, y = 0.04 + k * 0.035;
+  return { x, y, w: Math.min(d === 1 ? 0.72 : 0.6, 1 - x - 0.03), h: 0.8 };
+}
+function newWin(app, items, rect, disp = 0, home = disp){
+  const w = { id:'w' + (++D.wseq), app, items:[...items], active:items[0], disp, home, rect: rect || cascadeRect(disp), z: ++D.z, min:false, max:false, prev:null };
+  D.wins.push(w); return w;
+}
+function normalizeZ(){ [...D.wins].sort((a, b) => a.z - b.z).forEach((w, i) => { w.z = 10 + i; }); D.z = 10 + D.wins.length; }
+function focusWin(id, opt = {}){
+  const w = winById(id); if (!w) return;
+  w.min = false; w.z = ++D.z; D.front = id;
+  if (D.z > 300) normalizeZ();
+  if (opt.flash) D.flash = id;
+  frontChanged(); renderAll();
+}
+function frontTitle(){ const id = frontItemId(); return id ? item(id).title : '바탕 화면'; }
+function frontChanged(){
+  if (!D.rec) return;
+  const t = frontTitle(); const last = D.rec.ch[D.rec.ch.length - 1];
+  if (!last || last.title !== t) D.rec.ch.push({ t: Date.now() - D.rec.t0, title: t });
+}
+
+function openOrFocus(iid){
+  if (!item(iid) || D.busy.has(iid)) return;
+  const w = winOf(iid);
+  if (w){ w.active = iid; focusWin(w.id, { flash:true }); return; }
+  openItem(iid);
+}
+function openItem(iid, opt = {}){
+  const it = item(iid); if (!it) return null;
+  const app = appOf(it);
+  const run = () => {
+    D.busy.delete(iid);
+    const cur = item(iid); if (!cur) { renderAll(); return null; }
+    const disp = opt.disp ?? dispFor(cur), home = homeOf(cur);
+    const rect = disp === 1 && !D.tile ? { x:0.04, y:0.04, w:0.92, h:0.92 } : null;
+    const w = newWin(app, [iid], rect, disp, home);
+    if (opt.focus === false) renderAll();
+    else {
+      focusWin(w.id, { flash:true });
+      if (D.dual && disp === 0 && home === 1) toast(`'${cur.title}'을(를) 교사 화면에 먼저 열었습니다 · ⇄를 누르면 학생 화면으로 보냅니다`);
+    }
+    return w;
+  };
+  if (opt.instant) return run();
+  D.busy.add(iid); renderSidebar();
+  setTimeout(run, APPS[app].d);
+  return null;
+}
+function closeItem(iid){
+  const w = winOf(iid); if (!w) return;
+  if (w.items.length > 1){
+    const idx = w.items.indexOf(iid); w.items.splice(idx, 1);
+    if (w.active === iid) w.active = w.items[Math.max(0, idx - 1)];
+    frontChanged(); renderAll();
+  } else closeWin(w.id);
+}
+function closeWin(id){
+  const i = D.wins.findIndex(w => w.id === id); if (i < 0) return;
+  D.wins.splice(i, 1);
+  if (D.tile && D.tile.wins.includes(id)) D.tile = null;
+  if (D.front === id){ const t = topVisible(); D.front = t ? t.id : null; }
+  frontChanged(); renderAll();
+}
+function minimizeWin(id){
+  const w = winById(id); if (!w) return;
+  w.min = true;
+  if (D.front === id){ const t = topVisible(id); D.front = t ? t.id : null; }
+  frontChanged(); renderAll();
+}
+function maxWin(id){
+  const w = winById(id); if (!w) return;
+  if (D.tile && D.tile.wins.includes(id)) D.tile = null;
+  if (w.max){ w.rect = w.prev || cascadeRect(w.disp); w.max = false; }
+  else { w.prev = { ...w.rect }; w.rect = area(w.disp); w.max = true; }
+  focusWin(id);
+}
+function hideOthers(){
+  let n = 0;
+  D.wins.forEach(w => { if (w.id !== D.front && !w.min){ w.min = true; n++; } });
+  renderAll(); toast(n ? `다른 창 ${n}개를 숨겼습니다 · 목록을 누르면 다시 나옵니다` : '숨길 창이 없습니다');
+}
+function moveItem(iid){
+  let w = winOf(iid); if (!w || !D.dual) return;
+  const to = w.disp === 1 ? 0 : 1;
+  if (w.items.length > 1){
+    const idx = w.items.indexOf(iid); w.items.splice(idx, 1);
+    if (w.active === iid) w.active = w.items[Math.max(0, idx - 1)];
+    w = newWin(w.app, [iid], null, to, to);
+  } else {
+    if (D.tile && D.tile.wins.includes(w.id)) D.tile = null;
+    w.disp = to; w.home = to;
+  }
+  w.max = false; w.active = iid;
+  w.rect = to === 1 ? { x:0.04, y:0.04, w:0.92, h:0.92 } : cascadeRect(0);
+  focusWin(w.id, { flash:true });
+  toast(`'${item(iid).title}' 창을 ${scrName(to)}으로 보냈습니다`);
+}
+function setDual(v){
+  if (D.dual === v) return;
+  D.dual = v;
+  let n = 0;
+  if (!v){
+    endMode(true); D.cover = null;
+    D.wins.forEach(w => {
+      if (w.disp !== 1) return;
+      w.disp = 0; n++;
+      const a = area(0);
+      if (w.rect.x < a.x){ w.rect.x = a.x + 0.02; }
+      w.rect.w = Math.min(w.rect.w, 1 - w.rect.x - 0.01);
+    });
+    if (D.tile){ D.tile.disp = 0; D.tile.wins.forEach(id => { const w = winById(id); if (w) w.disp = 0; }); }
+    toast(n ? `학생 화면(프로젝터) 연결이 끊긴 상황입니다 · 창 ${n}개를 교사 화면으로 모았습니다 · 다시 연결하면 원래 화면으로 돌려놓습니다` : '모니터 1개로 바꿨습니다');
+  } else {
+    D.wins.forEach(w => { if (w.home === 1 && w.disp === 0){ w.disp = 1; n++; } });
+    if (D.tile){ D.tile.disp = 1; D.tile.wins.forEach(id => { const w = winById(id); if (w){ w.disp = 1; w.home = 1; } }); }
+    toast(n ? `프로젝터가 다시 연결됐습니다 · 창 ${n}개를 학생 화면으로 돌려놓았습니다` : '듀얼 모니터로 바꿨습니다');
+  }
+  applyTile(); renderAll();
+}
+
+/* ---------- tiling ---------- */
+const LAYOUTS = {
+  half:{n:'반반', k:2, c:[0.5]},
+  seventy:{n:'7:3', k:2, c:[0.7]},
+  thirds:{n:'3분할', k:3, c:[1/3, 2/3]},
+  main2:{n:'큰 화면+2', k:3, c:[0.6], r:[0.5]},
+  grid:{n:'4분할', k:4, c:[0.5], r:[0.5]},
+};
+const layoutsFor = n => Object.keys(LAYOUTS).filter(k => LAYOUTS[k].k === n);
+function tileItems(ids, key){
+  const Lo = LAYOUTS[key]; if (!Lo || ids.length !== Lo.k) return;
+  if (D.tile) untile(false);
+  const td = toolDisp();
+  const used = new Set(), winIds = [];
+  ids.forEach(iid => {
+    let w = winOf(iid) || openItem(iid, { instant:true, focus:false, disp:td });
+    if (!w) return;
+    if (used.has(w.id)){
+      const idx = w.items.indexOf(iid); w.items.splice(idx, 1);
+      if (w.active === iid) w.active = w.items[Math.max(0, idx - 1)];
+      w = newWin(w.app, [iid], null, td, td);
+    }
+    w.active = iid; used.add(w.id); winIds.push(w.id);
+  });
+  D.tile = { key, disp:td, wins:winIds, c:[...Lo.c], r:Lo.r ? [...Lo.r] : null,
+    saved:Object.fromEntries(winIds.map(id => { const w = winById(id); return [id, { rect:{ ...w.rect }, max:w.max, disp:w.disp, home:w.home }]; })) };
+  winIds.forEach(id => { const w = winById(id); w.min = false; w.max = false; w.z = ++D.z; w.disp = td; if (td === 1) w.home = 1; });
+  D.front = winIds[0]; D.sel.clear();
+  applyTile(); frontChanged(); renderAll();
+  toast(`${winIds.length}개 창을 ${D.dual ? scrName(td) + '에 ' : ''}${Lo.n}로 배치했습니다`);
+}
+function untile(restore){
+  const t = D.tile; if (!t) return;
+  if (restore) Object.entries(t.saved).forEach(([id, s]) => {
+    const w = winById(id); if (!w) return;
+    w.rect = { ...s.rect }; w.max = s.max;
+    if (D.dual){ w.disp = s.disp; w.home = s.home; }
+  });
+  D.tile = null; renderAll();
+}
+function tileRects(t){
+  const { x, y, w, h } = area(t.disp); const c = t.c, r = t.r;
+  switch (t.key){
+    case 'half': case 'seventy': return [[x,y,w*c[0],h],[x+w*c[0],y,w*(1-c[0]),h]];
+    case 'thirds': return [[x,y,w*c[0],h],[x+w*c[0],y,w*(c[1]-c[0]),h],[x+w*c[1],y,w*(1-c[1]),h]];
+    case 'main2': return [[x,y,w*c[0],h],[x+w*c[0],y,w*(1-c[0]),h*r[0]],[x+w*c[0],y+h*r[0],w*(1-c[0]),h*(1-r[0])]];
+    case 'grid': return [[x,y,w*c[0],h*r[0]],[x+w*c[0],y,w*(1-c[0]),h*r[0]],[x,y+h*r[0],w*c[0],h*(1-r[0])],[x+w*c[0],y+h*r[0],w*(1-c[0]),h*(1-r[0])]];
+  }
+  return [];
+}
+function applyTile(){
+  const t = D.tile; if (!t) return;
+  const rs = tileRects(t);
+  t.wins.forEach((id, i) => { const w = winById(id); if (w && rs[i]){ const [x, y, ww, hh] = rs[i]; w.rect = { x, y, w:ww, h:hh }; w.disp = t.disp; } });
+}
+function dividerSpecs(t){
+  const { x, y, w, h } = area(t.disp); const c = t.c, r = t.r; const out = [];
+  const V = i => out.push({ o:'v', i, x:x + w * c[i], y, len:h });
+  const H = (i, left, len) => out.push({ o:'h', i, x:left, y:y + h * r[i], len });
+  if (t.key === 'half' || t.key === 'seventy') V(0);
+  else if (t.key === 'thirds'){ V(0); V(1); }
+  else if (t.key === 'main2'){ V(0); H(0, x + w * c[0], w * (1 - c[0])); }
+  else if (t.key === 'grid'){ V(0); H(0, x, w); }
+  return out;
+}
+function ratioText(d){
+  const t = D.tile;
+  if (d.o === 'v' && t.key === 'thirds') return [t.c[0], t.c[1] - t.c[0], 1 - t.c[1]].map(v => Math.round(v * 100)).join(' : ');
+  const v = Math.round((d.o === 'v' ? t.c[0] : t.r[0]) * 100);
+  return `${v} : ${100 - v}`;
+}
+function renderDividers(){
+  const t = D.tile;
+  const want = t ? dividerSpecs(t) : [];
+  const host = t ? DESKS[t.disp] : null;
+  const keys = new Set(want.map(d => d.o + d.i));
+  DESKS.forEach(dk => $$('.divider', dk).forEach(el => { if (dk !== host || !keys.has(el.dataset.k)) el.remove(); }));
+  want.forEach(d => {
+    const k = d.o + d.i;
+    let el = host.querySelector(`.divider[data-k="${k}"]`);
+    if (!el){
+      el = document.createElement('div');
+      el.className = 'divider ' + d.o; el.dataset.k = k; el.dataset.o = d.o; el.dataset.i = d.i;
+      el.setAttribute('role', 'separator'); el.setAttribute('aria-orientation', d.o === 'v' ? 'vertical' : 'horizontal');
+      el.title = '끌어서 비율 조절';
+      el.innerHTML = '<span class="grip"></span><span class="ratio"></span>';
+      host.appendChild(el);
+    }
+    el.style.left = pct(d.x); el.style.top = pct(d.y);
+    if (d.o === 'v') el.style.height = pct(d.len); else el.style.width = pct(d.len);
+    el.querySelector('.ratio').textContent = ratioText(d);
+  });
+}
+
+/* ---------- window content ---------- */
+function winTitle(w){
+  const it = item(w.active); if (!it) return APPS[w.app].n;
+  if (w.app === 'chrome') return `${it.title} - Chrome`;
+  if (w.app === 'explorer') return `${folderName()} - 파일 탐색기`;
+  return `${fileName(it)} - ${APPS[w.app].n}`;
+}
+function titleHTML(w){
+  const A = APPS[w.app];
+  return `<span class="app-ico" style="--c:var(${A.c})">${A.l}</span><span class="win-name">${esc(winTitle(w))}</span>` +
+    `<button class="wbtn" data-w="min" aria-label="최소화">–</button><button class="wbtn" data-w="max" aria-label="최대화">□</button><button class="wbtn x" data-w="close" aria-label="창 닫기">✕</button>`;
+}
+function displayUrl(it){
+  if (TYPES[it.type].link) return it.src.replace(/^https?:\/\//, '');
+  const page = it.type === 'pdf' && parseInt(it.start) ? '#page=' + parseInt(it.start) : '';
+  return `file:///…/${folderName()}/${fileName(it)}${page}`;
+}
+const lines = (n, ws = [100, 92, 76]) => Array.from({ length:n }, (_, i) => `<span class="ln" style="width:${ws[i % ws.length]}%"></span>`).join('');
+function slideHTML(kicker, title, bullets, n, sc){
+  return `<div class="slide" style="--sc:var(${sc})"><span class="s-k">${esc(kicker)}</span><b>${esc(title)}</b><ul>${bullets.map(b => `<li>${esc(b)}</li>`).join('')}</ul><span class="s-no">${n}</span></div>`;
+}
+function pageHTML(it){
+  switch (it.type){
+    case 'youtube': return `<div class="yt"><div class="yt-stage"><div class="yt-video"><div class="yt-art"></div><span class="yt-play"></span><span class="yt-start">${esc(it.start || '0:00')}부터 재생</span><div class="yt-prog"><i></i></div></div></div><div class="yt-title">${esc(it.title)}</div><div class="yt-ch">교사연수 채널 · 4:12</div></div>`;
+    case 'gsheet': {
+      const rows = [['문항','매우 그렇다','그렇다','보통','아니다'],['AI 도구를 수업에 써 본 적 있다',12,18,9,6],['학생 개인정보가 걱정된다',21,15,6,3],['연수 후 바로 적용하고 싶다',16,20,7,2],['저작권 기준이 헷갈린다',14,17,10,4],['응답 수','','','','45명']];
+      return `<div class="sheet"><div class="sh-fx"><b>fx</b>=COUNTIF(응답!B2:B46,"매우 그렇다")</div><table class="grid"><thead><tr><th></th>${'ABCDE'.split('').map(c => `<th>${c}</th>`).join('')}</tr></thead><tbody>${rows.map((r, i) => `<tr><th>${i + 1}</th>${r.map((v, j) => `<td${i === 2 && j === 1 ? ' class="on"' : ''}>${esc(v)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+    }
+    case 'gdoc': return `<div class="docwrap"><div class="paper"><h4>${esc(it.title)}</h4><p class="dmeta">학년 ___ · 과목 ___ · 차시 ___</p>${['1. 수업 목표','2. 사용할 AI 도구','3. 학생 활동','4. 평가 계획'].map(h => `<p class="dh">${h}</p>${lines(2, [100, 70])}`).join('')}</div></div>`;
+    case 'gslides': return `<div class="stage">${slideHTML('구글 슬라이드', it.title, ['함께 보는 자료', '모둠별 의견 정리'], 1, '--t-yellow')}</div>`;
+    case 'canva': return `<div class="canva"><div class="poster"><span class="pk">우수 사례 6선</span><b>AI와 함께<br>배우는 교실</b><div class="dots"><i></i><i></i><i></i></div><span class="pf">${esc(it.title)}</span></div></div>`;
+    case 'gdrive': return `<div class="drive"><div class="dr-h">내 드라이브 › ${esc(it.title)}</div>${[['폴더','1차 연수 자료'],['폴더','활동지 모음'],['폴더','학생 산출물 예시'],['PDF','연수안내.pdf'],['시트','사전 설문 결과']].map(([k, n]) => `<div class="dr-row"><i class="dr-i${k === '폴더' ? ' f' : ''}"></i>${n}<span>${k}</span></div>`).join('')}</div>`;
+    case 'pdf': return `<div class="pdfv"><div class="pdf-bar"><span>${esc(fileName(it))}</span><span>${parseInt(it.start) || 1} / 12</span></div><div class="pdf-doc"><div class="paper"><h4>연수 일정 안내</h4><table class="mini">${[['14:00','도입','오프닝 영상, 연수 안내'],['14:10','전개 1','생성형 AI 이해'],['14:30','전개 2','활동지로 수업 설계'],['14:45','정리','사례 공유, 마무리']].map(r => `<tr>${r.map(c => `<td>${c}</td>`).join('')}</tr>`).join('')}</table>${lines(3)}</div></div></div>`;
+    case 'img': return `<div class="photo"><div class="ph-art"></div><span class="ph-cap">${esc(fileName(it))} · 1920×1080</span></div>`;
+    case 'audio': case 'video': return mediaHTML(it);
+    case 'web': { let host = it.src; try { host = new URL(it.src).hostname; } catch (e) {} return `<div class="site"><div class="s-nav"><b>${esc(host)}</b><span class="ln" style="width:30%"></span></div><div class="s-hero"><h4>${esc(it.title)}</h4><span class="ln" style="width:60%"></span><span class="ln" style="width:44%"></span></div><div class="s-cards"><i></i><i></i><i></i></div></div>`; }
+    case 'memo': return textHTML(it);
+    default: return genericHTML(it);
+  }
+}
+function chromeHTML(w){
+  const tabs = w.items.map(id => { const it = item(id); if (!it) return ''; return `<div class="ctab${id === w.active ? ' on' : ''}" data-w="tab" data-item="${id}"><i class="fav" style="--c:var(${TYPES[it.type].c})"></i><span class="tt">${esc(it.title)}</span><button class="tx" data-w="tabx" data-item="${id}" aria-label="${esc(it.title)} 탭 닫기">✕</button></div>`; }).join('');
+  const it = item(w.active);
+  return `<div class="chr"><div class="chr-tabs">${tabs}<span class="ctab-new">+</span></div><div class="chr-bar"><span class="chr-nav">‹›⟳</span><span class="chr-url">${esc(it ? displayUrl(it) : '')}</span></div><div class="chr-page">${it ? pageHTML(it) : ''}</div></div>`;
+}
+function mediaHTML(it){
+  const bars = Array.from({ length:56 }, (_, i) => { const h = 18 + Math.abs(Math.sin(i * 0.55) * 62 + Math.sin(i * 1.7) * 18); return `<i style="height:${Math.min(100, h).toFixed(0)}%"${i < 16 ? ' class="p"' : ''}></i>`; }).join('');
+  return `<div class="media"><div class="m-top"><div class="m-art"></div><div class="m-info"><b>${esc(it.title)}</b><span>${esc(fileName(it))}</span></div></div><div class="wave">${bars}</div><div class="m-ctl"><span>⏮</span><span class="m-pp">▶</span><span>⏭</span><span class="m-t">00:52 / 03:12</span></div></div>`;
+}
+function textHTML(it){ return `<div class="notepad"><p># ${esc(it.title)}</p><p>- 도입 전에 마이크 확인</p><p>- 활동지 나눠 주고 5분 개별 작성</p><p>- 사례 공유는 모둠별 1명</p></div>`; }
+function genericHTML(it){ const T = TYPES[it.type]; return `<div class="generic"><span class="badge big" style="--c:var(${T.c})">${T.b}</span><b>${esc(it.title)}</b><span>${esc(fileName(it))}</span></div>`; }
+function explorerHTML(){
+  const rows = [['d','1_도입','폴더'],['d','2_전개','폴더'],['d','3_정리','폴더'],['d','_캡처',`${D.capN}개`],['d','_녹화',`${D.recN}개`],['f','lesson.json','수업 흐름'],['f','수업안내.html','목차']];
+  return `<div class="explorer"><div class="ex-path">내 문서 › 수업 사이드바 › ${esc(folderName())}</div><div>${rows.map(([k, n, m]) => `<div class="ex-row"><i class="ex-i${k === 'f' ? ' file' : ''}"></i><span>${esc(n)}</span><span>${esc(m)}</span></div>`).join('')}</div></div>`;
+}
+function appShell(color, menus, body){
+  return `<div class="app" style="--app-c:var(${color})"><div class="ribbon">${menus.map((m, i) => `<span${i === 1 ? ' class="on"' : ''}>${m}</span>`).join('')}</div><div class="tbar">${'<i></i>'.repeat(18)}</div>${body}</div>`;
+}
+function bodyHTML(w){
+  const it = item(w.active); if (!it) return '';
+  const seeded = it.id === 'i3';
+  switch (w.app){
+    case 'chrome': return chromeHTML(w);
+    case 'ppt': return appShell('--t-orange', ['파일','홈','삽입','디자인','전환','애니메이션','슬라이드 쇼'],
+      `<div class="ppt-main"><div class="thumbs">${[1,2,3,4,5].map(n => `<i${n === (parseInt(it.start) || 1) ? ' class="on"' : ''}></i>`).join('')}</div><div class="stage">${seeded ? slideHTML('1부', '생성형 AI 이해하기', ['생성형 AI란 무엇인가', '교실에서의 활용 장면', '주의할 점: 개인정보·저작권'], 3, '--t-orange') : slideHTML('파워포인트', it.title, ['발표 자료'], 1, '--t-orange')}</div></div>`);
+    case 'pptshow': return `<div class="app show"><div class="stage">${seeded ? slideHTML('1부', '생성형 AI 이해하기', ['생성형 AI란 무엇인가', '교실에서의 활용 장면', '주의할 점: 개인정보·저작권'], 3, '--t-orange') : slideHTML('슬라이드 쇼', it.title, ['발표 자료'], 1, '--t-orange')}</div></div>`;
+    case 'hwp': return appShell('--t-blue2', ['파일','편집','보기','입력','서식','쪽','검토','도구'],
+      `<div class="doc-area"><div class="paper"><h4>${esc(it.title.replace(/^활동지:\s*/, '') + (it.title.startsWith('활동지') ? ' 활동지' : ''))}</h4><table class="mini form"><tr><td>학년·반</td><td></td><td>이름</td><td></td></tr><tr><td>과목</td><td></td><td>단원</td><td></td></tr></table><p class="dq">1. 오늘 배운 AI 도구 하나를 골라 수업 장면을 적어 보세요.</p>${lines(3)}<p class="dq">2. 학생 개인정보를 지키려면 무엇을 확인해야 할까요?</p>${lines(2)}</div></div>`);
+    case 'xls': {
+      const rows = [['모둠','이름 1','이름 2','이름 3','이름 4']].concat([1,2,3,4,5,6].map(g => [`${g}모둠`, ...[1,2,3,4].map(k => `학생 ${String((g - 1) * 4 + k).padStart(2, '0')}`)]));
+      return appShell('--t-green2', ['파일','홈','삽입','페이지 레이아웃','수식','데이터','검토'],
+        `<div class="sheet" style="flex:1"><div class="sh-fx"><b>fx</b>=COUNTA(B2:E2)</div><table class="grid"><thead><tr><th></th>${'ABCDE'.split('').map(c => `<th>${c}</th>`).join('')}</tr></thead><tbody>${rows.map((r, i) => `<tr><th>${i + 1}</th>${r.map(v => `<td>${esc(v)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`);
+    }
+    case 'media': return mediaHTML(it);
+    case 'explorer': return explorerHTML();
+    case 'text': return textHTML(it);
+    case 'photo': return `<div class="chr-page">${pageHTML({ ...it, type:'img' })}</div>`;
+    case 'pdfapp': return `<div class="chr-page">${pageHTML({ ...it, type:'pdf' })}</div>`;
+    default: return genericHTML(it);
+  }
+}
+
+/* ---------- render ---------- */
+function renderDesk(){
+  const live = new Set(D.wins.map(w => w.id));
+  DESKS.forEach(dk => $$('.win', dk).forEach(el => {
+    if (!live.has(el.dataset.id) && !el.classList.contains('out')){ el.classList.add('out'); setTimeout(() => el.remove(), 200); }
+  }));
+  D.wins.forEach(w => {
+    const host = DESKS[w.disp] || deskEl;
+    let el = winEl(w.id);
+    if (!el){
+      el = document.createElement('div'); el.className = 'win'; el.dataset.id = w.id;
+      el.innerHTML = '<div class="win-title"></div><div class="win-body"></div>';
+      host.appendChild(el);
+      requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('in')));
+    } else if (el.parentElement !== host){
+      host.appendChild(el);
+    }
+    el.style.left = pct(w.rect.x); el.style.top = pct(w.rect.y); el.style.width = pct(w.rect.w); el.style.height = pct(w.rect.h);
+    el.style.zIndex = w.z;
+    el.hidden = w.min;
+    el.classList.toggle('front', w.id === D.front && !w.min);
+    el.classList.toggle('tiled', !!(D.tile && D.tile.wins.includes(w.id)));
+    const key = [w.app, w.items.join(','), w.active, item(w.active) ? item(w.active).title : ''].join('|');
+    if (el.dataset.key !== key){
+      el.dataset.key = key;
+      el.querySelector('.win-title').innerHTML = titleHTML(w);
+      el.querySelector('.win-body').innerHTML = bodyHTML(w);
+    }
+    if (D.flash === w.id){ el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); }
+  });
+  D.flash = null;
+  renderDividers();
+  schedulePreview();
+}
+function rowHTML(it){
+  const w = winOf(it.id), open = !!w, front = frontItemId() === it.id, busy = D.busy.has(it.id), sel = D.sel.has(it.id);
+  const app = APPS[appOf(it)].n;
+  const where = D.dual ? ' · ' + (open ? scrName(w.disp) : (D.openTo === 'teacher' ? '교사 화면' : scrName(homeOf(it)))) : '';
+  const sub = busy ? `${app} 여는 중…` : `${app}${it.start ? ' · ' + it.start + '부터' : ''}${where}`;
+  const state = busy ? '<i class="spin" aria-label="여는 중"></i>' : front ? '<span class="chip-now">보는 중</span>' : open ? `<i class="dot${w.min ? ' min' : ''}" title="${w.min ? '열림 · 숨겨짐' : '열림'}"></i>` : '';
+  const mv = open && D.dual ? `<button class="it-act" data-act="move" aria-label="${esc(it.title)} ${w.disp === 1 ? '교사' : '학생'} 화면으로 보내기" title="${w.disp === 1 ? '교사' : '학생'} 화면으로 보내기">⇄</button>` : '';
+  return `<div class="it${open ? ' open' : ''}${front ? ' front' : ''}${sel ? ' sel' : ''}${open && D.dual && w.disp === 0 ? ' on-t' : ''}" data-id="${it.id}" role="button" tabindex="0">` +
+    `<button class="it-check" data-act="check" aria-label="${esc(it.title)} 선택" aria-pressed="${sel}">${sel ? '✓' : ''}</button>` +
+    `<span class="badge" style="--c:var(${TYPES[it.type].c})">${TYPES[it.type].b}</span>` +
+    `<span class="it-text"><span class="it-title">${esc(it.title)}</span><span class="it-sub">${esc(sub)}</span></span>` +
+    `<span class="it-state">${state}</span>` + mv +
+    (open ? `<button class="it-act x" data-act="close" aria-label="${esc(it.title)} 창 닫기" title="창 닫기">✕</button>` : '') + `</div>`;
+}
+function renderSidebar(){
+  const ord = ordered(), fid = frontItemId();
+  $('#sb-lesson').textContent = L.title;
+  $('#sb-meta').textContent = `${fmtDate(L.date)} · ${totalMin()}분 · 열린 창 ${D.wins.length}개`;
+  const idx = fid ? ord.findIndex(i => i.id === fid) : -1;
+  const next = ord[idx + 1];
+  const nb = $('#sb-next');
+  nb.dataset.item = next ? next.id : '';
+  nb.innerHTML = next ? `<span class="nx-k">다음</span><span class="nx-t">${esc(next.title)}</span><span aria-hidden="true">▸</span>` : `<span class="nx-k">마지막 자료까지 왔습니다</span>`;
+  const list = $('#sb-list'), st = list.scrollTop;
+  list.innerHTML = L.secs.map(s => { const its = L.items.filter(i => i.sec === s.id); return `<div class="sec-h"><span>${esc(s.t)}</span><span>${+s.m || 0}분</span></div>` + its.map(rowHTML).join(''); }).join('');
+  list.scrollTop = st;
+  sb.classList.toggle('selecting', D.sel.size > 0);
+  renderDock();
+  $$('.tool', sb).forEach(b => {
+    const t = b.dataset.tool;
+    const on = t === 'pointer' ? D.tools.pointer : t === 'spot' ? D.tools.spot : t === 'rec' ? !!D.rec : t === 'zoom' ? D.mode === 'zoom' : D.mode === 'pick';
+    b.setAttribute('aria-pressed', String(on));
+  });
+  $('#btn-autohide').setAttribute('aria-pressed', String(D.autoHide));
+  $('#sw-autohide').checked = D.autoHide;
+  const stSt = $('#stu-st');
+  stSt.textContent = D.cover === 'freeze' ? '정지 중' : D.cover === 'blank' ? '가리는 중' : '실시간';
+  stSt.className = 'stu-st' + (D.cover ? ' ' + D.cover : '');
+  $$('.stu-b', sb).forEach(b => b.setAttribute('aria-pressed', String(D.cover === b.dataset.act)));
+  $$('.stu-to button', sb).forEach(b => b.setAttribute('aria-pressed', String(D.openTo === b.dataset.to)));
+  $('#stu-prev').classList.toggle('collapsed', !D.stuOpen);
+  const tg = $('#stu-tg'); tg.setAttribute('aria-expanded', String(D.stuOpen)); tg.textContent = D.stuOpen ? '▾' : '▸';
+}
+function renderDock(){
+  const dock = $('#sb-dock');
+  if (D.tile){
+    dock.hidden = false;
+    dock.innerHTML = `<div class="dock-h"><b>화면 분할 중</b><span>${D.dual ? scrName(D.tile.disp) + ' · ' : ''}${LAYOUTS[D.tile.key].n} · 창 ${D.tile.wins.length}개</span></div><button class="dbtn" data-act="untile">분할 해제 · 원래 위치로</button><p class="dock-tip">창 사이 노란 바를 끌면 비율이 바뀝니다.</p>`;
+  } else if (D.sel.size){
+    const n = D.sel.size, keys = layoutsFor(n);
+    dock.hidden = false;
+    dock.innerHTML = `<div class="dock-h"><b>${n}개 선택</b><button class="link" data-act="clearsel">선택 해제</button></div>` +
+      (keys.length ? `<div class="lay-row">${keys.map(k => `<button class="lay" data-act="tile" data-layout="${k}"><i class="li li-${k}">${'<span></span>'.repeat(LAYOUTS[k].k)}</i>${LAYOUTS[k].n}</button>`).join('')}</div><p class="dock-tip">${D.dual ? '학생 화면에 ' : ''}고른 순서대로 왼쪽부터 놓습니다. 닫힌 자료는 자동으로 엽니다.</p>`
+        : `<p class="dock-tip">화면 분할은 2~4개를 고르면 됩니다. 하나 더 고르세요.</p>`);
+  } else dock.hidden = true;
+}
+function renderTaskbar(){
+  $('#tb-apps').innerHTML = D.wins.map(w => `<button class="tb-app${w.id === D.front && !w.min ? ' on' : ''}" data-tb="${w.id}" title="${esc(winTitle(w))}"><span class="app-ico" style="--c:var(${APPS[w.app].c})">${APPS[w.app].l}</span></button>`).join('');
+  $('#tb-clock').textContent = new Date().toLocaleTimeString('ko-KR', { hour:'numeric', minute:'2-digit' });
+}
+function syncFx(){
+  SCREENS.forEach(s => {
+    s.classList.toggle('pointer-on', D.tools.pointer);
+    s.classList.toggle('spot-on', D.tools.spot);
+    s.style.setProperty('--sr', D.spotR + 'px');
+  });
+  screen.classList.toggle('autohide', D.autoHide);
+  screen.classList.toggle('peek', D.peek);
+  screen.classList.toggle('dual', D.dual);
+  screen.classList.toggle('recording', !!D.rec && !D.dual);
+  screen2.classList.toggle('recording', !!D.rec && D.dual);
+  $('#mon2-block').hidden = !D.dual;
+  $('#mon1-sub').textContent = D.dual ? '노트북 · 학생에게 보이지 않습니다' : '모니터 1개 · 학생도 이 화면을 봅니다';
+  $$('.seg button').forEach(b => b.setAttribute('aria-pressed', String((b.dataset.disp === '2') === D.dual)));
+  $('#fx-freeze').hidden = D.cover !== 'freeze';
+  $('#fx-blank').hidden = D.cover !== 'blank';
+}
+function updateRec(){
+  const b = $('#rec-badge');
+  if (!D.rec){ b.hidden = true; return; }
+  b.hidden = false; b.textContent = '● REC ' + mmss(Date.now() - D.rec.t0);
+  b.title = D.dual ? '학생 화면을 녹화하는 중' : '화면을 녹화하는 중';
+}
+function renderAll(){ renderSidebar(); renderDesk(); renderTaskbar(); syncFx(); updateRec(); }
+
+/* student-screen preview (what the teacher sees of the projector) */
+let pvT = 0, pvLast = 0;
+function schedulePreview(){
+  if (!D.dual || !D.stuOpen) return;
+  clearTimeout(pvT);
+  pvT = setTimeout(() => { pvLast = performance.now(); updatePreview(); }, Math.max(0, 120 - (performance.now() - pvLast)));
+}
+function updatePreview(){
+  const box = $('#stu-prev');
+  if (!D.dual || !D.stuOpen) return;
+  const W = screen2.offsetWidth, H = screen2.offsetHeight; if (!W) return;
+  const bw = box.clientWidth || 248, s = bw / W;
+  box.style.height = Math.round(H * s) + 'px';
+  const wrap = document.createElement('div'); wrap.className = 'pv';
+  wrap.style.width = W + 'px'; wrap.style.height = H + 'px'; wrap.style.transform = `scale(${s})`;
+  wrap.appendChild(cloneScr(1));
+  box.replaceChildren(wrap);
+  if (D.cover) box.insertAdjacentHTML('beforeend', `<span class="pv-tag">${D.cover === 'freeze' ? '학생에게는 멈춘 장면이 보이는 중' : '학생에게는 가림 화면이 보이는 중'}</span>`);
+}
+function setCover(kind){
+  if (!D.dual) return;
+  D.cover = D.cover === kind ? null : kind;
+  const fz = $('#fx-freeze');
+  if (D.cover === 'freeze'){
+    fz.replaceChildren(cloneScr(1));
+    fz.insertAdjacentHTML('beforeend', '<span class="fx-tag">정지 화면 · 학생에게는 이 장면이 계속 보입니다</span>');
+  } else fz.replaceChildren();
+  syncFx(); renderSidebar(); schedulePreview();
+  toast(D.cover === 'freeze' ? '학생 화면을 멈췄습니다 · 그동안 창을 정리하고 다시 누르면 새 장면이 보입니다'
+    : D.cover === 'blank' ? '학생 화면을 가렸습니다' : '학생 화면을 다시 보여 줍니다');
+}
+
+/* ---------- toast ---------- */
+function toast(msg){ const t = $('#toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('on'), 3000); }
+
+/* ---------- sidebar events ---------- */
+function toggleSel(id){
+  if (D.sel.has(id)) D.sel.delete(id);
+  else if (D.sel.size >= 4){ toast('화면 분할은 4개까지 고를 수 있습니다'); return; }
+  else D.sel.add(id);
+  renderSidebar();
+}
+function setAutoHide(v){
+  D.autoHide = v; D.peek = v;
+  if (D.tile) applyTile();
+  renderAll();
+  toast(v ? '자동 숨김: 화면 왼쪽 끝에 마우스를 대면 나타납니다' : '사이드바를 화면 왼쪽에 고정했습니다');
+}
+sb.addEventListener('click', e => {
+  const a = e.target.closest('[data-act]'); const row = e.target.closest('.it');
+  if (a){
+    const act = a.dataset.act;
+    if (act === 'check' && row) toggleSel(row.dataset.id);
+    else if (act === 'close' && row) closeItem(row.dataset.id);
+    else if (act === 'move' && row) moveItem(row.dataset.id);
+    else if (act === 'tile') tileItems([...D.sel], a.dataset.layout);
+    else if (act === 'clearsel'){ D.sel.clear(); renderSidebar(); }
+    else if (act === 'untile'){ untile(true); toast('원래 위치와 크기로 돌려놓았습니다'); }
+    else if (act === 'next'){ if (a.dataset.item) openOrFocus(a.dataset.item); }
+    else if (act === 'hideothers') hideOthers();
+    else if (act === 'autohide') setAutoHide(!D.autoHide);
+    else if (act === 'freeze' || act === 'blank') setCover(act);
+    else if (act === 'stutoggle'){ D.stuOpen = !D.stuOpen; renderSidebar(); schedulePreview(); }
+    else if (act === 'stuview') screen2.scrollIntoView({ behavior:'smooth', block:'center' });
+    else if (act === 'opento'){
+      D.openTo = a.dataset.to; renderSidebar();
+      toast(D.openTo === 'teacher' ? '새로 여는 자료를 교사 화면에서 먼저 엽니다 · 확인한 뒤 ⇄로 학생 화면에 보내세요' : '새로 여는 자료를 학생 화면에 바로 띄웁니다');
+    }
+    return;
+  }
+  const tool = e.target.closest('[data-tool]');
+  if (tool){ toggleTool(tool.dataset.tool); return; }
+  if (row){ if (e.ctrlKey || e.metaKey || e.shiftKey) toggleSel(row.dataset.id); else openOrFocus(row.dataset.id); }
+});
+sb.addEventListener('keydown', e => {
+  if ((e.key === 'Enter' || e.key === ' ') && e.target.classList.contains('it')){ e.preventDefault(); openOrFocus(e.target.dataset.id); }
+});
+$('#sw-autohide').addEventListener('change', e => setAutoHide(e.target.checked));
+$('#sb-edge').addEventListener('pointerenter', () => { if (D.autoHide){ D.peek = true; syncFx(); } });
+sb.addEventListener('pointerenter', () => clearTimeout(D.peekT));
+sb.addEventListener('pointerleave', () => { if (D.autoHide){ clearTimeout(D.peekT); D.peekT = setTimeout(() => { D.peek = false; syncFx(); }, 450); } });
+$$('.seg button').forEach(b => b.addEventListener('click', () => setDual(b.dataset.disp === '2')));
+
+$('#taskbar').addEventListener('click', e => {
+  const b = e.target.closest('[data-tb]'); if (!b) return;
+  if (b.dataset.tb === 'sb'){ if (D.autoHide){ D.peek = !D.peek; syncFx(); } else toast('사이드바는 화면 왼쪽에 고정되어 있습니다'); return; }
+  const w = winById(b.dataset.tb); if (!w) return;
+  if (D.front === w.id && !w.min) minimizeWin(w.id); else focusWin(w.id);
+});
+
+/* ---------- desk events ---------- */
+DESKS.forEach((dk, d) => {
+  dk.addEventListener('pointerdown', e => {
+    const dv = e.target.closest('.divider');
+    if (dv){ e.preventDefault(); startDividerDrag(e, dv); return; }
+    const wel = e.target.closest('.win');
+    if (!wel){ if (e.target === dk && D.front){ D.front = null; frontChanged(); renderAll(); } return; }
+    const id = wel.dataset.id, w = winById(id); if (!w) return;
+    if (D.front !== id) focusWin(id);
+    if (e.target.closest('.win-title') && !e.target.closest('button')) startWinDrag(e, id);
+  });
+  dk.addEventListener('click', e => {
+    const b = e.target.closest('[data-w]'); if (!b) return;
+    const wel = e.target.closest('.win'); if (!wel) return;
+    const id = wel.dataset.id, act = b.dataset.w;
+    if (act === 'min') minimizeWin(id);
+    else if (act === 'max') maxWin(id);
+    else if (act === 'close') closeWin(id);
+    else if (act === 'tabx'){ e.stopPropagation(); closeItem(b.dataset.item); }
+    else if (act === 'tab'){ const w = winById(id); if (w && item(b.dataset.item)){ w.active = b.dataset.item; focusWin(id); } }
+  });
+  dk.addEventListener('dblclick', e => {
+    const t = e.target.closest('.win-title'); if (!t || e.target.closest('button')) return;
+    maxWin(t.closest('.win').dataset.id);
+  });
+});
+function startWinDrag(e, id){
+  const w = winById(id); if (!w || w.max) return;
+  const { W, H } = deskSize(w.disp); const sx = e.clientX, sy = e.clientY, r0 = { ...w.rect };
+  const el = winEl(id); if (!el) return;
+  el.setPointerCapture(e.pointerId); DESKS[w.disp].classList.add('dragging');
+  let moved = false;
+  const move = ev => {
+    if (!moved && Math.abs(ev.clientX - sx) + Math.abs(ev.clientY - sy) < 5) return;
+    if (!moved){
+      moved = true;
+      if (D.tile && D.tile.wins.includes(id)){ D.tile = null; renderAll(); toast('창을 옮겨서 화면 분할을 끝냈습니다'); }
+    }
+    w.rect.x = clamp(r0.x + (ev.clientX - sx) / W, -r0.w + 0.1, 0.94);
+    w.rect.y = clamp(r0.y + (ev.clientY - sy) / H, 0, 0.92);
+    el.style.left = pct(w.rect.x); el.style.top = pct(w.rect.y);
+    schedulePreview();
+  };
+  const up = () => { el.removeEventListener('pointermove', move); DESKS.forEach(dk => dk.classList.remove('dragging')); };
+  el.addEventListener('pointermove', move);
+  el.addEventListener('pointerup', up, { once:true });
+  el.addEventListener('pointercancel', up, { once:true });
+}
+function startDividerDrag(e, el){
+  const t = D.tile; if (!t) return;
+  const o = el.dataset.o, i = +el.dataset.i, MIN = 0.2;
+  el.setPointerCapture(e.pointerId); el.classList.add('drag'); DESKS[t.disp].classList.add('dragging');
+  const move = ev => {
+    const { r } = deskSize(t.disp); const a = area(t.disp);
+    if (o === 'v'){
+      const f = ((ev.clientX - r.left) / r.width - a.x) / a.w;
+      const lo = t.key === 'thirds' && i === 1 ? t.c[0] + 0.15 : (t.key === 'thirds' ? 0.15 : MIN);
+      const hi = t.key === 'thirds' && i === 0 ? t.c[1] - 0.15 : (t.key === 'thirds' ? 0.85 : 1 - MIN);
+      t.c[i] = clamp(f, lo, hi);
+    } else {
+      const f = ((ev.clientY - r.top) / r.height - a.y) / a.h;
+      t.r[i] = clamp(f, 0.25, 0.75);
+    }
+    applyTile(); renderDesk();
+  };
+  const up = () => { el.removeEventListener('pointermove', move); el.classList.remove('drag'); DESKS.forEach(dk => dk.classList.remove('dragging')); };
+  el.addEventListener('pointermove', move);
+  el.addEventListener('pointerup', up, { once:true });
+  el.addEventListener('pointercancel', up, { once:true });
+}
+
+/* ---------- tools ---------- */
+function toggleTool(t){
+  if (t === 'pointer'){ D.tools.pointer = !D.tools.pointer; toast(D.tools.pointer ? '포인터 강조: 마우스가 있는 화면에서 커서 주변에 노란 원, 클릭하면 물결이 퍼집니다' : '포인터 강조를 껐습니다'); }
+  else if (t === 'spot'){ D.tools.spot = !D.tools.spot; if (D.tools.spot) toast('스포트라이트: 마우스가 있는 화면에 켜집니다 · 휠로 크기 조절 · Esc로 끄기'); }
+  else if (t === 'zoom'){ if (D.mode === 'zoom') endMode(); else startZoom(toolDisp()); }
+  else if (t === 'pin'){ if (D.mode === 'pick') endMode(); else startPick(toolDisp()); }
+  else if (t === 'rec') toggleRec();
+  syncFx(); renderSidebar();
+}
+function cloneScr(d){
+  const c = (d === 1 ? $('#scr2') : $('#scr')).cloneNode(true);
+  c.removeAttribute('id'); c.querySelectorAll('[id]').forEach(n => n.removeAttribute('id'));
+  c.classList.add('clone'); return c;
+}
+function startZoom(d){
+  endMode(true);
+  D.mode = 'zoom'; D.modeDisp = d; D.zoom = 2;
+  const fx = fxOf(d, 'fx-zoom'); fx.innerHTML = '';
+  const inner = document.createElement('div'); inner.className = 'zoom-inner'; inner.appendChild(cloneScr(d));
+  const lab = document.createElement('div'); lab.className = 'fx-label';
+  fx.append(inner, lab); fx.hidden = false;
+  if (Ms[d].x < 0){ Ms[d].x = SCREENS[d].offsetWidth / 2; Ms[d].y = SCREENS[d].offsetHeight / 2; }
+  updateZoom();
+  if (d === 1) screen2.scrollIntoView({ behavior:'smooth', block:'center' });
+}
+function updateZoom(){
+  const d = D.modeDisp, fx = fxOf(d, 'fx-zoom'), inner = fx.querySelector('.zoom-inner'); if (!inner) return;
+  inner.style.transformOrigin = `${Ms[d].x}px ${Ms[d].y}px`;
+  inner.style.transform = `scale(${D.zoom})`;
+  fx.querySelector('.fx-label').innerHTML = `<b>정지 확대 ${D.zoom.toFixed(2).replace(/0$/, '')}배</b>${D.dual ? ' · 학생 화면' : ''} · 마우스로 이동 · 휠로 배율 · 클릭 또는 Esc로 끝내기`;
+}
+function startPick(d){
+  endMode(true); D.mode = 'pick'; D.modeDisp = d; fxOf(d, 'fx-pick').hidden = false;
+  if (d === 1){ screen2.scrollIntoView({ behavior:'smooth', block:'center' }); toast('학생 화면에서 캡처할 영역을 끌어서 고르세요'); }
+}
+function endMode(silent){
+  D.mode = null;
+  SCREENS.forEach((s, d) => {
+    const z = fxOf(d, 'fx-zoom'); z.hidden = true; z.innerHTML = '';
+    const p = fxOf(d, 'fx-pick'); p.hidden = true; p.querySelector('.pick-rect').hidden = true;
+  });
+  if (!silent) renderSidebar();
+}
+function createPin(d, c){
+  const scr = SCREENS[d], S = scr.getBoundingClientRect(), bottom = d === 0 ? 40 : 0;
+  const s = Math.min(1, 340 / c.w, 230 / c.h), pw = c.w * s, ph = c.h * s;
+  const px = clamp(c.x + 24, 8, S.width - pw - 8), py = clamp(c.y + 24, 8, S.height - bottom - ph - 8);
+  const pin = document.createElement('div'); pin.className = 'pin';
+  pin.style.cssText = `left:${px}px;top:${py}px;width:${pw}px;height:${ph}px`;
+  const inner = document.createElement('div'); inner.className = 'pin-inner';
+  inner.style.width = S.width + 'px'; inner.style.height = S.height + 'px';
+  inner.style.transform = `scale(${s}) translate(${-c.x}px, ${-c.y}px)`;
+  inner.appendChild(cloneScr(d));
+  pin.appendChild(inner);
+  pin.insertAdjacentHTML('beforeend', `<span class="pin-tag">핀 ${++D.pinN}</span><button class="pin-x" aria-label="핀 닫기">✕</button>`);
+  fxOf(d, 'pins').appendChild(pin);
+  D.capN++;
+  toast(`_캡처/캡처_${String(D.capN).padStart(2, '0')}.png 로 저장하고 ${D.dual ? scrName(d) + '에 ' : '화면에 '}고정했습니다 · 끌어서 옮길 수 있습니다`);
+}
+SCREENS.forEach((scr, d) => {
+  const pick = fxOf(d, 'fx-pick'), prect = pick.querySelector('.pick-rect');
+  let ps = null, pcur = null;
+  const setPick = (x, y, w, h) => { pcur = { x, y, w, h }; Object.assign(prect.style, { left:x + 'px', top:y + 'px', width:w + 'px', height:h + 'px' }); };
+  pick.addEventListener('pointerdown', e => {
+    const r = scr.getBoundingClientRect(); ps = { x:e.clientX - r.left, y:e.clientY - r.top };
+    pick.setPointerCapture(e.pointerId); prect.hidden = false; setPick(ps.x, ps.y, 0, 0);
+  });
+  pick.addEventListener('pointermove', e => {
+    if (!ps) return; const r = scr.getBoundingClientRect();
+    const x2 = clamp(e.clientX - r.left, 0, r.width), y2 = clamp(e.clientY - r.top, 0, r.height);
+    setPick(Math.min(ps.x, x2), Math.min(ps.y, y2), Math.abs(x2 - ps.x), Math.abs(y2 - ps.y));
+  });
+  pick.addEventListener('pointerup', () => {
+    if (!ps) return; const c = pcur; ps = null; prect.hidden = true;
+    if (c && c.w > 24 && c.h > 24){ endMode(); createPin(d, c); }
+    else toast('조금 더 크게 끌어서 영역을 고르세요');
+  });
+  fxOf(d, 'fx-zoom').addEventListener('click', () => endMode());
+  const pins = fxOf(d, 'pins');
+  pins.addEventListener('pointerdown', e => {
+    const pin = e.target.closest('.pin'); if (!pin || e.target.closest('.pin-x')) return;
+    const sx = e.clientX, sy = e.clientY, l0 = pin.offsetLeft, t0 = pin.offsetTop;
+    pin.setPointerCapture(e.pointerId);
+    const mv = ev => { pin.style.left = (l0 + ev.clientX - sx) + 'px'; pin.style.top = (t0 + ev.clientY - sy) + 'px'; };
+    pin.addEventListener('pointermove', mv);
+    pin.addEventListener('pointerup', () => pin.removeEventListener('pointermove', mv), { once:true });
+  });
+  pins.addEventListener('click', e => { const x = e.target.closest('.pin-x'); if (x) x.closest('.pin').remove(); });
+  scr.addEventListener('pointermove', e => {
+    const r = scr.getBoundingClientRect(); Ms[d].x = e.clientX - r.left; Ms[d].y = e.clientY - r.top;
+    scr.style.setProperty('--mx', Ms[d].x + 'px'); scr.style.setProperty('--my', Ms[d].y + 'px');
+    if (D.mode === 'zoom' && D.modeDisp === d) updateZoom();
+  });
+  scr.addEventListener('pointerleave', () => { scr.style.setProperty('--mx', '-400px'); scr.style.setProperty('--my', '-400px'); });
+  scr.addEventListener('pointerdown', e => {
+    if (!D.tools.pointer) return;
+    const r = scr.getBoundingClientRect(); const dot = document.createElement('i'); dot.className = 'ripple';
+    dot.style.left = (e.clientX - r.left) + 'px'; dot.style.top = (e.clientY - r.top) + 'px';
+    fxOf(d, 'fx-pointer').appendChild(dot); setTimeout(() => dot.remove(), 600);
+  }, true);
+  scr.addEventListener('wheel', e => {
+    if (D.mode === 'zoom' && D.modeDisp === d){ e.preventDefault(); D.zoom = clamp(D.zoom + (e.deltaY < 0 ? 0.25 : -0.25), 1.5, 4); updateZoom(); }
+    else if (D.tools.spot && !e.target.closest('.sb-list')){ e.preventDefault(); D.spotR = clamp(D.spotR + (e.deltaY < 0 ? 14 : -14), 60, 280); syncFx(); }
+  }, { passive:false });
+});
+
+function toggleRec(){
+  if (!D.rec){
+    D.rec = { t0:Date.now(), ch:[{ t:0, title:frontTitle() }] };
+    D.recTimer = setInterval(updateRec, 500);
+    toast(`${D.dual ? '학생 화면 ' : ''}녹화를 시작했습니다 · 자료를 바꿀 때마다 챕터가 자동으로 기록됩니다`);
+  } else {
+    clearInterval(D.recTimer);
+    const dur = Date.now() - D.rec.t0, ch = D.rec.ch; D.rec = null; D.recN++;
+    showRecModal(dur, ch);
+  }
+  syncFx(); updateRec();
+}
+function showRecModal(dur, ch){
+  const m = $('#modal');
+  m.innerHTML = `<div class="dlg" role="dialog" aria-label="녹화 저장"><h3>녹화를 저장했습니다</h3>` +
+    `<p class="dlg-path">_녹화/${esc(L.date)}_1차${D.recN > 1 ? '_' + D.recN : ''}.mp4 · ${mmss(dur)}${D.dual ? ' · 학생 화면' : ''}</p>` +
+    `<p class="dlg-k">자동 챕터</p><ol class="chap">${ch.map(c => `<li><span>${mmss(c.t)}</span>${esc(c.title)}</li>`).join('')}</ol>` +
+    `<p class="dlg-note">챕터는 녹화 파일 옆 .챕터.txt와 수업안내.html에 함께 저장됩니다. 꾸러미로 내보낼 때 녹화를 넣을지 고를 수 있습니다.</p>` +
+    `<div class="dlg-act"><button class="btn primary" data-close>확인</button></div></div>`;
+  m.hidden = false; m.querySelector('[data-close]').focus();
+}
+$('#modal').addEventListener('click', e => { if (e.target.closest('[data-close]') || e.target.id === 'modal') $('#modal').hidden = true; });
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape' || $('#v-run').hidden) return;
+  if (!$('#modal').hidden){ $('#modal').hidden = true; return; }
+  if (D.mode){ endMode(); return; }
+  if (D.tools.spot){ D.tools.spot = false; syncFx(); renderSidebar(); return; }
+  if (D.tools.pointer){ D.tools.pointer = false; syncFx(); renderSidebar(); return; }
+  if (D.sel.size){ D.sel.clear(); renderSidebar(); }
+});
+window.addEventListener('resize', () => { if (D.tile) applyTile(); renderDesk(); });
+
+/* ---------- prep view ---------- */
+const flow = $('#p-flow');
+const newIds = new Set();
+let addSec = 's2';
+function markNew(id){ newIds.add(id); renderTree(true); setTimeout(() => { newIds.delete(id); renderTree(); }, 2600); }
+let syncT = 0, savedHere = false;
+function syncPulse(){
+  const s = $('#lib-sync'); if (!s) return;
+  savedHere = true;
+  s.className = 'sync busy'; s.textContent = '드라이브 앱이 올리는 중…';
+  renderSaved();
+  clearTimeout(syncT); syncT = setTimeout(() => { s.className = 'sync ok'; s.textContent = '구글 드라이브 데스크톱 · 동기화됨'; }, 1400);
+}
+function renderSaved(){
+  $('#p-saved').innerHTML = savedHere ? '마지막 저장: <b>이 PC(맥북)</b> · 방금 · 윈도우 PC에서 열면 이 내용이 보입니다'
+    : '마지막 저장: <b>윈도우 PC(교실)</b> · 어제 21:40 · 지금은 이 PC(맥북)에서 이어서 편집 중';
+}
+const LIB = [
+  { cur:true },
+  { name:'2026-12-05_AI활용수업설계연수_2차', tag:'lock', tagT:'윈도우 PC에서 편집 중', d:'윈도우 PC(교실) · 1분 전 활동 · 자료 13개' },
+  { name:'2026-11-14_학부모연수_AI안내', tag:'wait', tagT:'동기화 기다리는 중', d:'윈도우 PC(교실) · 파일 2개 내려오는 중' },
+  { name:'2026-10-17_디지털시민교육연수', tag:'idle', tagT:'10.17 저장', d:'윈도우 PC(교실) · 자료 9개 · 녹화 1개' },
+  { name:'2026-09-05_에듀테크활용연수_2차', tag:'idle', tagT:'9.5 저장', d:'맥북 · 자료 11개' },
+];
+function renderLib(){
+  $('#lib').innerHTML = LIB.map((l, i) => l.cur
+    ? `<li class="cur" data-lib="${i}"><span class="lib-t">${esc(folderName())}</span><span class="lib-d">이 PC(맥북)에서 편집 중 · 자료 ${L.items.length}개</span><span class="tag cur">지금 열림</span></li>`
+    : `<li data-lib="${i}" role="button" tabindex="0"><span class="lib-t">${esc(l.name)}</span><span class="lib-d">${esc(l.d)}</span><span class="tag ${l.tag}">${esc(l.tagT)}</span></li>`).join('');
+}
+function libOpen(l){
+  const note = $('#lib-note');
+  if (l.tag === 'lock'){
+    note.innerHTML = `<div class="locknote"><span><b>윈도우 PC(교실)에서 이 수업을 편집하고 있습니다</b> · 1분 전 활동</span><span>그래도 편집하면 두 PC의 내용이 부딪힐 수 있습니다. 부딪히면 두 버전을 나란히 보여 드리고 고르게 합니다.</span><div class="c-actions"><button class="btn sm primary" data-lock="ro" type="button">읽기 전용으로 열기</button><button class="btn sm" data-lock="edit" type="button">그래도 편집</button><button class="btn sm" data-lock="cancel" type="button">취소</button></div></div>`;
+  } else if (l.tag === 'wait'){
+    note.innerHTML = `<div class="locknote"><span><b>아직 이 PC로 내려오지 않은 파일이 2개 있습니다</b></span><span>지금 열면 그 자료는 "동기화 기다리는 중"으로 보이고, 도착하면 자동으로 정상 표시로 바뀝니다.</span><div class="c-actions"><button class="btn sm" data-lock="cancel" type="button">확인</button></div></div>`;
+  } else { note.innerHTML = ''; toast(`'${l.name}' 폴더를 엽니다 · 시안에서는 지금 수업만 편집할 수 있습니다`); }
+}
+$('#lib').addEventListener('click', e => { const li = e.target.closest('[data-lib]'); if (!li) return; const l = LIB[+li.dataset.lib]; if (!l.cur) libOpen(l); });
+$('#lib').addEventListener('keydown', e => { if (e.key !== 'Enter' && e.key !== ' ') return; const li = e.target.closest('[data-lib]'); if (!li) return; e.preventDefault(); const l = LIB[+li.dataset.lib]; if (!l.cur) libOpen(l); });
+$('#lib-note').addEventListener('click', e => {
+  const b = e.target.closest('[data-lock]'); if (!b) return;
+  const k = b.dataset.lock; $('#lib-note').innerHTML = '';
+  if (k === 'ro') toast('읽기 전용으로 열었습니다 · 윈도우 PC에서 저장하면 새 내용을 자동으로 불러옵니다');
+  else if (k === 'edit') toast('편집을 시작합니다 · 잠금 정보를 이 PC(맥북)로 바꿨습니다');
+});
+$('#lib-new').addEventListener('click', () => toast('보관함에 새 수업 폴더를 만듭니다 · "날짜_수업이름" 형식으로 이름을 붙입니다'));
+$('#lib-open').addEventListener('click', () => toast('USB나 다른 클라우드에 있는 수업 폴더도 열 수 있습니다 · lesson.json이 들어 있는 폴더를 고르세요'));
+function srcLabel(it){
+  if (it.type === 'folder') return '수업 폴더 전체 · 탐색기로 열기';
+  if (TYPES[it.type].link) return it.src.replace(/^https?:\/\//, '');
+  if (it.type === 'memo') return '메모 → ' + fileName(it);
+  return `${it.src} → ${fileName(it)}`;
+}
+function rowP(it){
+  const T = TYPES[it.type], ops = OPENERS[it.type] || OPENERS.file;
+  return `<div class="p-row" data-id="${it.id}">` +
+    `<span class="grip" draggable="true" title="끌어서 순서 바꾸기">⋮⋮</span>` +
+    `<span class="badge" style="--c:var(${T.c})">${T.b}</span>` +
+    `<div class="p-t"><input data-f="title" data-id="${it.id}" value="${esc(it.title)}" aria-label="자료 이름"><span class="p-src">${esc(srcLabel(it))}</span></div>` +
+    `<select class="p-open" data-f="op" data-id="${it.id}" aria-label="여는 프로그램"${ops.length < 2 ? ' disabled' : ''}>${ops.map(([, lab], i) => `<option value="${i}"${(it.op || 0) === i ? ' selected' : ''}>${lab}</option>`).join('')}</select>` +
+    `<input class="p-start" data-f="start" data-id="${it.id}" value="${esc(it.start || '')}" placeholder="${T.ph ? '시작: ' + T.ph : '시작 위치 없음'}"${T.ph ? '' : ' disabled'} aria-label="시작 위치">` +
+    `<select class="p-scr" data-f="scr" data-id="${it.id}" aria-label="띄울 화면"><option value="student"${scrOf(it) === 'student' ? ' selected' : ''}>학생 화면</option><option value="teacher"${scrOf(it) === 'teacher' ? ' selected' : ''}>교사 화면</option></select>` +
+    `<button class="icon-x" data-p="del" data-id="${it.id}" aria-label="${esc(it.title)} 빼기" title="빼기">✕</button></div>`;
+}
+function secHTML(s){
+  const its = L.items.filter(i => i.sec === s.id);
+  return `<div class="p-sec" data-sec="${s.id}"><div class="p-sec-h">` +
+    `<input class="p-sec-t" data-f="sec-t" data-id="${s.id}" value="${esc(s.t)}" aria-label="구간 이름">` +
+    `<label class="p-min"><input type="number" min="0" max="240" data-f="sec-m" data-id="${s.id}" value="${+s.m || 0}" aria-label="${esc(s.t)} 시간">분</label>` +
+    `<span class="p-cnt">${its.length}개</span>` +
+    (its.length ? '' : `<button class="icon-x" data-p="delsec" data-id="${s.id}" aria-label="구간 지우기" title="구간 지우기">✕</button>`) +
+    `</div>${its.map(rowP).join('') || '<div class="p-empty">자료를 이 구간으로 끌어다 놓으세요</div>'}</div>`;
+}
+function renderPrep(){
+  $('#p-title').value = L.title; $('#p-date').value = L.date;
+  renderTotal();
+  if (!L.secs.some(s => s.id === addSec)) addSec = L.secs[0] ? L.secs[0].id : '';
+  $('#p-sec').innerHTML = L.secs.map(s => `<option value="${s.id}"${s.id === addSec ? ' selected' : ''}>${esc(s.t)}</option>`).join('');
+  flow.innerHTML = L.secs.map(secHTML).join('');
+  renderTree(); renderLib(); renderSaved();
+}
+function renderTotal(){ $('#p-total').textContent = `총 ${totalMin()}분 · 자료 ${L.items.length}개`; }
+function renderTree(changed){
+  if (changed) syncPulse();
+  const out = [`<span class="d">${esc(folderName())}/</span>`];
+  out.push(`├─ lesson.json      <span class="m">수업 흐름</span>`);
+  out.push(`├─ 수업안내.html    <span class="m">앱 없이 보는 목차</span>`);
+  L.secs.forEach((s, si) => {
+    const its = L.items.filter(i => i.sec === s.id && i.type !== 'folder');
+    out.push(`├─ <span class="d">${si + 1}_${esc(slug(s.t))}/</span>`);
+    if (!its.length) out.push(`│  └─ <span class="m">(비어 있음)</span>`);
+    its.forEach((it, k) => out.push(`│  ${k === its.length - 1 ? '└─' : '├─'} <span class="${newIds.has(it.id) ? 'new' : ''}">${esc(fileName(it))}</span>`));
+  });
+  out.push(`├─ <span class="d">_캡처/</span>  <span class="m">${D.capN}개</span>`);
+  out.push(`├─ <span class="d">_녹화/</span>  <span class="m">${D.recN}개</span>`);
+  out.push(`└─ <span class="d">.sidebar/</span>  <span class="m">잠금·백업 (숨김)</span>`);
+  $('#p-tree').innerHTML = out.join('\n');
+  $('#p-root').textContent = `내 드라이브 › 수업 사이드바 › ${folderName()}`;
+}
+$('#p-title').addEventListener('input', e => { L.title = e.target.value.trim() || '이름 없는 수업'; renderTree(true); renderLib(); });
+$('#p-date').addEventListener('input', e => { if (e.target.value) L.date = e.target.value; renderTree(true); renderLib(); });
+$('#p-sec').addEventListener('change', e => { addSec = e.target.value; });
+flow.addEventListener('input', e => {
+  const f = e.target.dataset.f, id = e.target.dataset.id; if (!f) return;
+  if (f === 'title'){ const it = item(id); it.title = e.target.value; const src = e.target.closest('.p-row').querySelector('.p-src'); if (src) src.textContent = srcLabel(it); }
+  else if (f === 'start'){ item(id).start = e.target.value.trim(); }
+  else if (f === 'sec-t'){ L.secs.find(s => s.id === id).t = e.target.value; const o = $(`#p-sec option[value="${id}"]`); if (o) o.textContent = e.target.value; }
+  else if (f === 'sec-m'){ L.secs.find(s => s.id === id).m = Math.max(0, +e.target.value || 0); renderTotal(); }
+  renderTree(true);
+});
+flow.addEventListener('change', e => {
+  if (e.target.dataset.f === 'scr'){
+    const it = item(e.target.dataset.id); it.scr = e.target.value;
+    const w = winOf(it.id); if (w && D.dual && w.disp !== homeOf(it)) moveItem(it.id);
+    syncPulse();
+    toast(`'${it.title}' 자료를 ${it.scr === 'teacher' ? '교사' : '학생'} 화면에 띄웁니다 (듀얼 모니터일 때)`);
+    return;
+  }
+  if (e.target.dataset.f !== 'op') return;
+  const it = item(e.target.dataset.id); it.op = +e.target.value;
+  if (winOf(it.id)) closeItem(it.id);
+  syncPulse();
+  toast(`'${it.title}' 자료를 ${OPENERS[it.type][it.op][1]}에서 엽니다`);
+});
+flow.addEventListener('click', e => {
+  const b = e.target.closest('[data-p]'); if (!b) return;
+  if (b.dataset.p === 'del'){
+    const it = item(b.dataset.id); if (!it) return;
+    if (winOf(it.id)) closeItem(it.id);
+    D.sel.delete(it.id);
+    L.items.splice(L.items.indexOf(it), 1); renderPrep(); syncPulse();
+    toast(`'${it.title}'을(를) 흐름에서 뺐습니다 · 파일은 .sidebar/휴지통에 30일 보관합니다`);
+  } else if (b.dataset.p === 'delsec'){
+    L.secs = L.secs.filter(s => s.id !== b.dataset.id); renderPrep(); syncPulse();
+  }
+});
+/* drag to reorder (and drop files onto a section) */
+let dragId = null;
+const clearMarks = () => $$('.drop-before,.drop-after,.drop-in', flow).forEach(el => el.classList.remove('drop-before', 'drop-after', 'drop-in'));
+flow.addEventListener('dragstart', e => {
+  const g = e.target.closest('.grip'); if (!g) return;
+  const row = g.closest('.p-row'); dragId = row.dataset.id;
+  e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', dragId);
+  try { e.dataTransfer.setDragImage(row, 20, 18); } catch (err) {}
+  row.classList.add('dragging');
+});
+flow.addEventListener('dragend', () => { dragId = null; clearMarks(); $$('.p-row.dragging', flow).forEach(r => r.classList.remove('dragging')); });
+flow.addEventListener('dragover', e => {
+  const sec = e.target.closest('.p-sec'); if (!sec) return;
+  const files = Array.from(e.dataTransfer.types || []).includes('Files');
+  if (!dragId && !files) return;
+  e.preventDefault(); e.dataTransfer.dropEffect = files ? 'copy' : 'move';
+  clearMarks();
+  const row = e.target.closest('.p-row');
+  if (!files && row && row.dataset.id !== dragId){ const r = row.getBoundingClientRect(); row.classList.add(e.clientY < r.top + r.height / 2 ? 'drop-before' : 'drop-after'); }
+  else sec.classList.add('drop-in');
+});
+flow.addEventListener('dragleave', e => { if (!flow.contains(e.relatedTarget)) clearMarks(); });
+flow.addEventListener('drop', e => {
+  const sec = e.target.closest('.p-sec'); if (!sec) return;
+  e.preventDefault(); clearMarks();
+  if (!dragId){ if (e.dataTransfer.files && e.dataTransfer.files.length) addFiles(e.dataTransfer.files, sec.dataset.sec); return; }
+  const row = e.target.closest('.p-row'); const moving = item(dragId); const id = dragId; dragId = null;
+  if (!moving || (row && row.dataset.id === id)) return;
+  L.items.splice(L.items.indexOf(moving), 1); moving.sec = sec.dataset.sec;
+  if (row){ const tgt = item(row.dataset.id); let at = L.items.indexOf(tgt); const r = row.getBoundingClientRect(); if (e.clientY >= r.top + r.height / 2) at++; L.items.splice(at, 0, moving); }
+  else L.items.push(moving);
+  renderPrep(); markNew(moving.id);
+  toast('순서를 바꿨습니다 · 파일 이름 순번은 "정리하기" 때 맞춥니다');
+});
+/* add link */
+function detectUrl(raw){
+  const s = (raw || '').trim(); if (!s) return null;
+  let u; try { u = new URL(/^https?:\/\//i.test(s) ? s : 'https://' + s); } catch (err) { return { err:'링크 주소 형식이 아닙니다' }; }
+  if (!u.hostname.includes('.') || /\s/.test(s)) return { err:'링크 주소 형식이 아닙니다' };
+  const h = u.hostname.replace(/^www\.|^m\./, ''), p = u.pathname;
+  let type = 'web';
+  if (h === 'youtube.com' || h.endsWith('.youtube.com') || h === 'youtu.be') type = 'youtube';
+  else if (h === 'docs.google.com') type = p.startsWith('/spreadsheets') ? 'gsheet' : p.startsWith('/presentation') ? 'gslides' : p.startsWith('/document') ? 'gdoc' : 'web';
+  else if (h === 'drive.google.com') type = 'gdrive';
+  else if (h === 'canva.com' || h.endsWith('.canva.com')) type = 'canva';
+  let start = '';
+  const t = u.searchParams.get('t');
+  if (type === 'youtube' && t){ const sec = parseInt(t); if (sec > 0) start = `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`; }
+  return { type, href:u.href, host:h, start };
+}
+const TITLE_GUESS = { youtube:'유튜브 영상', gdoc:'구글 문서', gsheet:'구글 시트', gslides:'구글 슬라이드', gdrive:'드라이브 폴더', canva:'캔바 디자인' };
+function updateDetect(){
+  const v = $('#p-url').value, box = $('#p-detect'), d = detectUrl(v);
+  if (!d){ box.className = 'detect'; box.textContent = '링크를 붙여넣으면 종류를 알아서 알아봅니다'; return; }
+  if (d.err){ box.className = 'detect err'; box.textContent = d.err + ' · 예: https://www.youtube.com/watch?v=…'; return; }
+  const T = TYPES[d.type];
+  box.className = 'detect ok';
+  box.innerHTML = `<span class="badge" style="--c:var(${T.c})">${T.b}</span>종류: ${T.n} · 크롬에서 엽니다${d.start ? ' · ' + d.start + '부터' : ''}`;
+}
+function addUrl(){
+  const d = detectUrl($('#p-url').value);
+  if (!d || d.err){ updateDetect(); if (!d) { $('#p-detect').className = 'detect err'; $('#p-detect').textContent = '추가할 링크를 먼저 붙여넣으세요'; } $('#p-url').focus(); return; }
+  const it = { id:nid('i'), sec:addSec, type:d.type, title:TITLE_GUESS[d.type] || d.host, src:d.href, start:d.start, op:0 };
+  L.items.push(it); $('#p-url').value = ''; updateDetect(); renderPrep(); markNew(it.id);
+  const s = L.secs.find(x => x.id === addSec);
+  toast(`'${it.title}' 링크를 ${s ? s.t : ''} 구간에 넣었습니다 · 실제 앱에서는 페이지 제목을 가져옵니다`);
+}
+$('#p-url').addEventListener('input', updateDetect);
+$('#p-url').addEventListener('keydown', e => { if (e.key === 'Enter'){ e.preventDefault(); addUrl(); } });
+$('#p-add').addEventListener('click', addUrl);
+/* add files */
+function addFiles(files, secId){
+  const added = []; let blocked = 0, zips = 0;
+  Array.from(files).forEach(f => {
+    if (BLOCKED.test(f.name)){ blocked++; return; }
+    if (/\.zip$/i.test(f.name)){ zips++; return; }
+    const m = /\.([a-z0-9]+)$/i.exec(f.name); const ext = m ? m[1].toLowerCase() : '';
+    const it = { id:nid('i'), sec:secId || addSec, type:EXT[ext] || 'file', title:f.name.replace(/\.[^.]+$/, ''), src:f.name, size:f.size, start:'', op:0 };
+    L.items.push(it); added.push(it);
+  });
+  renderPrep(); added.forEach(a => markNew(a.id));
+  const msg = [];
+  if (added.length) msg.push(`${added.length}개 파일을 수업 폴더로 복사했습니다 · 원본은 그대로 있습니다`);
+  if (blocked) msg.push(`실행 파일 ${blocked}개는 넣지 않았습니다`);
+  if (zips) msg.push('zip 꾸러미는 "꾸러미 가져오기"에 놓으세요');
+  if (msg.length) toast(msg.join(' · '));
+}
+const drop = $('#p-drop');
+drop.addEventListener('click', () => $('#p-file').click());
+drop.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); $('#p-file').click(); } });
+$('#p-file').addEventListener('change', e => { if (e.target.files.length) addFiles(e.target.files, addSec); e.target.value = ''; });
+['dragenter', 'dragover'].forEach(ev => drop.addEventListener(ev, e => { if (Array.from(e.dataTransfer.types || []).includes('Files')){ e.preventDefault(); drop.classList.add('over'); } }));
+drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+drop.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('over'); if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files, addSec); });
+window.addEventListener('dragover', e => e.preventDefault());
+window.addEventListener('drop', e => e.preventDefault());
+$('#p-memo').addEventListener('click', () => { const it = { id:nid('i'), sec:addSec, type:'memo', title:'진행 메모', src:'', start:'', op:0 }; L.items.push(it); renderPrep(); markNew(it.id); toast('메모를 만들었습니다 · 수업 폴더에 .md 파일로 저장됩니다'); });
+$('#p-addsec').addEventListener('click', () => { const s = { id:nid('s'), t:'새 구간', m:10 }; L.secs.push(s); renderPrep(); syncPulse(); const inp = flow.querySelector(`[data-f="sec-t"][data-id="${s.id}"]`); if (inp){ inp.focus(); inp.select(); } });
+$('#p-clone').addEventListener('click', () => toast(`'${L.title.replace(/\(1차\)/, '(2차)')}' 수업을 새 폴더로 만들었습니다 · 자료와 흐름이 그대로 복사됩니다 (시안에서는 화면만 보여 줍니다)`));
+
+/* zip bundle */
+const zp = $('#z-panel');
+function bundleInfo(){
+  const files = L.items.filter(i => !TYPES[i.type].link && i.type !== 'folder');
+  const bytes = files.reduce((a, i) => a + (i.size || FAKE_SIZE[i.type] || 1e6), 0);
+  const links = L.items.filter(i => ['gdoc', 'gsheet', 'gslides', 'gdrive', 'canva'].includes(i.type));
+  return { files, bytes, links };
+}
+function openExport(){
+  const { files, bytes, links } = bundleInfo();
+  zp.innerHTML = `<div class="zpanel">` +
+    `<label class="ck"><input type="checkbox" checked disabled> 수업 흐름·메모·링크 <span class="m">lesson.json · 수업안내.html</span></label>` +
+    `<label class="ck"><input type="checkbox" id="zx-files" checked> 자료 파일 ${files.length}개 <span class="m">약 ${fmtBytes(bytes)}</span></label>` +
+    `<label class="ck"><input type="checkbox" id="zx-cap" ${D.capN ? 'checked' : 'disabled'}> 캡처 ${D.capN}개 <span class="m">${D.capN ? '' : '캡처 없음'}</span></label>` +
+    `<label class="ck"><input type="checkbox" id="zx-rec" ${D.recN ? '' : 'disabled'}> 녹화 영상 ${D.recN}개 <span class="m">${D.recN ? '약 ' + fmtBytes(D.recN * 1.8e9) : '녹화 없음'}</span></label>` +
+    `<p class="zfile">${esc(folderName())}.zip</p>` +
+    (links.length ? `<div class="warnbox"><b>받는 사람 확인</b> 아래 링크는 여는 사람 계정에 열람 권한이 있어야 열립니다.<ul>${links.map(i => `<li>${TYPES[i.type].n} · ${esc(i.title)}</li>`).join('')}</ul></div>` : '') +
+    `<div class="zrow"><button class="btn primary" id="zx-go" type="button">zip 만들기</button><button class="btn" id="zx-close" type="button">닫기</button></div>` +
+    `<p class="zstep" id="zx-step"></p><div class="progress" hidden><i></i></div><p class="zres" hidden></p></div>`;
+}
+function doExport(){
+  const { bytes } = bundleInfo();
+  let total = 2e5 + ($('#zx-files').checked ? bytes : 0) + ($('#zx-cap').checked ? D.capN * 6e5 : 0) + ($('#zx-rec').checked ? D.recN * 1.8e9 : 0);
+  const bar = zp.querySelector('.progress'), res = zp.querySelector('.zres'), lab = $('#zx-step');
+  $('#zx-go').disabled = true; bar.hidden = false; res.hidden = true;
+  const steps = ['정리하기: 파일 이름 순번 맞추기', '한글 파일 이름을 NFC로 바꾸기', '압축하는 중', 'manifest.json에 파일 해시 기록'];
+  let i = 0;
+  const tick = () => {
+    if (i < steps.length){ lab.textContent = steps[i]; bar.firstElementChild.style.width = ((i + 1) / steps.length * 100) + '%'; i++; setTimeout(tick, 450); return; }
+    lab.textContent = ''; res.hidden = false; $('#zx-go').disabled = false;
+    res.innerHTML = `<b>저장했습니다</b> 내보내기/${esc(folderName())}.zip · ${fmtBytes(total)}<br>USB, 메신저, 드라이브 웹 업로드로 옮긴 뒤 다른 PC에서 "꾸러미 가져오기"를 누르세요.`;
+  };
+  tick();
+}
+function openImport(){
+  zp.innerHTML = `<div class="zpanel"><div class="drop small" id="zi-drop" role="button" tabindex="0">zip 꾸러미를 여기로 끌어다 놓거나 눌러서 고르세요</div>` +
+    `<div class="zrow"><button class="btn sm" id="zi-sample" type="button">예시 꾸러미로 해 보기</button><button class="btn sm" id="zi-close" type="button">닫기</button></div><ul class="checks" id="zi-steps"></ul></div>`;
+}
+function runImport(name){
+  const list = $('#zi-steps'); if (!list) return;
+  list.innerHTML = '';
+  const steps = [['ok', 'manifest.json 확인', `${name} · 꾸러미 형식 1 · 수업 사이드바 0.2`], ['ok', '파일 34개 손상 검사', '해시가 모두 일치합니다'], ['ok', '위험한 경로·실행 파일 검사', '폴더 밖으로 풀리는 경로와 실행 파일이 없습니다'], ['ok', '파일 이름 확인', 'NFC 한글 이름 · Windows 금지 문자 없음']];
+  let i = 0;
+  const tick = () => {
+    if (i < steps.length){ const [s, b, d] = steps[i++]; list.insertAdjacentHTML('beforeend', `<li><span class="st ${s}">확인</span><div><b>${esc(b)}</b><span class="d">${esc(d)}</span></div></li>`); setTimeout(tick, 260); return; }
+    list.insertAdjacentHTML('beforeend', `<li class="conflict"><div><b>같은 수업이 이미 있습니다</b><span class="d">${esc(L.title)} · ${esc(L.date)}</span></div><div class="c-actions"><button class="btn primary sm" data-zi="copy">사본으로 가져오기</button><button class="btn sm" data-zi="over">덮어쓰기 (기존 수업 백업)</button><button class="btn sm" data-zi="cancel">취소</button></div></li>`);
+  };
+  tick();
+}
+zp.addEventListener('click', e => {
+  const id = e.target.id;
+  if (id === 'zx-go') doExport();
+  else if (id === 'zx-close' || id === 'zi-close') zp.innerHTML = '';
+  else if (id === 'zi-sample') runImport(`${folderName()}.zip`);
+  else if (e.target.closest('#zi-drop')) $('#z-file').click();
+  const zi = e.target.closest('[data-zi]');
+  if (zi){
+    const li = zi.closest('li');
+    const msg = zi.dataset.zi === 'copy' ? `'${L.title} 사본'으로 가져왔습니다 · 바로 편집할 수 있고, 이 PC에 맞춰 사전 점검을 한 번 실행합니다`
+      : zi.dataset.zi === 'over' ? '기존 수업을 _백업에 보관하고 꾸러미 내용으로 바꿨습니다 · 바로 편집할 수 있습니다' : '가져오기를 취소했습니다. 아무것도 바뀌지 않았습니다';
+    li.outerHTML = `<li class="conflict"><b>${esc(msg)}</b></li>`;
+  }
+});
+zp.addEventListener('keydown', e => { if (e.target.id === 'zi-drop' && (e.key === 'Enter' || e.key === ' ')){ e.preventDefault(); $('#z-file').click(); } });
+zp.addEventListener('dragover', e => { const d = e.target.closest('#zi-drop'); if (d){ e.preventDefault(); d.classList.add('over'); } });
+zp.addEventListener('dragleave', e => { const d = e.target.closest('#zi-drop'); if (d) d.classList.remove('over'); });
+zp.addEventListener('drop', e => {
+  const d = e.target.closest('#zi-drop'); if (!d) return; e.preventDefault(); d.classList.remove('over');
+  const f = e.dataTransfer.files[0]; if (!f) return;
+  if (!/\.zip$/i.test(f.name)){ toast('zip 꾸러미 파일만 가져올 수 있습니다'); return; }
+  runImport(f.name);
+});
+$('#z-file').addEventListener('change', e => { const f = e.target.files[0]; e.target.value = ''; if (!f) return; if (!/\.zip$/i.test(f.name)){ toast('zip 꾸러미 파일만 가져올 수 있습니다'); return; } runImport(f.name); });
+$('#z-export').addEventListener('click', openExport);
+$('#z-import').addEventListener('click', openImport);
+
+/* pre-check */
+function checkFor(it){
+  const t = it.title;
+  switch (it.type){
+    case 'youtube': return ['ok', t, '재생 가능 · 퍼가기 허용 · 0.4초 응답'];
+    case 'gsheet': return ['warn', t, '링크 공유가 꺼져 있습니다. 이 PC 크롬에 로그인한 계정으로만 열립니다'];
+    case 'gdoc': case 'gslides': case 'gdrive': return ['ok', t, '열람 가능'];
+    case 'canva': return ['ok', t, '보기 링크 정상 · 로그인 없이 열림'];
+    case 'web': return ['ok', t, '응답 정상'];
+    case 'ppt': return ['ok', t, 'PowerPoint 설치됨 · 파일 있음'];
+    case 'hwp': return ['ok', t, '한글 설치됨 · 파일 있음'];
+    case 'xls': return ['ok', t, 'Excel 설치됨 · 파일 있음'];
+    case 'pdf': return ['ok', t, `파일 있음 · 크롬에서 ${it.start || '1쪽'}부터`];
+    case 'audio': case 'video': return ['ok', t, '기본 플레이어 있음 · 파일 있음'];
+    case 'folder': return ['ok', t, '수업 폴더 있음 · 교사 화면에 엽니다'];
+    case 'memo': return ['ok', t, '메모 있음 · 교사 화면에 엽니다'];
+    case 'file': return ['warn', t, '열 프로그램을 확인하세요'];
+    default: return ['ok', t, '파일 있음'];
+  }
+}
+function sysChecks(){
+  return [
+    ['ok', '브라우저', 'Chrome 설치됨 · 평소 로그인 그대로 사용'],
+    D.dual ? ['ok', '모니터', '2개 · 확장 모드 · 학생 화면: 프로젝터 1920×1080 · 교사 화면: 노트북 (배율 200%)']
+           : ['warn', '모니터', '1개 · 학생도 사이드바를 보게 됩니다. 자동 숨김을 켜 두세요'],
+    ['ok', '창 제어 권한', '손쉬운 사용 권한 허용됨'],
+    ['ok', '화면 기록 권한', '허용됨 · 녹화와 학생 화면 미리보기에 필요'],
+    ['ok', '디스크 여유 공간', '48GB · 1080p 녹화 약 12시간']
+  ];
+}
+$('#c-run').addEventListener('click', () => {
+  const list = $('#c-list'), sum = $('#c-sum'); list.innerHTML = ''; sum.textContent = '';
+  const rows = ordered().map(checkFor).concat(sysChecks());
+  const lab = { ok:'정상', warn:'주의', bad:'문제' };
+  let i = 0;
+  const tick = () => {
+    if (i < rows.length){ const [s, b, d] = rows[i++]; list.insertAdjacentHTML('beforeend', `<li><span class="st ${s}">${lab[s]}</span><div><b>${esc(b)}</b><span class="d">${esc(d)}</span></div></li>`); setTimeout(tick, 90); return; }
+    const w = rows.filter(r => r[0] !== 'ok').length;
+    sum.textContent = `점검 ${rows.length}개 · 주의 ${w}개` + (w ? ' · 주의 항목은 수업 전에 공유 설정을 확인하세요' : ' · 바로 수업할 수 있습니다');
+  };
+  tick();
+});
+$('#c-start').addEventListener('click', startLesson);
+function startLesson(){
+  goView('run');
+  D.tile = null; D.wins = []; D.front = null; D.sel.clear(); D.busy.clear(); D.cascade = [0, 0]; D.cover = null;
+  DESKS.forEach(dk => $$('.win, .divider', dk).forEach(el => el.remove()));
+  const ord = ordered(); if (!ord.length){ renderAll(); return; }
+  const prevTo = D.openTo; D.openTo = 'student';
+  ord.forEach(it => openItem(it.id, { instant:true, focus:false }));
+  D.openTo = prevTo;
+  const firstStu = ord.find(it => homeOf(it) === 1) || ord[0];
+  const first = winOf(firstStu.id);
+  D.wins.forEach(w => { w.min = !(w === first || (D.dual && w.disp === 0)); });
+  if (first){ first.active = firstStu.id; focusWin(first.id, { flash:true }); }
+  toast(`자료 ${ord.length}개를 미리 열어 두었습니다${D.dual ? ' · 학생 화면에는 첫 자료만 보입니다' : ''} · 목록을 누르면 바로 앞으로 옵니다`);
+}
+
+/* ---------- views ---------- */
+const VIEWS = ['run', 'prep', 'review'];
+let curView = null;
+function showView(want){
+  const v = want || (location.hash || '#run').slice(1), view = VIEWS.includes(v) ? v : 'run';
+  curView = view;
+  VIEWS.forEach(k => { $('#v-' + k).hidden = k !== view; });
+  $$('.views a').forEach(a => { if (a.getAttribute('href') === '#' + view) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
+  if (view === 'run') renderAll();
+  if (view === 'prep') renderPrep();
+}
+function goView(v){
+  showView(v);
+  try { if (location.hash !== '#' + v) location.hash = v; } catch (err) {}
+}
+$$('.views a').forEach(a => a.addEventListener('click', e => { e.preventDefault(); goView(a.getAttribute('href').slice(1)); window.scrollTo(0, 0); }));
+window.addEventListener('hashchange', () => { const v = location.hash.slice(1); if (VIEWS.includes(v) && v !== curView) showView(v); });
+
+/* ---------- seed ---------- */
+(function seed(){
+  newWin('text', ['i0'], { x:0.3, y:0.07, w:0.42, h:0.62 }, 0, 0);
+  newWin('chrome', ['i5'], { x:0.03, y:0.05, w:0.6, h:0.82 }, 1, 1);
+  newWin('chrome', ['i1'], { x:0.08, y:0.08, w:0.62, h:0.82 }, 1, 1);
+  newWin('hwp', ['i4'], { x:0.4, y:0.1, w:0.55, h:0.85 }, 1, 1);
+  const ppt = newWin('ppt', ['i3'], { x:0.1, y:0.05, w:0.8, h:0.9 }, 1, 1);
+  D.front = ppt.id;
+})();
+showView();
+setInterval(renderTaskbar, 30000);
+})();
+</script>

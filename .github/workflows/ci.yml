@@ -1,0 +1,29 @@
+name: 자동 검사
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    name: 공통 로직 테스트 (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm test
+        working-directory: poc
+
+  mac-helper:
+    name: 맥 도우미 빌드
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift build -c release
+        working-directory: poc/mac-helper

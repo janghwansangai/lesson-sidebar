@@ -1,0 +1,12 @@
+{
+  "name": "lesson-sidebar-poc",
+  "private": true,
+  "description": "수업 사이드바 0단계 기술 검증",
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "test": "node --test \"test/*.test.js\"",
+    "build:mac": "cd mac-helper && swift build -c release",
+    "poc": "node runner/run.js"
+  }
+}

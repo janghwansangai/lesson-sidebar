@@ -1,0 +1,25 @@
+# 의존성·빌드 결과
+node_modules/
+poc/mac-helper/.build/
+poc/out/
+dist/
+out/
+
+# 운영체제
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 실제 수업 자료·녹화·캡처는 올리지 않는다 (학생 정보 보호)
+lessons/
+_녹화/
+_캡처/
+*.mp4
+*.mov
+*.webm
+
+# 개인 설정
+.env
+.env.*
+.claude/settings.local.json
+*.log
