@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:">
+<title>수업 사이드바</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="strip" class="strip" hidden title="마우스를 대면 사이드바가 나옵니다"></div>
+  <main id="panel" class="panel">
+    <header class="head">
+      <div class="top">
+        <span class="brand">수업 사이드바 <em>체험판</em></span>
+        <button id="btn-hide" class="ib" aria-pressed="false" title="자동 숨김" aria-label="자동 숨김">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16M15 10l-2 2 2 2"/></svg>
+        </button>
+      </div>
+      <h1 id="title" class="title"></h1>
+      <p id="meta" class="meta"></p>
+      <div id="screens" class="screens"></div>
+      <button id="next" class="next"></button>
+    </header>
+    <section id="list" class="list" aria-label="수업 자료"></section>
+    <div id="dock" class="dock" hidden></div>
+    <footer class="foot">
+      <p id="msg" class="msg" role="status" aria-live="polite"></p>
+      <div class="row">
+        <button id="openall" class="fb">모두 미리 열기</button>
+        <button id="hideothers" class="fb">다른 창 숨기기</button>
+      </div>
+      <div class="row">
+        <button id="folder" class="fb">수업 폴더 열기</button>
+        <button id="quit" class="fb quiet">끝내기</button>
+      </div>
+    </footer>
+  </main>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

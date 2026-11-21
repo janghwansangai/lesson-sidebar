@@ -142,8 +142,9 @@ func allWindows(appFilter: String?) -> [Win] {
         AXUIElementSetMessagingTimeout(axApp, 1.5)
         guard let v = copyValue(axApp, kAXWindowsAttribute), let arr = v as? [AXUIElement] else { continue }
         for w in arr {
-            // 일반 창만 (도구 막대·팝업 제외)
-            if let role = str(w, kAXSubroleAttribute), role != (kAXStandardWindowSubrole as String) { continue }
+            // 일반 창만 (도구 막대·팝업 제외). 단, 최소화된 창은 하위 역할이 AXDialog로 바뀌므로 함께 넣는다
+            if let role = str(w, kAXSubroleAttribute), role != (kAXStandardWindowSubrole as String),
+               bool(w, kAXMinimizedAttribute) != true { continue }
             guard let wid = windowID(w) else { continue }
             out.append(Win(wid: wid, pid: app.processIdentifier, app: name, bundle: bundle, el: w))
         }
@@ -274,6 +275,26 @@ case "minimize":
     emit(["ok": e == .success])
 case "close":
     emit(close(findWin(args.dropFirst().first)))
+case "watch":
+    // 계속 실행하며 바뀐 것만 한 줄씩 알린다 (사이드바가 0.3초마다 새 프로세스를 띄우지 않도록)
+    //   {"event":"front", "front":{...}}   맨 앞 창이 바뀔 때
+    //   {"event":"alive", "wids":[...]}    1.5초마다 살아 있는 창 번호 목록
+    setvbuf(stdout, nil, _IOLBF, 0)
+    var lastFront = -1
+    var tick = 0
+    while true {
+        let f = frontInfo()
+        let wid = (f["wid"] as? Int) ?? 0
+        if wid != lastFront {
+            lastFront = wid
+            emit(["event": "front", "front": f])
+        }
+        if tick % 5 == 0 {
+            emit(["event": "alive", "wids": allWindows(appFilter: nil).map { Int($0.wid) }])
+        }
+        tick += 1
+        settle(0.3)
+    }
 default:
     fail("모르는 명령: \(cmd)")
 }

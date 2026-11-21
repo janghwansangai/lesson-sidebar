@@ -23,3 +23,6 @@ _캡처/
 .env.*
 .claude/settings.local.json
 *.log
+
+# Electron 내려받기 캐시
+.cache/

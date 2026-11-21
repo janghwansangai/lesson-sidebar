@@ -1,0 +1,16 @@
+{
+  "name": "lesson-sidebar",
+  "productName": "수업 사이드바",
+  "version": "0.1.0",
+  "private": true,
+  "description": "수업 사이드바 체험판",
+  "type": "module",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test \"test/*.test.js\""
+  },
+  "devDependencies": {
+    "electron": "45.4.1"
+  }
+}
