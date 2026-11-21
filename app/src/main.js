@@ -19,7 +19,9 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const APP_DIR = path.resolve(HERE, '..');
 const REPO = path.resolve(APP_DIR, '..');
 const SIDEBAR_W = 280;
-const STRIP_W = 10;
+// 자동 숨김으로 접으면 교사 화면 왼쪽 가운데에 노란 막대만 남긴다 (선생님 의견, 2026-11-21)
+const BAR_W = 6, BAR_H = 72;
+const HOT_W = 16, HOT_MARGIN = 48;   // 막대 옆 이 범위로 마우스를 밀면 펼친다
 const DEVICE = deviceName();
 
 // 개발 중에는 설정·로그를 이 폴더 안에 둔다 (패키지로 만들면 운영체제 기본 위치)
@@ -64,10 +66,24 @@ const mtimeOf = f => { try { return statSync(f).mtimeMs; } catch { return 0; } }
 // ---------- 사이드바 창 ----------
 function teacherArea(){ return screen.getPrimaryDisplay().workArea; }
 
+function barRect(){
+  const wa = teacherArea();
+  return { x: wa.x, y: Math.round(wa.y + wa.height / 2 - BAR_H / 2), width: BAR_W, height: BAR_H };
+}
+
+// 윈도우는 창이 약 32픽셀보다 좁아지지 않으므로, 창 모양(setShape)으로 막대 부분만 보이고 눌리게 자른다 (맥은 setShape 없음, 창 자체가 막대 크기)
+const canShape = () => process.platform !== 'darwin' && typeof win?.setShape === 'function';
+
 function placeSidebar(){
   if (!win) return;
   const wa = teacherArea();
-  win.setBounds({ x: wa.x, y: wa.y, width: collapsed ? STRIP_W : SIDEBAR_W, height: wa.height });
+  if (collapsed){
+    win.setBounds(barRect());
+    if (canShape()) win.setShape([{ x: 0, y: 0, width: BAR_W, height: BAR_H }]);
+  } else {
+    if (canShape()) win.setShape([]);
+    win.setBounds({ x: wa.x, y: wa.y, width: SIDEBAR_W, height: wa.height });
+  }
 }
 
 const SECURE = file => ({ preload: path.join(HERE, file), contextIsolation: true, sandbox: true, nodeIntegration: false });
@@ -84,6 +100,8 @@ function createSidebar(){
     frame: false, resizable: false, movable: false, minimizable: false, maximizable: false, fullscreenable: false,
     alwaysOnTop: true, skipTaskbar: true, show: false, backgroundColor: '#1b2f2a', title: '수업 사이드바',
     type: process.platform === 'darwin' ? 'panel' : undefined,
+    // 윈도우: 보이지 않는 크기 조절 테두리(8픽셀)를 없앤다. 있으면 창 모양(setShape)이 그만큼 왼쪽으로 밀려 막대가 화면 밖에 그려진다
+    thickFrame: false,
     webPreferences: SECURE('preload.cjs'),
   });
   // PPT 전체 화면 슬라이드 쇼 위에서도 보이게 (기술 검증 항목 4)
@@ -105,17 +123,28 @@ function setAutoHide(v){
   collapsed = session.autoHide;
   placeSidebar();
   if (session.autoHide) cursorTimer = setInterval(watchCursor, 120);
-  session.say(session.autoHide ? '자동 숨김: 화면 왼쪽 끝에 마우스를 대면 나타납니다' : '사이드바를 화면 왼쪽에 고정했습니다');
+  session.say(session.autoHide ? '자동 숨김: 화면 왼쪽 가운데 노란 막대 옆으로 마우스를 밀면 나타납니다' : '사이드바를 화면 왼쪽에 고정했습니다');
 }
 
+let lastCursor = null;
 function watchCursor(){
   if (!win) return;
   const p = screen.getCursorScreenPoint();
-  const b = win.getBounds();
-  const inY = p.y >= b.y && p.y <= b.y + b.height;
+  const prev = lastCursor;
+  lastCursor = p;
   if (collapsed){
-    if (inY && p.x <= b.x + STRIP_W){ collapsed = false; placeSidebar(); push(); }
-  } else if (inY && p.x >= b.x && p.x <= b.x + b.width + 16){
+    const edge = teacherArea().x, bar = barRect();
+    const inBand = pt => pt.y >= bar.y - HOT_MARGIN && pt.y <= bar.y + bar.height + HOT_MARGIN;
+    // 막대 옆(교사 화면 왼쪽 끝 HOT_W 안)에 마우스가 오면 펼친다. 왼쪽 끝을 넘어간 다른 모니터(학생 화면)는 제외
+    const atBar = inBand(p) && p.x >= edge && p.x <= edge + HOT_W;
+    // 학생 화면이 왼쪽에 있으면 마우스가 끝에서 멈추지 않고 넘어가므로, 막대 높이에서 왼쪽으로 넘어간 것도 "밀었다"로 본다
+    // (넘어간 뒤의 높이는 보지 않는다: 배율이 다른 화면에서는 같은 높이도 화면 단위 값이 달라진다)
+    const pushedPast = prev && inBand(prev) && prev.x >= edge && p.x < edge;
+    if (atBar || pushedPast){ collapsed = false; outSince = 0; placeSidebar(); push(); }
+    return;
+  }
+  const b = win.getBounds();
+  if (p.y >= b.y && p.y <= b.y + b.height && p.x >= b.x && p.x <= b.x + b.width + 16){
     outSince = 0;
   } else {
     outSince ||= Date.now();
