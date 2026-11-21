@@ -1,8 +1,21 @@
 # 윈도우 창 관리 도우미 (윈도우 Claude 담당)
 
-`winctl.js`를 만들어 `docs/poc/helper-protocol.md` 규격을 그대로 지킨다. 맥 쪽 구현(`../mac-helper/Sources/winctl/main.swift`)을 참고하면 명령과 출력 모양을 맞추기 쉽다.
+`winctl.js`는 `docs/poc/helper-protocol.md` 규격을 그대로 지킨다. 맥 쪽 구현(`../mac-helper/Sources/winctl/main.swift`)과 명령·출력 모양이 같다 (`watch` 포함). 시험 결과는 `docs/poc/windows.md`.
 
-## 만들 것
+## 실행 방법
+```powershell
+cd poc\win-helper
+npm install                 # 처음 한 번 (koffi 설치)
+node winctl.js displays     # 모니터 목록이 나오면 준비 끝
+cd ..
+node runner/run.js --browsers=chrome,edge,whale
+node runner/raise-lock.js   # 앞으로 가져오기 제한 시험 (사람이 함께)
+node runner/replug.js       # 외부 모니터 뺐다 꽂기 시험 (사람이 함께, 맥에서도 됨)
+```
+- 맥 도우미와 다른 점: `list`의 창마다 `maximized`(최대화)가 더 있고, `front`는 확인·저장 창이 앞에 있으면 `dialog`(그 창 번호와 제목)를 함께 준다. `raise`의 `detail.method`는 통한 방법(`direct`, `dummyInput`, `attachThreadInput`, 이미 앞이면 `already`).
+- `app`은 실행 파일 이름(`chrome.exe`, `POWERPNT.EXE`, `Hwp.exe` 등)이다.
+
+## 만든 것
 - `poc/win-helper/package.json` (이 폴더 전용, 의존성: `koffi`) — 맥 쪽 `poc/package.json`에는 넣지 않는다
 - `poc/win-helper/winctl.js` — `node winctl.js <명령> [인자]`로 실행, 마지막 줄에 JSON 한 줄 출력
 

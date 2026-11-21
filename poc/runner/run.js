@@ -61,14 +61,30 @@ const APPS = IS_MAC ? {
   excel:      { label: '엑셀',       match: 'Excel',          app: 'Microsoft Excel' },
   hwp:        { label: '한글',       match: 'HWP',            app: 'Hancom Office HWP' },
 } : {
-  // 윈도우 값은 윈도우 Claude가 실제 PC에서 확인하고 고친다.
-  chrome:     { label: '크롬',       match: 'chrome',   exe: 'chrome' },
-  edge:       { label: '엣지',       match: 'msedge',   exe: 'msedge' },
-  whale:      { label: '웨일',       match: 'whale',    exe: 'whale' },
-  powerpoint: { label: '파워포인트', match: 'POWERPNT' },
-  excel:      { label: '엑셀',       match: 'EXCEL' },
-  hwp:        { label: '한글',       match: 'Hwp' },
+  // match = 실행 파일 이름 (도우미가 대소문자 없이 포함 여부로 거른다). exe = App Paths에 등록된 이름 (start가 찾는다).
+  // ext = 빈 문서로 시험할 때 프로그램 위치를 파일 연결(assoc/ftype)에서 찾는다 (한글은 App Paths에 없다).
+  chrome:     { label: '크롬',       match: 'chrome.exe',   exe: 'chrome.exe' },
+  edge:       { label: '엣지',       match: 'msedge.exe',   exe: 'msedge.exe' },
+  whale:      { label: '웨일',       match: 'whale.exe',    exe: 'whale.exe' },
+  powerpoint: { label: '파워포인트', match: 'POWERPNT.EXE', ext: '.pptx' },
+  excel:      { label: '엑셀',       match: 'EXCEL.EXE',    ext: '.xlsx' },
+  hwp:        { label: '한글',       match: 'Hwp.exe',      ext: '.hwp' },
 };
+
+// 윈도우: cmd의 start(ShellExecute)로 열어 브라우저·문서 프로그램이 실행기와 떨어진 독립 프로그램으로 뜨게 한다.
+// 인자를 직접 따옴표로 감싸 넘긴다 (Node가 "" 같은 인자를 \"\"로 바꿔 cmd가 잘못 읽는 것을 피한다).
+const q = s => `"${String(s).replace(/"/g, '')}"`;
+function winStart(target, ...args){
+  const line = ['start', '""', q(target), ...args.map(q)].join(' ');
+  spawn('cmd.exe', ['/d', '/s', '/c', `"${line}"`], { detached: true, stdio: 'ignore', windowsHide: true, windowsVerbatimArguments: true }).unref();
+}
+/** 확장자에 연결된 프로그램 실행 파일 (예: .hwp → …\Hwp.exe). */
+function assocExe(ext){
+  const run = (...a) => execFileSync('cmd.exe', ['/d', '/c', ...a], { encoding: 'utf8' }).trim();
+  const prog = run('assoc', ext).split('=')[1];
+  const cmdline = run('ftype', prog).split('=').slice(1).join('=');
+  return cmdline.match(/^"([^"]+)"/)?.[1] ?? cmdline.split(' ')[0];
+}
 
 function openBrowserWindow(key, url){
   const a = APPS[key];
@@ -77,14 +93,19 @@ function openBrowserWindow(key, url){
     // -n: 새 실행 요청을 보내야 이미 켜진 브라우저도 --new-window 인자를 받는다
     execFileSync('open', ['-na', a.app, '--args', '--new-window', url]);
   } else {
-    spawn('cmd.exe', ['/d', '/s', '/c', 'start', '""', a.exe, '--new-window', url], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+    winStart(a.exe, '--new-window', url);
   }
 }
 
 function openFile(key, file){
   const a = APPS[key];
   if (IS_MAC) execFileSync('open', file ? ['-a', a.app, file] : ['-a', a.app]);
-  else spawn('cmd.exe', ['/d', '/s', '/c', 'start', '""', file], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+  else if (file) winStart(file);
+  else {
+    let exe;
+    try { exe = assocExe(a.ext); } catch { throw new Error(`${a.label}가 설치되어 있지 않습니다 (${a.ext} 연결 프로그램 없음)`); }
+    winStart(exe);
+  }
 }
 
 // ---------- 로컬 파일 제공 ----------
@@ -319,7 +340,9 @@ function pickHwpSample(){
 }
 
 function finish(){
+  // 브라우저는 창을 닫아도 뒤에서 계속 실행되며 연결을 붙잡고 있다 (윈도우 크롬·엣지). 연결까지 끊어야 실행기가 끝난다.
   ctx.files?.server.close();
+  ctx.files?.server.closeAllConnections();
   mkdirSync(OUT, { recursive: true });
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   const file = path.join(OUT, `report-${process.platform}-${stamp}.json`);

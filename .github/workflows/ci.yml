@@ -23,6 +23,23 @@ jobs:
         run: npm test
         working-directory: app
 
+  win-helper:
+    name: 윈도우 도우미 실행 확인
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+        working-directory: poc/win-helper
+      - name: 윈도우 API 불러오기·창 목록 읽기
+        run: |
+          node winctl.js trusted
+          node winctl.js displays
+          node winctl.js list
+        working-directory: poc/win-helper
+
   mac-helper:
     name: 맥 도우미 빌드
     runs-on: macos-latest
