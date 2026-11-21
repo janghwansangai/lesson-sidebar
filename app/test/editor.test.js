@@ -7,7 +7,7 @@ import path from 'node:path';
 import { LessonDoc } from '../src/core/editor.js';
 import { detectUrl, safeName, typeOfFile } from '../src/core/types.js';
 import { listLessons } from '../src/core/library.js';
-import { writeLock, otherLock, readLock } from '../src/core/lock.js';
+import { writeLock, otherLock, readLocks, clearLock } from '../src/core/lock.js';
 import { loadLesson } from '../src/core/lesson.js';
 
 const tmp = () => mkdtempSync(path.join(os.tmpdir(), 'prep-'));
@@ -137,7 +137,19 @@ test('잠금: 다른 PC가 5분 안에 잡은 잠금만 알린다', () => {
   writeLock(d, '교실 윈도우 PC');
   assert.equal(otherLock(d, '맥북').device, '교실 윈도우 PC');
   assert.equal(otherLock(d, '교실 윈도우 PC'), null);
-  assert.equal(otherLock(d, '맥북', readLock(d).at + 6 * 60 * 1000), null);
+  const at = readLocks(d)[0].at;
+  assert.equal(otherLock(d, '맥북', at + 6 * 60 * 1000), null);
+});
+
+test('잠금: 이 PC가 잠금을 써도 다른 PC의 잠금은 지워지지 않는다 (PC마다 따로 저장)', () => {
+  const d = tmp();
+  writeLock(d, '교실 윈도우 PC');
+  writeLock(d, '맥북');                      // 이 맥이 같은 수업을 엶
+  assert.equal(readLocks(d).length, 2);
+  assert.equal(otherLock(d, '맥북').device, '교실 윈도우 PC');
+  clearLock(d, '맥북');                      // 이 맥이 닫아도
+  assert.equal(otherLock(d, '맥북').device, '교실 윈도우 PC');   // 윈도우 PC 기록은 남음
+  assert.deepEqual(readLocks(d).map(l => l.device), ['교실 윈도우 PC']);
 });
 
 test('수업 폴더 밖 경로로는 파일을 쓰지 않는다', () => {
