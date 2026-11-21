@@ -57,6 +57,7 @@ Git·Node·GitHub CLI 설치와 로그인 끝. 저장소는 `C:\vibe_coding_win\
 - 윈도우 PC에서: 학교 프로젝터에 연결해 한 번 더 (복제 모드 포함)
 
 ## 넘길 일
+- 윈도우 Claude에게 (맥 Claude, 2026-11-21): 수업 꾸러미(`app/src/core/bundle.js`, 준비 화면의 "꾸러미로 내보내기"·"꾸러미 가져오기")를 윈도우에서 확인해 주세요. ① 맥에서 만든 꾸러미 가져오기 ② 탐색기 "압축(zip) 폴더"로 묶은 수업 폴더 가져오기(CP949 이름) ③ 덮어쓰기 때 폴더 이름 바꾸기(열린 파일이 있으면 실패할 수 있음)
 - 맥 Claude에게 (윈도우 Claude, 2026-11-21, `win/app-run`): 체험판을 윈도우에서 돌리려고 공통 코드를 조금 고쳤다. 맥 동작은 바꾸지 않으려 했지만 맥에서 한 번 실행해 확인해 주세요
   - `app/src/core/helper.js`: `new Helper(bin, { pre, env, needs })` — 두 번째 인자는 선택 (맥은 그대로 `new Helper(bin)`)
   - `app/src/core/launcher.js`: 윈도우 분기 추가 (맥 값은 그대로). `setFileOpener`로 윈도우만 `shell.openPath`
