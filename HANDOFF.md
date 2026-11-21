@@ -1,4 +1,4 @@
-# 인수인계 — 2026-11-22 (맥 Claude 작성)
+# 인수인계 — 2026-11-22 (맥 Claude 작성) · 윈도우 도우미 부분은 윈도우 Claude가 이어서 고침
 
 > 이 파일만 읽으면 이어서 일할 수 있게 쓴다. 작업을 시작하기 전에 읽고, 끝날 때 고친다.
 > 저장소: https://github.com/janghwansangai/lesson-sidebar (비공개)
@@ -14,7 +14,11 @@
 - **맥 체험판 첫 버전** (`app/`, Electron 45): 사이드바에서 열기·앞으로·학생 화면으로 보내기(⇄)·반반·닫기·다음·모두 미리 열기·다른 창 숨기기·자동 숨김·모니터 변화 처리·다시 켰을 때 다시 연결. 실행 방법은 `app/README.md`. 수업 진행 로직 테스트 10개 통과
   - 선생님 확인: 체험판 "잘 된다" (2026-11-21). 슬라이드 쇼 위 사이드바(항목 4)·모니터 뺐다 꽂기는 따로 확인 대기
 - **수업 준비 화면** (사이드바 아래 "수업 준비"): 수업 보관함, 새 수업, 파일 끌어다 놓기(복사)·링크·메모, 순서·이름·띄울 화면, 정리하기, 이 수업으로 진행, PC마다 잠금, 다른 PC 변경 자동 반영. 테스트 23개 통과. 선생님 직접 사용 확인 대기
-- 자동 검사(GitHub Actions): 맥·윈도우에서 `npm test`, 맥 도우미 빌드
+- **윈도우 도우미 첫 버전** (`poc/win-helper/winctl.js`, Node + koffi, 2026-11-21): 규격의 모든 명령 + `watch`. 실행기 1차 실행 **통과 15 · 건너뜀 1(외부 모니터 없음)** (`docs/poc/windows.md`)
+  - 크롬·엣지·웨일 새 창, 파워포인트·엑셀·한글(빈 문서) 열기·앞으로·반반/7:3 배치·닫기 모두 통과
+  - 윈도우에서 알게 된 것: 오피스 제목에 확장자가 붙음, 엣지 제목에 보이지 않는 글자(U+200B), 브라우저가 창을 닫아도 뒤에서 살아 있어 로컬 파일 제공 연결을 끊어야 함(실행기 고침), 그림자 테두리 보정
+  - 시험한 PC: 노트북 화면 한 대(1920×1080, 100%). 외부 모니터·배율 다른 모니터는 아직
+- 자동 검사(GitHub Actions): 맥·윈도우에서 `npm test`, 맥 도우미 빌드, 윈도우 도우미 실행 확인
 
 ## 다음 할 일 — 맥 Claude
 1. (완료) 맥 항목 1·2·3 검증. 손쉬운 사용 권한은 Claude Code(`claude.app`)에 켜져 있음 — Claude가 업데이트되면 다시 켜야 할 수 있음
@@ -24,35 +28,25 @@
 4. 항목 5(60분 녹화) 시험, 도우미를 계속 켜 두는 방식으로 앞으로 가져오기 속도 줄이기
 5. 작업은 `mac/…` 브랜치에서, PR로 합치기
 
-## 다음 할 일 — 윈도우 Claude (처음 시작)
-**읽을 것만 읽는다 (토큰 절약).** 아래 순서로, 이것만 읽으면 시작할 수 있다.
-1. `CLAUDE.md`(자동으로 읽힘) → `docs/poc/helper-protocol.md` → `poc/win-helper/README.md` → `docs/poc/mac.md`의 "알게 된 것" → 필요할 때만 `docs/PLAN.md` 4장·6장·10.1장
-   - **읽지 않아도 되는 것**: `design/prototype.html`(큰 시안 파일), `docs/PLAN.md` 전체, `app/`(맥 체험판 — 윈도우 도우미가 생긴 뒤에 맞춤), `poc/mac-helper/`(맥 전용, 명령 모양을 볼 때만 `main.swift`의 명령 부분)
-   - 큰 일 하나가 끝나면 이 파일을 고치고 새 대화로 시작한다 (긴 대화는 매번 앞 내용을 다시 읽어 토큰이 많이 든다)
-2. `git checkout -b win/helper`
-3. `poc/win-helper/`에 `package.json`(koffi) + `winctl.js` 만들기 — 규격은 `docs/poc/helper-protocol.md`
-4. `cd poc && npm test` 통과 확인
-5. `node runner/run.js --browsers=chrome,edge,whale` 실행. 실행기의 윈도우용 열기 명령(`APPS`, `openBrowserWindow`, `openFile`)은 실제 PC에 맞게 고친다
-6. 외부 모니터(또는 프로젝터)를 연결한 상태와 뺀 상태 모두 시험
-7. 결과를 `docs/poc/windows.md`에 기록, 이 파일의 "지금 상황"과 "넘길 일" 고치고 PR
+## 다음 할 일 — 윈도우 Claude
+**읽을 것만 읽는다 (토큰 절약).** `CLAUDE.md`(자동) → `docs/poc/windows.md` → `poc/win-helper/README.md`. 규격은 `docs/poc/helper-protocol.md`.
+- **읽지 않아도 되는 것**: `design/prototype.html`(큰 시안 파일), `docs/PLAN.md` 전체, `poc/mac-helper/`
+- 큰 일 하나가 끝나면 이 파일을 고치고 새 대화로 시작한다
+1. (완료) 윈도우 도우미 `poc/win-helper/winctl.js` + 실행기 윈도우 열기 명령 고침 + 1차 실행 (`win/helper` 브랜치, PR)
+2. 선생님이 함께: 다른 프로그램에 글자를 치는 도중 `node runner/raise-lock.js` → 결과를 `docs/poc/windows.md` "알게 된 것 1"에
+3. 외부 모니터(또는 프로젝터)를 연결하고 `node runner/run.js --browsers=chrome,edge,whale` → P3, 배율이 다른 모니터(예: 노트북 150% + 프로젝터 100%)에서 위치가 맞는지. 뺀 상태·다시 꽂은 상태도
+4. 한글 예시 파일을 받으면 `poc/samples/`에 넣고 F3 다시 시험
+5. `docs/poc/windows.md`의 "남은 것" 나머지 (관리자 권한 창, 저장 창이 떠 있을 때 닫기)
+6. 그다음: 맥 체험판(`app/`)을 윈도우 도우미로 돌려 보기 (그때 `app/`을 읽는다)
 
-## 윈도우 PC 준비 (사용자가 한 번만)
-PowerShell에서:
-```powershell
-winget install --id Git.Git -e
-winget install --id OpenJS.NodeJS.LTS -e
-winget install --id GitHub.cli -e
-```
-설치 후 PowerShell을 새로 열고:
-```powershell
-gh auth login
-gh repo clone janghwansangai/lesson-sidebar
-```
-그다음 Claude 앱(Code 탭)에서 `lesson-sidebar` 폴더를 열고 "HANDOFF.md 읽고 윈도우 쪽 기술 검증 시작해"라고 말한다.
+## 윈도우 PC 준비 (완료, 2026-11-21)
+Git·Node·GitHub CLI 설치와 로그인 끝. 저장소는 `C:\vibe_coding_win\lesson_sidebar`에 있다. 도우미를 처음 쓰기 전에 `poc\win-helper`에서 `npm install` 한 번.
 
 ## 사용자에게 받을 것
 - 학생 정보가 없는 예시 한글 파일(.hwp 또는 .hwpx) 하나
 - 눈으로 확인할 것: 슬라이드 쇼 위에 사이드바가 보이는지, 외부 모니터를 뺐다 꽂을 때 창이 모이고 돌아오는지, 수업 준비 화면 직접 써 보기
+- 윈도우 PC에서: `raise-lock.js` 시험을 함께 해 주기, 외부 모니터(또는 프로젝터) 연결
 
 ## 넘길 일
-- 없음
+- 맥 Claude에게: 실행기 `finish()`에 `closeAllConnections()`를 넣었다 (윈도우에서 브라우저가 뒤에 남아 실행기가 안 끝났음). 맥에서도 문제없는지 다음 실행 때 확인
+- 맥 Claude에게: 실제 앱에서 창 제목으로 프로그램을 구분하지 말 것 — 엣지 윈도우 제목에 U+200B가 들어 있다. 오피스 제목은 윈도우에서 확장자가 붙는다 (`findByTitle`은 이미 괜찮음)
