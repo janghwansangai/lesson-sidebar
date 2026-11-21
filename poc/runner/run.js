@@ -9,8 +9,10 @@
 //   node runner/run.js --keep                  끝나고 창을 닫지 않음
 
 import { execFileSync, spawn } from 'node:child_process';
-import { existsSync, mkdirSync, writeFileSync, readdirSync } from 'node:fs';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { existsSync, mkdirSync, writeFileSync, readdirSync, createReadStream } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { randomBytes } from 'node:crypto';
+import http from 'node:http';
 import path from 'node:path';
 import os from 'node:os';
 import * as M from '../lib/match.js';
@@ -49,10 +51,12 @@ function helper(...a){
 const list = app => helper('list', ...(app ? ['--app', app] : [])).windows;
 
 // ---------- 프로그램 열기 (OS별) ----------
+// 맥은 프로그램을 LaunchServices(open)로 연다. 실행 파일을 직접 부르면 부른 쪽의 제한을 물려받아
+// 브라우저가 자기 설정 폴더를 못 만들고 꺼지는 일이 있다 (1차 검증에서 엣지가 그랬다).
 const APPS = IS_MAC ? {
-  chrome:     { label: '크롬',       match: 'Google Chrome',  bin: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' },
-  edge:       { label: '엣지',       match: 'Microsoft Edge', bin: '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge' },
-  whale:      { label: '웨일',       match: 'Whale',          bin: '/Applications/Whale.app/Contents/MacOS/Whale' },
+  chrome:     { label: '크롬',       match: 'Google Chrome',  app: 'Google Chrome' },
+  edge:       { label: '엣지',       match: 'Microsoft Edge', app: 'Microsoft Edge' },
+  whale:      { label: '웨일',       match: 'Whale',          app: 'Whale' },
   powerpoint: { label: '파워포인트', match: 'PowerPoint',     app: 'Microsoft PowerPoint' },
   excel:      { label: '엑셀',       match: 'Excel',          app: 'Microsoft Excel' },
   hwp:        { label: '한글',       match: 'HWP',            app: 'Hancom Office HWP' },
@@ -69,8 +73,9 @@ const APPS = IS_MAC ? {
 function openBrowserWindow(key, url){
   const a = APPS[key];
   if (IS_MAC){
-    if (!existsSync(a.bin)) throw new Error(`${a.label}가 설치되어 있지 않습니다`);
-    spawn(a.bin, ['--new-window', url], { detached: true, stdio: 'ignore' }).unref();
+    if (!existsSync(`/Applications/${a.app}.app`)) throw new Error(`${a.label}가 설치되어 있지 않습니다`);
+    // -n: 새 실행 요청을 보내야 이미 켜진 브라우저도 --new-window 인자를 받는다
+    execFileSync('open', ['-na', a.app, '--args', '--new-window', url]);
   } else {
     spawn('cmd.exe', ['/d', '/s', '/c', 'start', '""', a.exe, '--new-window', url], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
   }
@@ -80,6 +85,26 @@ function openFile(key, file){
   const a = APPS[key];
   if (IS_MAC) execFileSync('open', file ? ['-a', a.app, file] : ['-a', a.app]);
   else spawn('cmd.exe', ['/d', '/s', '/c', 'start', '""', file], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+}
+
+// ---------- 로컬 파일 제공 ----------
+// 브라우저에 file:// 경로를 넘기면 맥의 폴더 보호(바탕화면·문서 등) 때문에 권한 창이 뜨거나 열리지 않고,
+// 학교 관리 브라우저는 file:// 자체를 막기도 한다. 그래서 127.0.0.1 주소로 수업 폴더 파일을 제공한다.
+// 무작위 토큰이 붙은 주소만 받고, 시험 자료 폴더 밖 파일은 주지 않는다.
+const MIME = { '.html': 'text/html; charset=utf-8', '.pdf': 'application/pdf', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.mp3': 'audio/mpeg', '.mp4': 'video/mp4' };
+function startFileServer(root){
+  const token = randomBytes(12).toString('hex');
+  const server = http.createServer((req, res) => {
+    const parts = new URL(req.url, 'http://127.0.0.1').pathname.split('/').filter(Boolean).map(s => decodeURIComponent(s));
+    const file = parts.length === 2 && parts[0] === token ? path.join(root, parts[1]) : null;
+    if (!file || parts[1].includes('..') || path.dirname(file) !== root || !existsSync(file)){ res.writeHead(404); res.end(); return; }
+    res.writeHead(200, { 'Content-Type': MIME[path.extname(file).toLowerCase()] ?? 'application/octet-stream', 'Cache-Control': 'no-store' });
+    createReadStream(file).pipe(res);
+  });
+  return new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', () => resolve({ server, url: name => `http://127.0.0.1:${server.address().port}/${token}/${encodeURIComponent(name)}` }));
+  });
 }
 
 async function waitFor(fn, timeout = 15000, every = 300){
@@ -148,9 +173,12 @@ async function main(){
   }
 
   // ---- 브라우저 새 창 ----
+  try { ctx.files = await startFileServer(SAMPLES); }
+  catch (e) { ctx.files = null; console.log(`로컬 파일 제공을 시작하지 못했습니다: ${e.message}`); }
   for (const b of BROWSERS){
     const A = APPS[b]; if (!A) continue;
-    const pages = ['page-a.html', 'page-b.html'].map(f => pathToFileURL(path.join(SAMPLES, f)).href);
+    if (!ctx.files){ await step(`B1-${b}`, `${A.label} 새 창`, () => ({ status: 'skip', detail: '로컬 파일 제공이 없어 건너뜀' })); continue; }
+    const pages = ['page-a.html', 'page-b.html'].map(f => ctx.files.url(f));
     const expect = ['수업 사이드바 시험 A', '수업 사이드바 시험 B'];
     ctx[b] = [];
     for (let i = 0; i < 2; i++){
@@ -198,14 +226,27 @@ async function main(){
     if (!wa || !wb) return { status: 'skip', detail: '브라우저 창이 둘 필요합니다' };
     const area = ctx.student ? M.workArea(ctx.student) : M.workArea(ctx.primary, SIDEBAR_WIDTH);
     const out = [];
-    for (const key of ['half', 'seventy']){
-      const [ra, rb] = M.tileRects(area, key);
-      const a = await moveCheck(wa, ra), b = await moveCheck(wb, rb);
-      out.push({ key, ok: a.ok && b.ok, a: a.actual, b: b.actual, ra, rb });
+    for (const [key, ratio] of [['half', 0.5], ['seventy', 0.7]]){
+      let [ra, rb] = M.tileRects(area, key);
+      let a = await moveCheck(wa, ra), b = await moveCheck(wb, rb);
+      let note = '';
+      // 창이 요청보다 넓게 남으면 그 프로그램의 최소 폭이다 → 조절 바처럼 그 폭에서 멈추도록 비율을 고쳐 다시 배치
+      if (!(a.ok && b.ok)){
+        const minA = a.actual.width > ra.width + 24 ? a.actual.width : 0;
+        const minB = b.actual.width > rb.width + 24 ? b.actual.width : 0;
+        const fixed = (minA || minB) ? M.fitRatio(area.width, ratio, minA, minB) : null;
+        if (fixed !== null){
+          [ra, rb] = M.tileRects(area, key, [fixed]);
+          a = await moveCheck(wa, ra); b = await moveCheck(wb, rb);
+          const p = Math.round(fixed * 100);
+          note = ` (최소 폭 ${Math.round(minA || minB)} 때문에 ${p}:${100 - p}로 조정)`;
+        }
+      }
+      out.push({ key, ok: a.ok && b.ok, a: a.actual, b: b.actual, ra, rb, note });
     }
     const bad = out.filter(o => !o.ok);
     return { status: bad.length ? 'fail' : 'pass',
-      detail: out.map(o => `${o.key}: ${o.ok ? '맞음' : `어긋남 A ${fmtRect(o.a)} / B ${fmtRect(o.b)} (요청 ${fmtRect(o.ra)} / ${fmtRect(o.rb)})`}`).join(' · ') + (ctx.student ? ' · 학생 화면' : ' · 사이드바 뺀 영역'),
+      detail: out.map(o => `${o.key}: ${o.ok ? '맞음' + o.note : `어긋남 A ${fmtRect(o.a)} / B ${fmtRect(o.b)} (요청 ${fmtRect(o.ra)} / ${fmtRect(o.rb)})`}`).join(' · ') + (ctx.student ? ' · 학생 화면' : ' · 사이드바 뺀 영역'),
       data: out };
   });
 
@@ -262,8 +303,8 @@ async function main(){
         try { helper('close', String(c.wid)); res.push({ ...c, sent: true }); }
         catch (e) { res.push({ ...c, sent: false, error: e.message }); }
       }
-      await sleep(1500);
-      const alive = new Set(list().map(w => w.wid));
+      const { value: gone } = await waitFor(() => { const ids = new Set(list().map(w => w.wid)); return res.every(c => !ids.has(c.wid)) ? true : null; }, 6000, 500);
+      const alive = gone ? new Set() : new Set(list().map(w => w.wid));
       const left = res.filter(c => alive.has(c.wid));
       return { status: left.length ? 'warn' : 'pass',
         detail: left.length ? `남은 창: ${left.map(c => c.label).join(', ')} (저장 여부를 묻는 창일 수 있음)` : `${res.length}개 모두 닫힘`, data: res };
@@ -278,6 +319,7 @@ function pickHwpSample(){
 }
 
 function finish(){
+  ctx.files?.server.close();
   mkdirSync(OUT, { recursive: true });
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   const file = path.join(OUT, `report-${process.platform}-${stamp}.json`);

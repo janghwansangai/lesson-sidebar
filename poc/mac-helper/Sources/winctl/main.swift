@@ -72,22 +72,43 @@ func rectJSON(_ r: CGRect) -> [String: Any] {
 
 // MARK: - 모니터
 
+/// 화면마다 떠 있는 메뉴 막대 창의 위치 (CGWindow 좌표 = 왼쪽 위 기준).
+/// NSScreen.visibleFrame이 주 모니터가 아닌 화면의 메뉴 막대를 빼 주지 않는 경우가 있어 직접 찾는다.
+func menuBars() -> [CGRect] {
+    let level = Int(CGWindowLevelForKey(.mainMenuWindow))
+    guard let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] else { return [] }
+    return list.compactMap { w in
+        guard (w[kCGWindowLayer as String] as? Int) == level, let b = w[kCGWindowBounds as String] else { return nil }
+        return CGRect(dictionaryRepresentation: b as! CFDictionary)
+    }
+}
+
 /// 화면 좌표는 왼쪽 위가 (0,0)인 접근성 좌표계로 맞춘다 (NSScreen은 왼쪽 아래 기준).
 func displayList() -> [[String: Any]] {
     let screens = NSScreen.screens
     guard let primary = screens.first else { return [] }
     let ph = primary.frame.height
     func flip(_ r: CGRect) -> CGRect { CGRect(x: r.minX, y: ph - r.maxY, width: r.width, height: r.height) }
+    let bars = menuBars()
     return screens.enumerated().map { (i, sc) in
         let id = (sc.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value ?? 0
-        var d = rectJSON(flip(sc.frame))
+        let fr = flip(sc.frame)
+        var vis = flip(sc.visibleFrame)
+        var barHeight = 0.0
+        if let bar = bars.first(where: { $0.intersects(fr) && abs($0.minY - fr.minY) < 1 }) {
+            barHeight = Double(bar.height)
+            let top = max(vis.minY, bar.maxY)
+            vis = CGRect(x: vis.minX, y: top, width: vis.width, height: vis.maxY - top)
+        }
+        var d = rectJSON(fr)
         d["index"] = i
         d["id"] = Int(id)
         d["name"] = sc.localizedName
         d["primary"] = (i == 0)
         d["builtin"] = CGDisplayIsBuiltin(id) != 0
         d["scale"] = Double(sc.backingScaleFactor)
-        d["visible"] = rectJSON(flip(sc.visibleFrame))
+        d["menuBar"] = barHeight
+        d["visible"] = rectJSON(vis)
         return d
     }
 }

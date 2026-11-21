@@ -55,6 +55,13 @@ test('배치 5종이 영역을 빈틈없이 채운다', () => {
   assert.throws(() => M.tileRects(area, 'nope'));
 });
 
+test('분할 비율은 창 최소 폭에서 멈춘다 (브라우저 최소 폭 500)', () => {
+  assert.equal(M.fitRatio(1280, 0.5, 500, 500), 0.5);
+  assert.ok(Math.abs(M.fitRatio(1280, 0.7, 0, 500) - (1 - 500 / 1280)) < 1e-9);
+  assert.ok(Math.abs(M.fitRatio(1280, 0.2, 500, 0) - 500 / 1280) < 1e-9);
+  assert.equal(M.fitRatio(900, 0.5, 500, 500), null);
+});
+
 test('위치 비교는 허용 오차 안이면 통과', () => {
   assert.ok(M.rectClose({ x: 0, y: 0, width: 100, height: 100 }, { x: 10, y: 0, width: 100, height: 112 }));
   assert.equal(M.rectClose({ x: 0, y: 0, width: 100, height: 100 }, { x: 40, y: 0, width: 100, height: 100 }), false);
