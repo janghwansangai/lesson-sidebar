@@ -69,6 +69,16 @@ test('파일을 수업 폴더로 복사하고(원본 유지), 실행 파일은 �
   assert.equal(lesson.items.find(i => i.type === 'memo').screen, 'teacher');
 });
 
+test('문서를 여는 동안 생기는 잠금 파일(~$…)과 숨김 파일은 넣지 않는다', async () => {
+  const d = tmp();
+  for (const n of ['~$수업자료.pptx', '.DS_Store', '수업자료.pptx']) writeFileSync(path.join(d, n), 'x');
+  const doc = LessonDoc.create(tmp(), { title: '시험', date: '2026-12-05' });
+  const r = await doc.addFiles(readdirSync(d).map(n => path.join(d, n)), doc.data.sections[1].id);
+  assert.deepEqual(r.added.map(a => a.title), ['수업자료']);
+  assert.equal(r.skipped.length, 2);
+  assert.match(r.skipped[0].reason, /임시 파일/);
+});
+
 test('순서를 바꾸고 "정리하기"하면 파일 이름·폴더가 새 순서를 따른다 (열린 파일은 건너뜀)', async () => {
   const src = sourceFiles();
   const doc = LessonDoc.create(tmp(), { title: '시험', date: '2026-12-05' });
