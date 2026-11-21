@@ -1,4 +1,4 @@
-# 인수인계 — 2026-11-21 (맥 Claude 작성)
+# 인수인계 — 2026-11-22 (맥 Claude 작성)
 
 > 이 파일만 읽으면 이어서 일할 수 있게 쓴다. 작업을 시작하기 전에 읽고, 끝날 때 고친다.
 > 저장소: https://github.com/janghwansangai/lesson-sidebar (비공개)
@@ -22,10 +22,13 @@
 2-1. 외부 모니터를 뺐다가 다시 꽂는 시험(손으로), 프로그램이 꺼진 상태에서 "모두 미리 열기" 시간 재기
 3. 수업 준비 화면에 선생님 의견 반영 → 설치판(더블클릭 .app, 자기 이름으로 손쉬운 사용 권한) → 꾸러미 zip, 사전 점검
 4. 항목 5(60분 녹화) 시험, 도우미를 계속 켜 두는 방식으로 앞으로 가져오기 속도 줄이기
-4. 작업은 `mac/…` 브랜치에서, PR로 합치기
+5. 작업은 `mac/…` 브랜치에서, PR로 합치기
 
 ## 다음 할 일 — 윈도우 Claude (처음 시작)
-1. 읽을 것: `CLAUDE.md` → `docs/PLAN.md`(0장, 4장, 6장, 10.1장) → `docs/poc/README.md` → `docs/poc/helper-protocol.md` → `poc/win-helper/README.md`
+**읽을 것만 읽는다 (토큰 절약).** 아래 순서로, 이것만 읽으면 시작할 수 있다.
+1. `CLAUDE.md`(자동으로 읽힘) → `docs/poc/helper-protocol.md` → `poc/win-helper/README.md` → `docs/poc/mac.md`의 "알게 된 것" → 필요할 때만 `docs/PLAN.md` 4장·6장·10.1장
+   - **읽지 않아도 되는 것**: `design/prototype.html`(큰 시안 파일), `docs/PLAN.md` 전체, `app/`(맥 체험판 — 윈도우 도우미가 생긴 뒤에 맞춤), `poc/mac-helper/`(맥 전용, 명령 모양을 볼 때만 `main.swift`의 명령 부분)
+   - 큰 일 하나가 끝나면 이 파일을 고치고 새 대화로 시작한다 (긴 대화는 매번 앞 내용을 다시 읽어 토큰이 많이 든다)
 2. `git checkout -b win/helper`
 3. `poc/win-helper/`에 `package.json`(koffi) + `winctl.js` 만들기 — 규격은 `docs/poc/helper-protocol.md`
 4. `cd poc && npm test` 통과 확인
@@ -48,9 +51,8 @@ gh repo clone janghwansangai/lesson-sidebar
 그다음 Claude 앱(Code 탭)에서 `lesson-sidebar` 폴더를 열고 "HANDOFF.md 읽고 윈도우 쪽 기술 검증 시작해"라고 말한다.
 
 ## 사용자에게 받을 것
-- 맥: Claude 앱의 "손쉬운 사용" 권한 (시스템 설정 → 개인정보 보호 및 보안 → 손쉬운 사용)
 - 학생 정보가 없는 예시 한글 파일(.hwp 또는 .hwpx) 하나
-- 눈으로 확인할 것: 실행기가 돌 때 창이 학생 화면(외부 모니터)으로 제대로 옮겨지는지
+- 눈으로 확인할 것: 슬라이드 쇼 위에 사이드바가 보이는지, 외부 모니터를 뺐다 꽂을 때 창이 모이고 돌아오는지, 수업 준비 화면 직접 써 보기
 
 ## 넘길 일
 - 없음
