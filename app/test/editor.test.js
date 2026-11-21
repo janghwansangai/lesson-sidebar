@@ -100,11 +100,29 @@ test('자료를 빼면 파일은 .sidebar/휴지통으로 간다', async () => {
 
 test('저장은 바꿔치기로 하고 백업은 최근 10개만 남긴다', () => {
   const doc = LessonDoc.create(tmp(), { title: '시험', date: '2026-12-05' });
-  for (let i = 0; i < 14; i++){ doc.setInfo({ title: `시험 ${i}` }); doc.save(); }
+  for (let i = 0; i < 14; i++){ doc.backedUpAt = 0; doc.setInfo({ title: `시험 ${i}` }); doc.save(); }   // 1분씩 지났다고 치고
   const backups = readdirSync(path.join(doc.root, '.sidebar', 'backup'));
   assert.ok(backups.length <= 10);
   assert.equal(JSON.parse(readFileSync(doc.file, 'utf8')).title, '시험 13');
   assert.ok(!readdirSync(doc.root).some(f => f.includes('.tmp-')));
+});
+
+test('글자 칠 때마다 저장해도 백업은 1분에 하나, 다른 곳에서 바뀐 파일은 덮기 전에 백업', async () => {
+  const doc = LessonDoc.create(tmp(), { title: '시험', date: '2026-12-05' });
+  const dir = path.join(doc.root, '.sidebar', 'backup');
+  const count = () => readdirSync(dir).length;
+  for (const t of ['A', 'AI', 'AI 연', 'AI 연수']){ doc.setInfo({ title: t }); doc.save(); }
+  assert.equal(count(), 1);                  // 4번 저장, 백업은 1개
+  doc.backedUpAt -= 61 * 1000;               // 1분이 지나면
+  doc.setInfo({ title: 'AI 연수 1차' }); doc.save();
+  assert.equal(count(), 2);                  // 다시 백업
+  await new Promise(r => setTimeout(r, 20));
+  const d = JSON.parse(readFileSync(doc.file, 'utf8')); d.title = '윈도우에서 고침';
+  writeFileSync(doc.file, JSON.stringify(d));   // 다른 PC가 고친 파일이 동기화로 내려옴
+  doc.setInfo({ title: '맥에서 고침' }); doc.save();
+  assert.equal(count(), 3);                  // 1분이 안 됐어도 덮기 전에 백업
+  const newest = readdirSync(dir).sort().at(-1);
+  assert.equal(JSON.parse(readFileSync(path.join(dir, newest), 'utf8')).title, '윈도우에서 고침');
 });
 
 test('다른 곳에서 lesson.json이 바뀌면 알아챈다', async () => {

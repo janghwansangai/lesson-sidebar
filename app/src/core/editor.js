@@ -7,6 +7,7 @@ import { BLOCKED, typeOfFile, detectUrl, safeName, pad2, extOf, START_HINT } fro
 import { deviceName } from './lock.js';
 
 const BACKUPS = 10;
+const BACKUP_GAP_MS = 60 * 1000;
 const newId = p => `${p}_${randomBytes(4).toString('hex')}`;
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -15,6 +16,7 @@ export class LessonDoc {
     this.root = path.resolve(root);
     this.data = null;
     this.mtime = 0;
+    this.backedUpAt = 0;   // 마지막으로 백업을 만든 때
   }
 
   get file(){ return path.join(this.root, 'lesson.json'); }
@@ -60,7 +62,11 @@ export class LessonDoc {
     d.updatedAt = new Date().toISOString();
     d.device = deviceName();
     const side = path.join(this.root, '.sidebar', 'backup');
-    if (existsSync(this.file)){
+    // 글자를 칠 때마다 저장하므로 백업은 1분에 하나만 만든다 (오래된 백업이 금방 밀려나지 않게).
+    // 다른 PC 등에서 바뀐 파일을 덮어쓰게 될 때는 시간과 상관없이 먼저 백업한다.
+    const now = Date.now();
+    if (existsSync(this.file) && (this.changedOutside() || now - this.backedUpAt >= BACKUP_GAP_MS)){
+      this.backedUpAt = now;
       mkdirSync(side, { recursive: true });
       const stamp = new Date().toISOString().replace(/[:.]/g, '-');
       writeFileSync(path.join(side, `lesson-${stamp}.json`), readFileSync(this.file));

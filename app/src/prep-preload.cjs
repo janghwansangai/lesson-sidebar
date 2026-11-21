@@ -4,6 +4,8 @@ const { contextBridge, ipcRenderer, webUtils } = require('electron');
 contextBridge.exposeInMainWorld('prep', {
   state: () => ipcRenderer.invoke('prep:state'),
   act: (action, payload) => ipcRenderer.invoke('prep:act', action, payload ?? {}),
+  // 창이 닫히는 순간에 쓰는 동기 저장 (끝날 때까지 기다린다)
+  actSync: (action, payload) => ipcRenderer.sendSync('prep:act-sync', action, payload ?? {}),
   onState: cb => {
     const h = (_e, s) => cb(s);
     ipcRenderer.on('prep:state', h);
