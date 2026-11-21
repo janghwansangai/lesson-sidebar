@@ -71,19 +71,14 @@ function barRect(){
   return { x: wa.x, y: Math.round(wa.y + wa.height / 2 - BAR_H / 2), width: BAR_W, height: BAR_H };
 }
 
-// 윈도우는 창이 약 32픽셀보다 좁아지지 않으므로, 창 모양(setShape)으로 막대 부분만 보이고 눌리게 자른다 (맥은 setShape 없음, 창 자체가 막대 크기)
-const canShape = () => process.platform !== 'darwin' && typeof win?.setShape === 'function';
-
+// 접으면 창을 막대 크기로 줄인다. 윈도우는 창이 약 32픽셀보다 좁아지지 않아, 창을 투명하게 만들고(transparent) 막대만 그린다.
+// (창 모양 setShape는 클릭만 막고 그리기는 막지 못해 회색 띠가 남았다 — docs/poc/windows.md 체험판 6)
+// 접힌 동안은 창 전체가 클릭을 아래 창으로 넘긴다. 펼치기는 마우스 위치(watchCursor)로 판단하므로 클릭이 필요 없다.
 function placeSidebar(){
   if (!win) return;
   const wa = teacherArea();
-  if (collapsed){
-    win.setBounds(barRect());
-    if (canShape()) win.setShape([{ x: 0, y: 0, width: BAR_W, height: BAR_H }]);
-  } else {
-    if (canShape()) win.setShape([]);
-    win.setBounds({ x: wa.x, y: wa.y, width: SIDEBAR_W, height: wa.height });
-  }
+  win.setIgnoreMouseEvents(collapsed);
+  win.setBounds(collapsed ? barRect() : { x: wa.x, y: wa.y, width: SIDEBAR_W, height: wa.height });
 }
 
 const SECURE = file => ({ preload: path.join(HERE, file), contextIsolation: true, sandbox: true, nodeIntegration: false });
@@ -98,9 +93,11 @@ function createSidebar(){
   win = new BrowserWindow({
     x: wa.x, y: wa.y, width: SIDEBAR_W, height: wa.height,
     frame: false, resizable: false, movable: false, minimizable: false, maximizable: false, fullscreenable: false,
-    alwaysOnTop: true, skipTaskbar: true, show: false, backgroundColor: '#1b2f2a', title: '수업 사이드바',
+    alwaysOnTop: true, skipTaskbar: true, show: false, title: '수업 사이드바',
+    // 접은 막대 주변이 비쳐 보이도록 투명 창. 펼쳤을 때는 화면(body)의 칠판색 배경이 창을 채운다
+    transparent: true, backgroundColor: '#00000000',
     type: process.platform === 'darwin' ? 'panel' : undefined,
-    // 윈도우: 보이지 않는 크기 조절 테두리(8픽셀)를 없앤다. 있으면 창 모양(setShape)이 그만큼 왼쪽으로 밀려 막대가 화면 밖에 그려진다
+    // 윈도우: 보이지 않는 크기 조절 테두리(8픽셀)를 없애 창이 화면 왼쪽 끝(x=0)에 정확히 붙게 한다 (투명 창에도 필요)
     thickFrame: false,
     webPreferences: SECURE('preload.cjs'),
   });
