@@ -20,7 +20,16 @@ export function suggestRoots(){
       }
     }
   } catch { /* 구글 드라이브 없음 */ }
-  out.push({ kind: 'documents', label: '이 맥의 문서 폴더', path: path.join(home, 'Documents', LIB_NAME) });
+  if (process.platform === 'win32'){
+    // 윈도우의 구글 드라이브 데스크톱은 드라이브 문자(보통 G:)로 붙는다
+    for (const letter of 'GHIJKLMNOPQRSTUVWXYZDEF'){
+      for (const my of ['내 드라이브', 'My Drive']){
+        const p = `${letter}:\\${my}`;
+        if (existsSync(p)) out.push({ kind: 'drive', label: `구글 드라이브 (${letter}:)`, path: path.join(p, LIB_NAME) });
+      }
+    }
+  }
+  out.push({ kind: 'documents', label: process.platform === 'win32' ? '이 PC의 문서 폴더' : '이 맥의 문서 폴더', path: path.join(home, 'Documents', LIB_NAME) });
   return out;
 }
 

@@ -1,4 +1,4 @@
-// 수업 사이드바 체험판 — Electron 시작점 (맥)
+// 수업 사이드바 체험판 — Electron 시작점 (맥·윈도우)
 // 사이드바 창(교사 화면 왼쪽)과 수업 준비 창을 띄우고, 수업 진행 로직(Session)·수업 편집(LessonDoc)과 잇는다.
 import { app, BrowserWindow, ipcMain, screen, dialog, shell } from 'electron';
 import { readFileSync, writeFileSync, mkdirSync, existsSync, statSync } from 'node:fs';
@@ -13,6 +13,7 @@ import { Session } from './core/session.js';
 import { LessonDoc } from './core/editor.js';
 import { listLessons, suggestRoots, LIB_NAME } from './core/library.js';
 import { writeLock, clearLock, otherLock, deviceName } from './core/lock.js';
+import * as L from './core/launcher.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const APP_DIR = path.resolve(HERE, '..');
@@ -30,9 +31,21 @@ if (!app.isPackaged){
   app.setPath('logs', path.join(ud, 'logs'));
 }
 
-const helperPath = () => app.isPackaged
-  ? path.join(process.resourcesPath, 'winctl')
-  : path.join(REPO, 'poc', 'mac-helper', '.build', 'release', 'winctl');
+const IS_WIN = process.platform === 'win32';
+
+/** 창 관리 도우미. 윈도우는 winctl.js를 Electron에 들어 있는 Node로 실행한다 (koffi는 N-API라 그대로 동작). */
+function makeHelper(){
+  if (IS_WIN){
+    const dir = app.isPackaged ? path.join(process.resourcesPath, 'win-helper') : path.join(REPO, 'poc', 'win-helper');
+    const script = path.join(dir, 'winctl.js');
+    return {
+      helper: new Helper(process.execPath, { pre: [script], env: { ELECTRON_RUN_AS_NODE: '1' }, needs: [script, path.join(dir, 'node_modules', 'koffi')] }),
+      where: script, fix: 'poc\\win-helper 폴더에서 npm install',
+    };
+  }
+  const bin = app.isPackaged ? path.join(process.resourcesPath, 'winctl') : path.join(REPO, 'poc', 'mac-helper', '.build', 'release', 'winctl');
+  return { helper: new Helper(bin), where: bin, fix: 'poc 폴더에서 npm run build:mac' };
+}
 
 let win = null, prepWin = null, session = null, helper = null, files = null;
 let collapsed = false, outSince = 0, cursorTimer = null;
@@ -161,7 +174,7 @@ function prepSnapshot(){
   return {
     library: { root, lessons: root ? listLessons(root) : [], suggestions: root ? [] : suggestRoots(), libName: LIB_NAME },
     doc: doc ? { ...doc.snapshot(), lockedBy } : null,
-    running: session.lesson?.root ?? null, openIds, device: DEVICE, msg: prepMsg,
+    running: session.lesson?.root ?? null, openIds, device: DEVICE, msg: prepMsg, platform: process.platform,
   };
 }
 function prepPush(){ prepWin?.webContents.send('prep:state', prepSnapshot()); }
@@ -246,7 +259,13 @@ const PREP_ACTIONS = {
       ? `파일 ${r.renamed.length}개 이름을 순서에 맞췄습니다${r.skipped.length ? ` · ${r.skipped.length}개는 건너뜀 (${r.skipped.map(s => `${s.title}: ${s.reason}`).join(', ')})` : ''}`
       : '이미 순서대로 정리되어 있습니다');
   },
-  editMemo(p){ const loc = needDoc().locate(str(p.id, 60)); if (loc?.item.file) shell.openPath(doc.abs(loc.item.file)); },
+  editMemo(p){
+    const loc = needDoc().locate(str(p.id, 60));
+    if (!loc?.item.file) return;
+    // 윈도우는 .md에 연결된 프로그램이 없는 PC가 많아 메모장으로 연다
+    if (IS_WIN) return L.openWithApp(L.APPS.text, doc.abs(loc.item.file));
+    shell.openPath(doc.abs(loc.item.file));
+  },
   reveal(){ shell.openPath(needDoc().root); },
   run(){
     const d = needDoc();
@@ -355,14 +374,17 @@ async function startDebugServer(){
 // ---------- 시작 ----------
 app.whenReady().then(async () => {
   if (process.platform === 'darwin') app.dock?.hide();
-  helper = new Helper(helperPath());
+  const h = makeHelper();
+  helper = h.helper;
   if (!helper.available()){
-    dialog.showErrorBox('수업 사이드바', `창 관리 도우미를 찾지 못했습니다.\n${helperPath()}\n(poc 폴더에서 npm run build:mac)`);
+    dialog.showErrorBox('수업 사이드바', `창 관리 도우미를 찾지 못했습니다.\n${h.where}\n(${h.fix})`);
     app.quit();
     return;
   }
+  // 윈도우: 문서는 Electron의 shell.openPath(ShellExecute)로 연다 — cmd를 거치지 않아 파일 이름의 특수 문자도 안전
+  if (IS_WIN) L.setFileOpener(async p => { const err = await shell.openPath(p); if (err) throw new Error(err); });
   files = await startFileServer(() => session?.lesson?.root);
-  session = new Session({ helper, files, ownPid: process.pid, sidebarWidth: SIDEBAR_W });
+  session = new Session({ helper, files, ownPid: process.pid, sidebarWidth: SIDEBAR_W, physicalPixels: IS_WIN });
   session.on('change', push);
   await session.refreshDisplays();
 

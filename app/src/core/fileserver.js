@@ -54,6 +54,7 @@ export async function startFileServer(getRoot){
   const port = server.address().port;
   return {
     url: rel => `http://127.0.0.1:${port}/${token}/` + rel.split('/').map(encodeURIComponent).join('/'),
-    close: () => server.close(),
+    // 브라우저는 창을 닫아도 뒤에 남아 연결을 붙잡고 있으므로 연결까지 끊는다 (docs/poc/windows.md 3)
+    close: () => { server.close(); server.closeAllConnections?.(); },
   };
 }
