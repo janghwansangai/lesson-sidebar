@@ -123,7 +123,7 @@ function setAutoHide(v){
   collapsed = session.autoHide;
   placeSidebar();
   if (session.autoHide) cursorTimer = setInterval(watchCursor, 120);
-  session.say(session.autoHide ? '자동 숨김: 화면 왼쪽 가운데 노란 막대 옆으로 마우스를 밀면 나타납니다' : '사이드바를 화면 왼쪽에 고정했습니다');
+  session.say(session.autoHide ? '자동 숨김: 화면 왼쪽 끝에 마우스를 대면 나타납니다 (왼쪽 가운데 노란 막대)' : '사이드바를 화면 왼쪽에 고정했습니다');
 }
 
 let lastCursor = null;

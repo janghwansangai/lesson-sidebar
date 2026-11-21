@@ -22,8 +22,9 @@ export const APPS = IS_WIN ? {
   powerpoint: { app: 'PowerPoint',  match: 'POWERPNT.EXE', ext: '.pptx', label: '파워포인트' },
   excel:      { app: 'Excel',       match: 'EXCEL.EXE',    ext: '.xlsx', label: '엑셀' },
   hwp:        { app: 'Hwp',         match: 'Hwp.exe',      ext: '.hwp',  label: '한글' },
-  // 진행 메모(.md)는 연결된 프로그램이 없는 PC가 많아 메모장으로 직접 연다
-  text:       { app: 'notepad.exe', match: 'notepad.exe',  exe: 'notepad.exe', label: '메모장' },
+  // 진행 메모(.md)는 연결된 프로그램이 없는 PC가 많아 메모장으로 직접 연다.
+  // tabbed: 윈도우 11 메모장은 이미 열린 창에 탭으로 연다 → 사이드바가 창을 닫을 때 조심 (session.close)
+  text:       { app: 'notepad.exe', match: 'notepad.exe',  exe: 'notepad.exe', label: '메모장', tabbed: true },
   // 정해진 프로그램이 없는 파일(워드 등)은 이 PC의 기본 프로그램으로 연다. 창은 파일 이름으로 찾는다
   default:    { app: null,          match: null,           label: '기본 프로그램' },
 } : {

@@ -139,6 +139,55 @@ test('닫기가 무시되면 "답을 기다리는 창"으로 표시한다', asyn
   assert.equal(s.state.get('ppt').status, 'closed');
 });
 
+test('윈도우: 도우미가 waiting(저장 창)을 알려 주면 기다리지 않고 바로 "답 기다림"으로 표시한다', async () => {
+  const { s, helper } = makeSession();
+  await s.refreshDisplays(); s.load(makeLesson());
+  await s.open('ppt');
+  const w = helper.wins.find(x => x.wid === s.state.get('ppt').wid);
+  helper.stuck.add(w.wid);
+  w.waiting = { wid: 999, title: 'Microsoft PowerPoint' };
+  const t0 = Date.now();
+  await s.close('ppt');
+  assert.equal(s.state.get('ppt').status, 'blocked');
+  assert.ok(Date.now() - t0 < 1500, `너무 오래 기다림: ${Date.now() - t0}ms`);
+  assert.match(s.msg, /답을 기다립니다/);
+});
+
+test('윈도우 메모장(탭): 열기 전부터 있던 창에 탭으로 열렸으면 창을 닫지 않고 연결만 푼다', async () => {
+  const { s, helper } = makeSession();
+  s.launcher.APPS.text.tabbed = true;
+  helper.spawn('TextEdit', '선생님 메모.txt - 메모장');    // 선생님이 미리 열어 둔 메모장 창
+  s.launcher.openWithApp = async () => { helper.wins[0].title = '01_진행메모.md - 메모장'; };   // 새 창 없이 그 창의 새 탭으로
+  await s.refreshDisplays(); s.load(makeLesson());
+  await s.open('memo');
+  assert.equal(s.state.get('memo').status, 'open');
+  await s.close('memo');
+  assert.equal(helper.wins.length, 1, '선생님 메모장 창은 남아 있어야 함');
+  assert.equal(s.state.get('memo').status, 'closed');
+  assert.match(s.msg, /탭만 닫아/);
+});
+
+test('윈도우 메모장(탭): 사이드바가 연 창이라도 지금 보이는 탭이 다른 파일이면 닫지 않는다', async () => {
+  const { s, helper } = makeSession();
+  s.launcher.APPS.text.tabbed = true;
+  await s.refreshDisplays(); s.load(makeLesson());
+  await s.open('memo');
+  helper.wins[0].title = '다른 파일.txt - 메모장';          // 선생님이 다른 파일을 열어 그 탭이 앞에 옴
+  await s.close('memo');
+  assert.equal(helper.wins.length, 1);
+  assert.match(s.msg, /탭만 닫아/);
+});
+
+test('윈도우 메모장(탭): 사이드바가 연 창이고 메모 탭이 보이면 평소처럼 닫는다', async () => {
+  const { s, helper } = makeSession();
+  s.launcher.APPS.text.tabbed = true;
+  await s.refreshDisplays(); s.load(makeLesson());
+  await s.open('memo');
+  await s.close('memo');
+  assert.equal(helper.wins.length, 0);
+  assert.equal(s.state.get('memo').status, 'closed');
+});
+
 test('학생 화면 연결이 끊기면 교사 화면으로 모으고, 다시 연결되면 돌려놓는다', async () => {
   const { s, helper } = makeSession();
   await s.refreshDisplays(); s.load(makeLesson());
