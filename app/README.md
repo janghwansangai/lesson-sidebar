@@ -1,14 +1,24 @@
-# 수업 사이드바 — 체험판 (맥)
+# 수업 사이드바 — 체험판 (맥·윈도우)
 
-화면 왼쪽에 붙는 사이드바에서 수업 자료를 원래 프로그램(크롬·파워포인트·엑셀·한글·텍스트 편집기)으로 열고, 앞으로 가져오고, 학생 화면으로 보내고, 나란히 놓고, 닫는 첫 체험판입니다. 아직 맥에서만 동작합니다 (윈도우는 윈도우 도우미가 생기면 이어서).
+화면 왼쪽에 붙는 사이드바에서 수업 자료를 원래 프로그램(크롬·파워포인트·엑셀·한글·텍스트 편집기/메모장)으로 열고, 앞으로 가져오고, 학생 화면으로 보내고, 나란히 놓고, 닫는 첫 체험판입니다. 맥과 윈도우에서 동작합니다 (윈도우 결과: `docs/poc/windows.md` "체험판으로 확인한 것").
 
-## 실행
+## 실행 (맥)
 ```bash
 cd poc && npm run build:mac      # 창 관리 도우미 (처음 한 번)
 cd ../app && npm install         # 처음 한 번
 npm start
 ```
 - 실행하는 프로그램(터미널 또는 Claude)에 **손쉬운 사용** 권한이 있어야 다른 프로그램 창을 옮길 수 있습니다.
+
+## 실행 (윈도우)
+```powershell
+cd poc\win-helper; npm install   # 창 관리 도우미 (처음 한 번, koffi 설치)
+cd ..\..\app; npm install        # 처음 한 번
+npm start
+```
+- 도우미(`poc/win-helper/winctl.js`)는 Electron 안의 Node로 실행하므로 Node를 따로 설치하지 않아도 됩니다. 권한 설정도 필요 없습니다.
+- `npm start`가 "Electron failed to install correctly"로 멈추면 `node node_modules\electron\install.js`를 한 번 실행합니다.
+- 진행 메모(.md)는 메모장으로 엽니다. 브라우저는 크롬 → 엣지 → 웨일 순으로 설치된 것을 씁니다.
 - 처음에는 `sample-lesson/`(체험용 수업)을 엽니다. "수업 폴더 열기"로 `lesson.json`이 있는 다른 폴더를 열 수 있고, 마지막에 연 폴더를 기억합니다.
 - 설정·기록은 개발 중에는 `app/.userdata/`에 둡니다 (저장소에 올리지 않음).
 
@@ -51,7 +61,7 @@ src/core/library.js    수업 보관함 목록, 보관함 위치 추천
 src/core/lock.js       PC마다 잠금 파일 (.sidebar/locks/)
 src/core/types.js      자료 종류 판별, 파일 이름 규칙
 src/core/lesson.js     lesson.json 읽기·검사 (수업 폴더 밖 경로·이상한 주소 차단)
-src/core/launcher.js   프로그램 열기 (맥: open)
+src/core/launcher.js   프로그램 열기 (맥: open, 윈도우: App Paths 실행 파일·shell.openPath·메모장)
 src/core/fileserver.js 로컬 파일을 127.0.0.1 내부 주소로 브라우저에 제공
 src/core/helper.js     창 관리 도우미 연결 (docs/poc/helper-protocol.md)
 src/renderer/          사이드바 화면(index) · 수업 준비 화면(prep)
@@ -63,4 +73,5 @@ sample-lesson/         체험용 수업 폴더
 npm test                                 # 수업 진행 로직 (가짜 도우미, 창을 열지 않음)
 SIDEBAR_DEBUG=1 npm start                # 개발용 원격 조작 주소를 .userdata/debug.json에 남김
 ```
+윈도우 PowerShell에서는 `$env:SIDEBAR_DEBUG='1'; npm start`.
 원격 조작: `GET <debug.json의 url>/act?do=activate&arg=it4` → 동작 후 상태(JSON). `do`는 `activate, move, close, toggleSel, split, untile, openAll, next, hideOthers, openTo, autoHide`.
