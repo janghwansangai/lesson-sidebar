@@ -18,7 +18,9 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const APP_DIR = path.resolve(HERE, '..');
 const REPO = path.resolve(APP_DIR, '..');
 const SIDEBAR_W = 280;
-const STRIP_W = 10;
+// 자동 숨김으로 접히면 화면 왼쪽 가운데에 작은 손잡이만 남긴다.
+// 화면 높이 전체 띠는 다른 프로그램을 가려서 손잡이만큼으로 줄이고 반투명하게 했다 (선생님 의견, 2026-11-21).
+const STRIP_W = 10, STRIP_H = 84, STRIP_OPACITY = 0.55;
 const DEVICE = deviceName();
 
 // 개발 중에는 설정·로그를 이 폴더 안에 둔다 (패키지로 만들면 운영체제 기본 위치)
@@ -54,7 +56,9 @@ function teacherArea(){ return screen.getPrimaryDisplay().workArea; }
 function placeSidebar(){
   if (!win) return;
   const wa = teacherArea();
-  win.setBounds({ x: wa.x, y: wa.y, width: collapsed ? STRIP_W : SIDEBAR_W, height: wa.height });
+  if (collapsed) win.setBounds({ x: wa.x, y: Math.round(wa.y + (wa.height - STRIP_H) / 2), width: STRIP_W, height: STRIP_H });
+  else win.setBounds({ x: wa.x, y: wa.y, width: SIDEBAR_W, height: wa.height });
+  win.setOpacity(collapsed ? STRIP_OPACITY : 1);
 }
 
 const SECURE = file => ({ preload: path.join(HERE, file), contextIsolation: true, sandbox: true, nodeIntegration: false });
@@ -101,7 +105,9 @@ function watchCursor(){
   const b = win.getBounds();
   const inY = p.y >= b.y && p.y <= b.y + b.height;
   if (collapsed){
-    if (inY && p.x <= b.x + STRIP_W){ collapsed = false; placeSidebar(); push(); }
+    // 손잡이는 작아도 화면 왼쪽 끝 어디에 대든 나온다. 왼쪽에 다른 모니터(학생 화면)가 있으면 그 화면은 빼고.
+    const wa = teacherArea();
+    if (p.y >= wa.y && p.y <= wa.y + wa.height && p.x >= wa.x && p.x <= wa.x + STRIP_W){ collapsed = false; placeSidebar(); push(); }
   } else if (inY && p.x >= b.x && p.x <= b.x + b.width + 16){
     outSince = 0;
   } else {
