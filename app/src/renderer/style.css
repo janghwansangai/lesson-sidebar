@@ -16,8 +16,10 @@ body{background:var(--sb-bg);color:var(--sb-fg);font-family:var(--font);font-siz
 button{font-family:inherit;color:inherit}
 :focus-visible{outline:2px solid var(--chalk);outline-offset:1px}
 
-.strip{position:fixed;inset:0;background:var(--sb-bg)}
-.strip::after{content:"";position:absolute;left:3px;top:6px;bottom:6px;width:4px;border-radius:3px;background:var(--chalk)}
+/* 접힌 상태: 창은 투명, 왼쪽에 반투명(55%) 노란 막대만 (main.js BAR_W×BAR_H).
+   윈도우는 창이 32픽셀보다 좁아지지 않아 나머지는 투명으로 둔다 (창 전체 setOpacity로는 녹색·회색 띠가 남았다) */
+body.collapsed{background:transparent}
+.strip{position:fixed;left:0;top:0;bottom:0;width:6px;background:var(--chalk);opacity:.55;border-radius:0 3px 3px 0}
 
 .panel{height:100%;display:flex;flex-direction:column}
 .head{padding:12px 12px 10px;border-bottom:1px solid var(--sb-line);display:flex;flex-direction:column;gap:3px}
