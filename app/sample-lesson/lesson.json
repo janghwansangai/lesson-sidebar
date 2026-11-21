@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "id": "les_trial",
+  "title": "체험용 수업: AI 활용 연수",
+  "date": "2026-11-28",
+  "sections": [
+    { "id": "s1", "title": "도입", "minutes": 10, "items": [
+      { "id": "it1", "type": "memo", "title": "진행 메모", "file": "1_도입/01_진행메모.md", "screen": "teacher" },
+      { "id": "it2", "type": "web", "title": "자료 A (시험 페이지)", "file": "1_도입/02_자료A.html" },
+      { "id": "it3", "type": "web", "title": "참고 사이트", "url": "https://example.com/" }
+    ]},
+    { "id": "s2", "title": "전개", "minutes": 30, "items": [
+      { "id": "it4", "type": "pptx", "title": "발표 자료", "file": "2_전개/04_발표자료.pptx" },
+      { "id": "it5", "type": "xlsx", "title": "모둠 편성표", "file": "2_전개/05_모둠편성표.xlsx" },
+      { "id": "it6", "type": "web", "title": "자료 B (시험 페이지)", "file": "2_전개/06_자료B.html" }
+    ]},
+    { "id": "s3", "title": "정리", "minutes": 10, "items": [
+      { "id": "it7", "type": "hwp", "title": "활동지 (한글 빈 문서)" }
+    ]}
+  ],
+  "updatedAt": "2026-11-21T18:00:00+09:00"
+}
