@@ -1,7 +1,7 @@
 // 수업 사이드바 체험판 — Electron 시작점 (맥·윈도우)
 // 사이드바 창(교사 화면 왼쪽)과 수업 준비 창을 띄우고, 수업 진행 로직(Session)·수업 편집(LessonDoc)과 잇는다.
 import { app, BrowserWindow, ipcMain, screen, dialog, shell } from 'electron';
-import { readFileSync, writeFileSync, mkdirSync, existsSync, statSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, statSync, cpSync } from 'node:fs';
 import path from 'node:path';
 import http from 'node:http';
 import { randomBytes } from 'node:crypto';
@@ -34,6 +34,33 @@ if (!app.isPackaged){
   app.setPath('userData', ud);
   app.setPath('crashDumps', path.join(ud, 'crash'));
   app.setPath('logs', path.join(ud, 'logs'));
+}
+
+// 설치판에서 앱을 두 번 눌러도 사이드바는 하나만 (두 번째는 기존 사이드바를 펼친다)
+const firstInstance = app.requestSingleInstanceLock();
+if (!firstInstance) app.quit();
+
+const NO_TRUST = "손쉬운 사용 권한이 없어 다른 프로그램 창을 옮길 수 없습니다. 시스템 설정 → 개인정보 보호 및 보안 → 손쉬운 사용에서 '수업 사이드바'를 켜 주세요";
+
+/** 예시 수업 폴더. 설치판은 앱 안(바꾸면 안 되는 곳)에 들어 있으므로 설정 폴더로 한 번 복사해서 쓴다. */
+function sampleLesson(){
+  if (!app.isPackaged) return path.join(APP_DIR, 'sample-lesson');
+  const dst = path.join(app.getPath('userData'), '체험용 수업');
+  if (!existsSync(path.join(dst, 'lesson.json'))) cpSync(path.join(process.resourcesPath, 'sample-lesson'), dst, { recursive: true });
+  return dst;
+}
+
+/** 권한이 켜질 때까지 2초마다 확인하고, 켜지면 바로 창 연결을 시작한다 (다시 켤 필요 없음). */
+function waitForTrust(){
+  const t = setInterval(async () => {
+    let ok = false;
+    try { ok = (await helper.call('trusted')).trusted; } catch { /* 다음에 다시 */ }
+    if (!ok) return;
+    clearInterval(t);
+    helper.restartWatch();
+    await session.relink();
+    session.say('손쉬운 사용 권한이 켜졌습니다. 이제 자료 창을 옮기고 닫을 수 있습니다');
+  }, 2000);
 }
 
 const IS_WIN = process.platform === 'win32';
@@ -401,12 +428,17 @@ async function startDebugServer(){
 }
 
 // ---------- 시작 ----------
+app.on('second-instance', () => { if (!win) return; collapsed = false; placeSidebar(); win.showInactive(); push(); });
+
 app.whenReady().then(async () => {
+  if (!firstInstance) return;
   if (process.platform === 'darwin') app.dock?.hide();
   const h = makeHelper();
   helper = h.helper;
   if (!helper.available()){
-    dialog.showErrorBox('수업 사이드바', `창 관리 도우미를 찾지 못했습니다.\n${h.where}\n(${h.fix})`);
+    dialog.showErrorBox('수업 사이드바', app.isPackaged
+      ? '창 관리 도우미가 앱 안에 없습니다. 수업 사이드바를 다시 설치해 주세요.'
+      : `창 관리 도우미를 찾지 못했습니다.\n${h.where}\n(${h.fix})`);
     app.quit();
     return;
   }
@@ -419,15 +451,16 @@ app.whenReady().then(async () => {
 
   const settings = readSettings();
   createSidebar();
-  if (!(settings.lastFolder && existsSync(settings.lastFolder) && runLesson(settings.lastFolder))) runLesson(path.join(APP_DIR, 'sample-lesson'));
+  if (!(settings.lastFolder && existsSync(settings.lastFolder) && runLesson(settings.lastFolder))) runLesson(sampleLesson());
   if (settings.lastPrepFolder && existsSync(path.join(settings.lastPrepFolder, 'lesson.json'))){
     try { openDoc(settings.lastPrepFolder); } catch { doc = null; }
   }
   if (settings.autoHide) setAutoHide(true);
 
-  const trusted = (await helper.call('trusted')).trusted;
+  // 설치판은 권한이 없으면 macOS의 권한 요청 창을 띄운다 (켜는 것은 선생님이 직접)
+  const trusted = (await helper.call('trusted', ...(app.isPackaged ? ['--prompt'] : []))).trusted;
   if (trusted) await session.relink();
-  else session.say('손쉬운 사용 권한이 없어 다른 프로그램 창을 옮길 수 없습니다. 시스템 설정 → 개인정보 보호 및 보안 → 손쉬운 사용에서 켜 주세요');
+  else { session.say(NO_TRUST); waitForTrust(); }
   helper.startWatch();
 
   let t = null;

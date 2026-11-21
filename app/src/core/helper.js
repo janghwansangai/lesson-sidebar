@@ -56,6 +56,9 @@ export class Helper extends EventEmitter {
     });
   }
 
+  /** 감시를 다시 시작한다 (손쉬운 사용 권한을 방금 켰을 때). 꺼지면 startWatch가 1초 뒤 다시 켠다. */
+  restartWatch(){ this.watcher?.kill(); }
+
   stop(){
     this.stopped = true;
     this.watcher?.kill();
