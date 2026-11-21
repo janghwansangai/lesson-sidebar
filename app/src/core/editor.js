@@ -8,6 +8,8 @@ import { deviceName } from './lock.js';
 
 const BACKUPS = 10;
 const BACKUP_GAP_MS = 60 * 1000;
+// 오피스·한컴 등이 문서를 여는 동안 만드는 잠금 파일과 운영체제 숨김 파일 (사용자 이름이 들어 있기도 함)
+const TEMP_FILE = /^(~\$|\.~lock\.|~WRL)|^(\.DS_Store|Thumbs\.db|desktop\.ini)$/i;
 /** 같은 이름이 이미 있으면 `이름_2.확장자`처럼 비어 있는 이름을 고른다 (같은 순간에 만든 백업·휴지통 파일이 서로 덮지 않게) */
 function freeName(dir, name){
   const ext = path.extname(name), stem = name.slice(0, name.length - ext.length);
@@ -141,6 +143,7 @@ export class LessonDoc {
       const name = path.basename(String(src)).normalize('NFC');
       try {
         if (BLOCKED.test(name)){ skipped.push({ name, reason: '실행 파일은 넣지 않습니다' }); continue; }
+        if (TEMP_FILE.test(name)){ skipped.push({ name, reason: '문서 프로그램이 잠시 만드는 임시 파일이라 넣지 않습니다' }); continue; }
         const st = statSync(src);
         if (!st.isFile()){ skipped.push({ name, reason: '폴더는 넣을 수 없습니다 (안의 파일을 넣어 주세요)' }); continue; }
         const ext = extOf(name);

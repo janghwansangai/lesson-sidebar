@@ -15,7 +15,7 @@
       { "id": "it6", "type": "web", "title": "자료 B (시험 페이지)", "file": "2_전개/06_자료B.html" }
     ]},
     { "id": "s3", "title": "정리", "minutes": 10, "items": [
-      { "id": "it7", "type": "hwp", "title": "활동지 (한글 빈 문서)" }
+      { "id": "it7", "type": "hwp", "title": "활동지 (한글)", "file": "3_정리/07_활동지.hwp" }
     ]}
   ],
   "updatedAt": "2026-11-21T18:00:00+09:00"
