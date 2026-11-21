@@ -103,7 +103,7 @@ $('#next').addEventListener('click', () => api.act('next'));
 $('#btn-hide').addEventListener('click', () => api.act('autoHide', !S.autoHide));
 $('#openall').addEventListener('click', () => api.act('openAll'));
 $('#hideothers').addEventListener('click', () => api.act('hideOthers'));
-$('#folder').addEventListener('click', () => api.act('chooseFolder'));
+$('#folder').addEventListener('click', () => api.act('prep'));
 $('#quit').addEventListener('click', () => api.act('quit'));
 
 api.onState(s => { S = s; render(); });

@@ -27,12 +27,24 @@ export async function startFileServer(getRoot){
     let st;
     try { st = statSync(abs); } catch { res.writeHead(404); res.end(); return; }
     if (!st.isFile()){ res.writeHead(404); res.end(); return; }
-    res.writeHead(200, {
+    const head = {
       'Content-Type': MIME[path.extname(abs).toLowerCase()] ?? 'application/octet-stream',
-      'Content-Length': st.size,
       'Cache-Control': 'no-store',
       'X-Content-Type-Options': 'nosniff',
-    });
+      'Accept-Ranges': 'bytes',
+    };
+    // 음악·영상을 원하는 곳부터 재생할 수 있게 일부 구간 요청(Range)을 받는다
+    const m = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range ?? '');
+    if (m && st.size > 0){
+      let start = m[1] === '' ? st.size - Number(m[2]) : Number(m[1]);
+      let end = m[1] !== '' && m[2] !== '' ? Number(m[2]) : st.size - 1;
+      start = Math.max(0, start); end = Math.min(st.size - 1, end);
+      if (start > end){ res.writeHead(416, { 'Content-Range': `bytes */${st.size}` }); res.end(); return; }
+      res.writeHead(206, { ...head, 'Content-Range': `bytes ${start}-${end}/${st.size}`, 'Content-Length': end - start + 1 });
+      createReadStream(abs, { start, end }).pipe(res);
+      return;
+    }
+    res.writeHead(200, { ...head, 'Content-Length': st.size });
     createReadStream(abs).pipe(res);
   });
   await new Promise((resolve, reject) => {

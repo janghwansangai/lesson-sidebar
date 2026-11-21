@@ -14,6 +14,8 @@ export const APPS = {
   excel:      { app: 'Microsoft Excel',      match: 'Excel',      label: '엑셀' },
   hwp:        { app: 'Hancom Office HWP',    match: 'HWP',        label: '한글' },
   text:       { app: 'TextEdit',             match: 'TextEdit',   label: '텍스트 편집기' },
+  // 정해진 프로그램이 없는 파일(워드 등)은 이 맥의 기본 프로그램으로 연다. 창은 파일 이름으로 찾는다
+  default:    { app: null,                   match: null,         label: '기본 프로그램' },
 };
 
 export function pickBrowser(prefer){
@@ -27,6 +29,7 @@ export function appKeyFor(item){
     case 'xlsx': case 'xls': return 'excel';
     case 'hwp': case 'hwpx': return 'hwp';
     case 'memo': return 'text';
+    case 'file': return 'default';
     default: return 'browser';
   }
 }
@@ -42,5 +45,6 @@ export function openInBrowser(browser, url){
 
 /** 파일을 지정한 프로그램으로 연다. 파일이 없으면 프로그램만 연다(빈 문서). */
 export function openWithApp(app, file){
+  if (!app.app) return open([file]);   // 기본 프로그램
   return open(file ? ['-a', app.app, file] : ['-a', app.app]);
 }

@@ -158,6 +158,20 @@ test('다른 창 숨기기는 학생 화면의 자료만 숨기고 교사 화면
   assert.deepEqual(mins, [s.state.get('web').wid]);
 });
 
+test('준비 화면에서 고쳐 다시 읽어도 열린 창 연결은 그대로, 뺀 자료는 빠진다', async () => {
+  const { s } = makeSession();
+  await s.refreshDisplays();
+  const lesson = makeLesson();
+  s.load(lesson);
+  await s.open('ppt');
+  const wid = s.state.get('ppt').wid;
+  s.highlight = 'web';
+  s.reload({ ...lesson, items: lesson.items.filter(i => i.id !== 'web') });
+  assert.equal(s.state.get('ppt').wid, wid);
+  assert.equal(s.state.has('web'), false);
+  assert.equal(s.highlight, null);
+});
+
 test('사용자가 직접 닫은 창은 목록에서 닫힘으로 바뀐다 (막 연 창은 잠시 기다림)', async () => {
   const { s } = makeSession();
   await s.refreshDisplays(); s.load(makeLesson());
