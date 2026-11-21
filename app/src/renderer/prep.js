@@ -1,0 +1,233 @@
+// 수업 준비 창. 상태는 메인 프로세스가 보내 주고, 화면은 그리기와 요청만 한다.
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const api = window.prep;
+
+const BADGE = {
+  web: ['웹', '--t-slate'], youtube: ['YT', '--t-red'], gdoc: ['문서', '--t-blue'], gsheet: ['시트', '--t-green'], gslides: ['슬라', '--t-orange'],
+  gdrive: ['드라', '--t-teal'], canva: ['캔바', '--t-violet'], pdf: ['PDF', '--t-rose'], img: ['사진', '--t-cyan'],
+  pptx: ['PPT', '--t-orange'], xlsx: ['XLS', '--t-green2'], hwp: ['한글', '--t-blue2'], audio: ['음악', '--t-pink'], video: ['영상', '--t-purple'],
+  memo: ['메모', '--t-slate2'], folder: ['폴더', '--t-stone'], file: ['파일', '--t-stone'],
+};
+const NAME = { web: '웹사이트', youtube: '유튜브', gdoc: '구글 문서', gsheet: '구글 시트', gslides: '구글 슬라이드', gdrive: '구글 드라이브', canva: '캔바' };
+const START_HINT = { youtube: '0:45', video: '1:20', pdf: '3쪽', pptx: '3번 슬라이드' };
+
+let S = null;
+let addSec = null;
+let msgTimer = 0, lastMsg = '';
+
+function render(){
+  if (!S) return;
+  renderLibrary();
+  const d = S.doc;
+  $('#empty').hidden = !!d;
+  $('#editor').hidden = !d;
+  if (d) renderDoc(d);
+  if (S.msg && S.msg !== lastMsg){ lastMsg = S.msg; toast(S.msg); }
+}
+
+function renderLibrary(){
+  const L = S.library;
+  $('#lib-path').textContent = L.root ? L.root : '아직 정하지 않았습니다';
+  $('#lib-setup').hidden = !!L.root;
+  $('#new-btn').disabled = !L.root;
+  if (!L.root){
+    $('#lib-setup').innerHTML = `<p><b>수업 보관함 위치를 정해 주세요.</b> 수업 폴더들이 이곳에 모입니다. 구글 드라이브 안에 두면 윈도우·맥에서 함께 쓸 수 있습니다.</p>` +
+      L.suggestions.map((s, i) => `<button class="btn" data-sug="${i}" type="button">${esc(s.label)}<small>${esc(s.path)}</small></button>`).join('') +
+      `<button class="btn" data-sug="pick" type="button">다른 위치 고르기</button>`;
+  }
+  const cur = S.doc?.root;
+  $('#lib-list').innerHTML = L.root && !L.lessons.length ? '<li class="lib-empty">아직 수업이 없습니다. "새 수업"을 눌러 만드세요.</li>'
+    : L.lessons.map(l => `<li class="${l.folder === cur ? 'cur' : ''}" data-folder="${esc(l.folder)}" tabindex="0" role="button">` +
+      `<span class="lt">${esc(l.title)}</span><span class="ld">${esc(l.date || '날짜 없음')} · 자료 ${l.count}개</span>` +
+      (l.folder === S.running ? '<span class="tag run">사이드바에서 진행 중</span>' : '') +
+      (l.lockedBy ? `<span class="tag lock">${esc(l.lockedBy)}에서 열림</span>` : '') + '</li>').join('');
+}
+
+function renderDoc(d){
+  const active = document.activeElement;
+  const keep = active && active.id ? active.id : null;
+  if (keep !== 'title') $('#title').value = d.title;
+  if (keep !== 'date') $('#date').value = d.date;
+  const total = d.sections.reduce((a, s) => a + (s.minutes || 0), 0);
+  const count = d.sections.reduce((a, s) => a + s.items.length, 0);
+  const saved = d.updatedAt ? new Date(d.updatedAt).toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' }) : '';
+  $('#summary').textContent = `자료 ${count}개 · 총 ${total}분 · ${saved ? `마지막 저장 ${saved}${d.device ? ` (${d.device})` : ''}` : ''} · ${d.root}`;
+  $('#run').textContent = S.running === d.root ? '사이드바에 반영됨' : '이 수업으로 진행';
+  $('#lockbar').hidden = !d.lockedBy;
+  if (d.lockedBy) $('#lockbar').innerHTML = `<b>${esc(d.lockedBy)}</b>에서도 이 수업을 열고 있습니다. 동시에 고치면 내용이 부딪힐 수 있으니 한쪽에서만 고쳐 주세요.`;
+
+  if (!d.sections.some(s => s.id === addSec)) addSec = d.sections[1]?.id ?? d.sections[0]?.id ?? null;
+  $('#add-sec').innerHTML = d.sections.map(s => `<option value="${esc(s.id)}"${s.id === addSec ? ' selected' : ''}>${esc(s.title)}</option>`).join('');
+
+  // 입력 중인 칸이 있으면 목록을 다시 그리지 않는다 (글자가 사라지지 않게)
+  if (active && $('#flow').contains(active) && active.tagName === 'INPUT') return;
+  const open = new Set(S.openIds);
+  $('#flow').innerHTML = d.sections.map(s => `<div class="sec" data-sec="${esc(s.id)}">
+    <div class="sec-h"><input class="st" data-f="sec-title" value="${esc(s.title)}" maxlength="40" aria-label="구간 이름">
+      <label class="mins"><input type="number" min="0" max="600" data-f="sec-min" value="${s.minutes || 0}" aria-label="${esc(s.title)} 시간">분</label>
+      <span class="cnt">${s.items.length}개</span>
+      ${s.items.length ? '' : '<button class="x" data-do="del-sec" title="구간 지우기" aria-label="구간 지우기" type="button">✕</button>'}</div>
+    ${s.items.map(it => row(it, open.has(it.id))).join('') || '<div class="empty-sec">자료를 여기로 끌어다 놓으세요</div>'}</div>`).join('');
+}
+
+function row(it, isOpen){
+  const [b, c] = BADGE[it.type] ?? BADGE.file;
+  const src = it.problem ? `<span class="src warn">${esc(it.problem)}</span>` : `<span class="src">${esc(it.url ?? it.file ?? '')}</span>`;
+  const hint = START_HINT[it.type];
+  return `<div class="it" data-id="${esc(it.id)}">
+    <span class="grip" draggable="true" title="끌어서 순서 바꾸기">⋮⋮</span>
+    <span class="badge" style="--c:var(${c})">${b}</span>
+    <div class="it-t"><input data-f="title" value="${esc(it.title)}" maxlength="80" aria-label="자료 이름">${src}</div>
+    <input class="start" data-f="start" value="${esc(it.start)}" placeholder="${hint ? '시작: ' + hint : '시작 위치 없음'}"${hint ? '' : ' disabled'} aria-label="시작 위치">
+    <select class="scr" data-f="screen" aria-label="띄울 화면">
+      <option value=""${!it.screen ? ' selected' : ''}>자동 (${it.type === 'memo' ? '교사' : '학생'} 화면)</option>
+      <option value="student"${it.screen === 'student' ? ' selected' : ''}>학생 화면</option>
+      <option value="teacher"${it.screen === 'teacher' ? ' selected' : ''}>교사 화면</option></select>
+    <span class="extra">${it.type === 'memo' ? '<button class="btn sm" data-do="edit-memo" type="button">편집</button>' : ''}${isOpen ? ' <small title="사이드바에서 열려 있음">열림</small>' : ''}</span>
+    <button class="x" data-do="del" title="흐름에서 빼기 (파일은 휴지통 폴더로)" aria-label="${esc(it.title)} 빼기" type="button">✕</button></div>`;
+}
+
+function toast(m){
+  const el = $('#msg'); el.textContent = m; el.classList.add('on');
+  clearTimeout(msgTimer); msgTimer = setTimeout(() => el.classList.remove('on'), 4200);
+}
+
+// ---------- 보관함 ----------
+$('#lib-setup').addEventListener('click', e => {
+  const b = e.target.closest('[data-sug]'); if (!b) return;
+  if (b.dataset.sug === 'pick') return api.act('chooseLibrary');
+  api.act('setLibrary', { path: S.library.suggestions[Number(b.dataset.sug)].path });
+});
+$('#lib-change').addEventListener('click', () => api.act('chooseLibrary'));
+$('#lib-list').addEventListener('click', e => { const li = e.target.closest('[data-folder]'); if (li) api.act('openLesson', { folder: li.dataset.folder }); });
+$('#lib-list').addEventListener('keydown', e => { const li = e.target.closest('[data-folder]'); if (li && (e.key === 'Enter' || e.key === ' ')){ e.preventDefault(); api.act('openLesson', { folder: li.dataset.folder }); } });
+$('#new-btn').addEventListener('click', () => {
+  $('#new-form').hidden = false;
+  $('#new-date').value = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  $('#new-title').focus();
+});
+$('#new-cancel').addEventListener('click', () => { $('#new-form').hidden = true; });
+$('#new-form').addEventListener('submit', e => {
+  e.preventDefault();
+  api.act('newLesson', { title: $('#new-title').value, date: $('#new-date').value });
+  $('#new-form').hidden = true; $('#new-title').value = '';
+});
+$('#open-other').addEventListener('click', () => api.act('openOther'));
+
+// ---------- 수업 정보 ----------
+$('#title').addEventListener('change', e => api.act('info', { title: e.target.value }));
+$('#date').addEventListener('change', e => api.act('info', { date: e.target.value }));
+$('#run').addEventListener('click', () => api.act('run'));
+$('#tidy').addEventListener('click', () => api.act('tidy'));
+$('#reveal').addEventListener('click', () => api.act('reveal'));
+
+// ---------- 자료 넣기 ----------
+$('#add-sec').addEventListener('change', e => { addSec = e.target.value; });
+function detect(v){
+  const s = v.trim(); if (!s) return null;
+  if (/\s/.test(s) || !/^(https?:\/\/)?[^/\s]+\.[^/\s]+/i.test(s)) return { err: '링크 주소 형식이 아닙니다 · 예: https://www.youtube.com/watch?v=…' };
+  const h = s.replace(/^https?:\/\//i, '').replace(/^(www\.|m\.)/, '');
+  const type = /^(youtube\.com|youtu\.be)/.test(h) ? 'youtube' : /^docs\.google\.com\/spreadsheets/.test(h) ? 'gsheet'
+    : /^docs\.google\.com\/presentation/.test(h) ? 'gslides' : /^docs\.google\.com\/document/.test(h) ? 'gdoc'
+    : /^drive\.google\.com/.test(h) ? 'gdrive' : /^([a-z0-9-]+\.)?canva\.com/.test(h) ? 'canva' : 'web';
+  return { type };
+}
+$('#url').addEventListener('input', e => {
+  const d = detect(e.target.value), box = $('#detect');
+  if (!d){ box.className = 'detect'; box.textContent = '파일은 이 창 아무 곳에나 끌어다 놓으면 들어갑니다 (수업 폴더로 복사, 원본은 그대로)'; return; }
+  if (d.err){ box.className = 'detect err'; box.textContent = d.err; return; }
+  const [b, c] = BADGE[d.type];
+  box.className = 'detect ok';
+  box.innerHTML = `<span class="badge" style="--c:var(${c})">${b}</span>종류: ${NAME[d.type]} · 브라우저 새 창으로 엽니다`;
+});
+function addLink(){
+  const v = $('#url').value.trim(); if (!v) return toast('넣을 링크를 붙여 넣어 주세요');
+  api.act('addLink', { url: v, sec: addSec });
+  $('#url').value = ''; $('#url').dispatchEvent(new Event('input'));
+}
+$('#add-link').addEventListener('click', addLink);
+$('#url').addEventListener('keydown', e => { if (e.key === 'Enter'){ e.preventDefault(); addLink(); } });
+$('#pick').addEventListener('click', () => api.act('pickFiles', { sec: addSec }));
+$('#memo').addEventListener('click', () => api.act('addMemo', { sec: addSec }));
+$('#add-sec-btn').addEventListener('click', () => api.act('addSection'));
+
+// ---------- 흐름 고치기 ----------
+const flow = $('#flow');
+flow.addEventListener('change', e => {
+  const f = e.target.dataset.f; if (!f) return;
+  const secEl = e.target.closest('[data-sec]'), itEl = e.target.closest('[data-id]');
+  if (f === 'sec-title') api.act('updateSection', { id: secEl.dataset.sec, title: e.target.value });
+  else if (f === 'sec-min') api.act('updateSection', { id: secEl.dataset.sec, minutes: Number(e.target.value) });
+  else if (f === 'title') api.act('updateItem', { id: itEl.dataset.id, title: e.target.value });
+  else if (f === 'start') api.act('updateItem', { id: itEl.dataset.id, start: e.target.value });
+  else if (f === 'screen') api.act('updateItem', { id: itEl.dataset.id, screen: e.target.value || null });
+});
+flow.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.tagName === 'INPUT') e.target.blur(); });
+flow.addEventListener('click', e => {
+  const b = e.target.closest('[data-do]'); if (!b) return;
+  const itEl = b.closest('[data-id]'), secEl = b.closest('[data-sec]');
+  if (b.dataset.do === 'del') api.act('removeItem', { id: itEl.dataset.id });
+  else if (b.dataset.do === 'del-sec') api.act('removeSection', { id: secEl.dataset.sec });
+  else if (b.dataset.do === 'edit-memo') api.act('editMemo', { id: itEl.dataset.id });
+});
+
+// 순서 바꾸기 (⋮⋮ 끌기)
+let dragId = null;
+const clearMarks = () => document.querySelectorAll('.before,.after,.drop-in').forEach(el => el.classList.remove('before', 'after', 'drop-in'));
+flow.addEventListener('dragstart', e => {
+  const g = e.target.closest('.grip'); if (!g) return;
+  const r = g.closest('.it'); dragId = r.dataset.id;
+  e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', dragId);
+  try { e.dataTransfer.setDragImage(r, 20, 18); } catch { /* 무시 */ }
+  r.classList.add('dragging');
+});
+flow.addEventListener('dragend', () => { dragId = null; clearMarks(); document.querySelectorAll('.dragging').forEach(r => r.classList.remove('dragging')); });
+
+// 파일 끌어다 놓기 (창 어디든) + 순서 바꾸기 놓기
+const hasFiles = e => Array.from(e.dataTransfer?.types ?? []).includes('Files');
+const secAt = e => e.target.closest?.('[data-sec]')?.dataset.sec ?? addSec;
+const secTitle = id => S.doc?.sections.find(s => s.id === id)?.title ?? '';
+document.addEventListener('dragover', e => {
+  if (!S?.doc) return;
+  if (hasFiles(e)){
+    e.preventDefault(); e.dataTransfer.dropEffect = 'copy';
+    $('#dropmask').hidden = false; $('#drop-sec').textContent = `'${secTitle(secAt(e))}'`;
+    clearMarks(); e.target.closest?.('.sec')?.classList.add('drop-in');
+    return;
+  }
+  if (!dragId) return;
+  const sec = e.target.closest?.('.sec'); if (!sec) return;
+  e.preventDefault(); e.dataTransfer.dropEffect = 'move';
+  clearMarks();
+  const r = e.target.closest('.it');
+  if (r && r.dataset.id !== dragId){ const b = r.getBoundingClientRect(); r.classList.add(e.clientY < b.top + b.height / 2 ? 'before' : 'after'); }
+  else if (!r) sec.classList.add('drop-in');
+});
+document.addEventListener('dragleave', e => { if (!e.relatedTarget){ $('#dropmask').hidden = true; clearMarks(); } });
+document.addEventListener('drop', e => {
+  e.preventDefault();
+  $('#dropmask').hidden = true;
+  if (!S?.doc) return;
+  if (hasFiles(e)){
+    clearMarks();
+    const paths = api.pathsOf(e.dataTransfer.files);
+    if (paths.length) api.act('addFiles', { paths, sec: secAt(e) });
+    return;
+  }
+  if (!dragId) return;
+  const sec = e.target.closest?.('.sec'); if (!sec){ clearMarks(); return; }
+  const r = e.target.closest('.it');
+  let before = null;
+  if (r && r.dataset.id !== dragId){
+    const b = r.getBoundingClientRect();
+    if (e.clientY < b.top + b.height / 2) before = r.dataset.id;
+    else before = r.nextElementSibling?.dataset?.id ?? null;
+  }
+  const id = dragId; dragId = null; clearMarks();
+  if (r && r.dataset.id === id) return;
+  api.act('moveItem', { id, sec: sec.dataset.sec, before });
+});
+
+api.onState(s => { S = s; render(); });
+api.state().then(s => { S = s; render(); });

@@ -42,6 +42,20 @@ export class Session extends EventEmitter {
     this.highlight = null; this.sel = []; this.tile = null;
     this.say(`'${lesson.title}' 수업을 열었습니다`);
   }
+  /** 같은 수업을 준비 화면에서 고쳤을 때: 열린 창 연결은 자료 번호(id)로 이어 간다. */
+  reload(lesson){
+    const old = this.state;
+    this.lesson = lesson;
+    this.state = new Map(lesson.items.map(it => {
+      const prev = old.get(it.id);
+      if (prev){ if (!prev.wid) prev.note = it.problem ?? ''; return [it.id, prev]; }
+      return [it.id, { status: 'closed', wid: null, disp: null, home: null, note: it.problem ?? '', linkedAt: 0 }];
+    }));
+    if (this.highlight && !this.state.has(this.highlight)) this.highlight = null;
+    this.sel = this.sel.filter(id => this.state.has(id));
+    if (this.tile && !this.tile.ids.every(id => this.state.has(id))) this.tile = null;
+    this.changed();
+  }
   item(id){ return this.lesson?.items.find(i => i.id === id) ?? null; }
 
   // ---------- 화면 ----------
@@ -107,7 +121,8 @@ export class Session extends EventEmitter {
     const t0 = Date.now();
     try {
       const before = await this.list(app.match);
-      const target = it.url ?? (it.abs ? (key === 'browser' ? this.files.url(it.file) : it.abs) : null);
+      const page = key === 'browser' && it.type === 'pdf' && parseInt(it.start, 10) > 0 ? `#page=${parseInt(it.start, 10)}` : '';
+      const target = it.url ?? (it.abs ? (key === 'browser' ? this.files.url(it.file) + page : it.abs) : null);
       if (key === 'browser') await this.launcher.openInBrowser(app, target);
       else await this.launcher.openWithApp(app, target);
 

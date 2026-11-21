@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:">
+<title>수업 준비 — 수업 사이드바</title>
+<link rel="stylesheet" href="prep.css">
+</head>
+<body>
+<div class="app">
+  <aside class="lib" aria-label="수업 보관함">
+    <div class="lib-h">
+      <h2>수업 보관함</h2>
+      <button id="lib-change" class="link" type="button">위치 바꾸기</button>
+    </div>
+    <p id="lib-path" class="path"></p>
+    <div id="lib-setup" class="setup" hidden></div>
+    <ul id="lib-list" class="lib-list"></ul>
+    <form id="new-form" class="new" hidden>
+      <label><span>수업 이름</span><input id="new-title" required maxlength="120" placeholder="예: AI 활용 연수 (2차)"></label>
+      <label><span>날짜</span><input id="new-date" type="date" required></label>
+      <div class="row"><button class="btn primary" type="submit">만들기</button><button class="btn" type="button" id="new-cancel">취소</button></div>
+    </form>
+    <div class="lib-act">
+      <button id="new-btn" class="btn primary" type="button">새 수업</button>
+      <button id="open-other" class="btn" type="button">다른 폴더 열기</button>
+    </div>
+  </aside>
+
+  <main class="ed">
+    <div id="empty" class="empty">
+      <p class="big">왼쪽에서 수업을 고르거나 <b>새 수업</b>을 만드세요</p>
+      <p>수업 하나가 폴더 하나입니다. 넣은 자료는 그 폴더로 복사되어 정리됩니다.</p>
+    </div>
+    <div id="editor" class="editor" hidden>
+      <div id="lockbar" class="lockbar" hidden></div>
+      <header class="ed-h">
+        <div class="ed-info">
+          <input id="title" class="t-in" maxlength="120" aria-label="수업 이름">
+          <input id="date" type="date" aria-label="날짜">
+        </div>
+        <div class="ed-act">
+          <button id="run" class="btn primary" type="button">이 수업으로 진행</button>
+          <button id="tidy" class="btn" type="button" title="파일 이름 앞 순번과 구간 폴더를 지금 순서에 맞춥니다">정리하기</button>
+          <button id="reveal" class="btn" type="button">Finder에서 보기</button>
+        </div>
+        <p id="summary" class="sum"></p>
+      </header>
+      <div class="add">
+        <div class="add-row">
+          <select id="add-sec" aria-label="넣을 구간"></select>
+          <input id="url" placeholder="링크 붙여넣기 · 유튜브, 구글 문서, 캔바, 웹사이트" autocomplete="off" aria-label="링크">
+          <button id="add-link" class="btn primary" type="button">링크 추가</button>
+        </div>
+        <div class="add-row two">
+          <p id="detect" class="detect">파일은 이 창 아무 곳에나 끌어다 놓으면 들어갑니다 (수업 폴더로 복사, 원본은 그대로)</p>
+          <div class="row">
+            <button id="pick" class="btn" type="button">파일 고르기</button>
+            <button id="memo" class="btn" type="button">메모 추가</button>
+            <button id="add-sec-btn" class="btn" type="button">구간 추가</button>
+          </div>
+        </div>
+      </div>
+      <div id="flow" class="flow"></div>
+    </div>
+  </main>
+</div>
+<div id="dropmask" class="dropmask" hidden><div><b id="drop-sec"></b> 구간에 넣습니다<br><small>수업 폴더로 복사되고 원본은 그대로 남습니다</small></div></div>
+<div id="msg" class="msg" role="status" aria-live="polite"></div>
+<script type="module" src="prep.js"></script>
+</body>
+</html>
