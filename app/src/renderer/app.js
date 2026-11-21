@@ -17,6 +17,7 @@ function render(){
   if (!S) return;
   $('#strip').hidden = !S.collapsed;
   $('#panel').hidden = !!S.collapsed;
+  document.body.classList.toggle('collapsed', !!S.collapsed);
   const L = S.lesson;
   $('#title').textContent = L ? L.title : '수업 폴더를 열어 주세요';
   const openN = Object.values(S.state).filter(s => s.status === 'open' || s.status === 'blocked').length;
