@@ -10,9 +10,10 @@
     "start": "electron .",
     "test": "node --test \"test/*.test.js\"",
     "build:helper": "npm --prefix ../poc run build:mac",
-    "dist:mac": "npm run build:helper && electron-builder --mac --arm64",
-    "dist:mac:dir": "npm run build:helper && electron-builder --mac --arm64 --dir",
-    "smoke:mac": "node scripts/smoke-packaged.mjs"
+    "dist:mac": "npm run electron:get && npm run build:helper && electron-builder --mac --arm64",
+    "dist:mac:dir": "npm run electron:get && npm run build:helper && electron-builder --mac --arm64 --dir",
+    "smoke:mac": "node scripts/smoke-packaged.mjs",
+    "electron:get": "node node_modules/electron/install.js"
   },
   "devDependencies": {
     "electron": "45.4.1",
