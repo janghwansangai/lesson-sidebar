@@ -19,6 +19,9 @@ jobs:
           node-version: 22
       - run: npm test
         working-directory: poc
+      - name: 체험판 라이브러리 설치 (zip 등, 빌드 도구는 빼고)
+        run: npm ci --omit=dev
+        working-directory: app
       - name: 체험판 수업 진행 로직 테스트
         run: npm test
         working-directory: app

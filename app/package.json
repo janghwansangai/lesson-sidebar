@@ -83,5 +83,9 @@
     "dmg": {
       "title": "수업 사이드바 ${version}"
     }
+  },
+  "dependencies": {
+    "yauzl": "3.4.0",
+    "yazl": "3.3.1"
   }
 }

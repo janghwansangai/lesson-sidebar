@@ -234,7 +234,7 @@ export class Session extends EventEmitter {
       return this.say(`'${it.title}'은(는) 다른 파일과 같은 ${app.label} 창에 탭으로 열려 있어, 다른 탭까지 닫히지 않도록 창을 닫지 않았습니다. ${app.label}에서 이 탭만 닫아 주세요`);
     }
     // 이미 답을 기다리는 창(저장 여부·로그인 등)이 있으면 닫기 요청을 또 보내지 않는다.
-    // 맥 한글은 저장 창이 하나 더 생기고, 그 창은 문서가 닫힌 뒤에도 남아 다른 한글 창까지 막는다 (docs/poc/mac.md 24)
+    // 맥 한글은 저장 창이 하나 더 생기고, 그 창은 문서가 닫힌 뒤에도 남아 다른 한글 창까지 막는다 (docs/poc/mac.md 25)
     if (!w.waiting){
       try { await this.helper.call('close', wid); } catch { /* 아래에서 남았는지 본다 */ }
       // 도우미가 창마다 waiting을 알려 주면 뜨는 즉시 알리고, 그때까지 closeWait만큼 기다린다 (저장 창은 2.5초 넘게 걸려 뜨기도 한다).

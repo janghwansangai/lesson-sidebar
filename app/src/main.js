@@ -13,6 +13,7 @@ import { Session } from './core/session.js';
 import { LessonDoc } from './core/editor.js';
 import { listLessons, suggestRoots, LIB_NAME } from './core/library.js';
 import { writeLock, clearLock, otherLock, deviceName } from './core/lock.js';
+import { exportBundle, inspectBundle, importBundle, findExisting, fmtBytes } from './core/bundle.js';
 import * as L from './core/launcher.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -257,6 +258,15 @@ function afterEdit(msg){
 const str = (v, max = 500) => typeof v === 'string' ? v.slice(0, max) : undefined;
 const absPath = v => { const s = str(v, 4096); return s && path.isAbsolute(s) ? s : null; };
 
+const DEBUG = process.env.SIDEBAR_DEBUG === '1';   // 시험용 원격 조작: 꾸러미 저장·열기 창 대신 경로를 받는다
+let busy = false;
+/** 꾸러미처럼 오래 걸리는 일은 하나씩 (두 번 눌러도 겹치지 않게) */
+async function oneAtATime(fn){
+  if (busy) throw new Error('앞의 작업이 끝날 때까지 기다려 주세요');
+  busy = true;
+  try { return await fn(); } finally { busy = false; }
+}
+
 const PREP_ACTIONS = {
   async chooseLibrary(){
     const r = await dialog.showOpenDialog(prepWin, { title: '수업 보관함으로 쓸 폴더 고르기', properties: ['openDirectory', 'createDirectory'] });
@@ -314,6 +324,69 @@ const PREP_ACTIONS = {
     afterEdit(r.renamed.length || r.skipped.length
       ? `파일 ${r.renamed.length}개 이름을 순서에 맞췄습니다${r.skipped.length ? ` · ${r.skipped.length}개는 건너뜀 (${r.skipped.map(s => `${s.title}: ${s.reason}`).join(', ')})` : ''}`
       : '이미 순서대로 정리되어 있습니다');
+  },
+  // ---------- 수업 꾸러미(.zip) ----------
+  async exportBundle(p){
+    const d = needDoc();
+    return oneAtATime(async () => {
+      // 보내기 전에 "정리하기" (사이드바에서 열린 파일은 건너뜀)
+      const open = new Set(session.lesson?.root === d.root ? [...session.state].filter(([, st]) => st.wid).map(([id]) => id) : []);
+      const t = d.tidy(open); d.save(); refreshSessionIfSame(d.root);
+      let file = DEBUG ? absPath(p.file) : null;
+      if (!file){
+        const r = await dialog.showSaveDialog(prepWin, { title: '수업 꾸러미 저장', defaultPath: path.join(app.getPath('desktop'), `${path.basename(d.root)}.zip`),
+          filters: [{ name: '수업 꾸러미', extensions: ['zip'] }] });
+        if (r.canceled || !r.filePath) return;
+        file = /\.zip$/i.test(r.filePath) ? r.filePath : `${r.filePath}.zip`;
+      }
+      if (path.resolve(file).startsWith(d.root + path.sep)) throw new Error('꾸러미는 수업 폴더 밖에 저장해 주세요');
+      note('꾸러미를 만드는 중…');
+      const r = await exportBundle(d.root, file, { appVersion: app.getVersion() });
+      note(`꾸러미를 만들었습니다: ${path.basename(file)} (파일 ${r.count}개, ${fmtBytes(r.bytes)})`
+        + (t.skipped.length ? ` · 열린 파일 ${t.skipped.length}개는 이름 정리를 건너뜀` : '')
+        + (r.needAccess.length ? ` · 구글 문서·캔바 링크 ${r.needAccess.length}개는 받는 분 계정에 열람 권한이 있어야 열립니다` : ''));
+      if (!DEBUG) shell.showItemInFolder(file);
+    });
+  },
+  async importBundle(p){
+    const lib = libraryRoot(); if (!lib) throw new Error('먼저 수업 보관함 위치를 정해 주세요');
+    return oneAtATime(async () => {
+      let file = DEBUG ? absPath(p.file) : null;
+      if (!file){
+        const r = await dialog.showOpenDialog(prepWin, { title: '가져올 수업 꾸러미(.zip) 고르기', properties: ['openFile'], filters: [{ name: '수업 꾸러미', extensions: ['zip'] }] });
+        if (r.canceled || !r.filePaths[0]) return;
+        file = r.filePaths[0];
+      }
+      note('꾸러미를 살펴보는 중…');
+      const info = await inspectBundle(file);
+      const existing = findExisting(info, lib);
+      let mode = 'copy';
+      if (existing){
+        const running = session.lesson?.root === existing;
+        const lock = otherLock(existing, DEVICE);
+        const modes = running ? ['copy', 'cancel'] : ['copy', 'overwrite', 'cancel'];
+        const pick = DEBUG && modes.includes(p.mode) ? p.mode : modes[(await dialog.showMessageBox(prepWin, {
+          type: 'question', title: '같은 수업이 있습니다', message: `'${info.lesson.title}' 수업이 보관함에 이미 있습니다.`,
+          detail: [
+            `가져올 꾸러미: ${path.basename(file)} · 파일 ${info.plan.length}개`,
+            '사본으로 가져오면 따로 고치는 새 수업이 하나 더 생깁니다.',
+            running ? '지금 사이드바에서 진행 중인 수업이라 덮어쓸 수 없습니다.' : '덮어쓰면 지금 수업 폴더는 보관함의 .sidebar/덮어쓰기 전 폴더로 옮겨 둡니다.',
+            lock ? `주의: ${lock.device}에서 이 수업을 열고 있습니다.` : '',
+          ].filter(Boolean).join('\n'),
+          buttons: running ? ['사본으로 가져오기', '취소'] : ['사본으로 가져오기', '덮어쓰기', '취소'], defaultId: 0, cancelId: modes.length - 1,
+        })).response];
+        if (pick === 'cancel'){ note('꾸러미 가져오기를 취소했습니다'); return; }
+        mode = pick;
+      }
+      note(`꾸러미를 푸는 중… (${fmtBytes(info.totalBytes)})`);
+      if (mode === 'overwrite' && doc?.root === existing){ clearLock(existing, DEVICE); doc = null; }   // 푸는 동안 이 창이 저장하지 않게
+      const r = await importBundle(info, lib, { mode, existing });
+      openDoc(r.root);
+      note(`'${info.lesson.title}' 수업을 가져왔습니다 (파일 ${r.count}개)`
+        + (r.backup ? ' · 예전 수업은 .sidebar/덮어쓰기 전에 있습니다' : '')
+        + (r.skipped.length ? ` · ${r.skipped.length}개 뺌 (${r.skipped.map(x => `${x.name}: ${x.reason}`).join(', ')})` : '')
+        + (r.damaged.length ? ` · 손상된 파일 ${r.damaged.length}개는 가져오지 못했습니다 (${r.damaged.join(', ')})` : ''));
+    });
   },
   editMemo(p){
     const loc = needDoc().locate(str(p.id, 60));
