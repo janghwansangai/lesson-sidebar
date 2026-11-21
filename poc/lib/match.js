@@ -66,6 +66,16 @@ export function tileRects(area, key, c, r){
   }
 }
 
+/**
+ * 두 창의 최소 폭을 지키도록 분할 비율을 조정한다 (조절 바가 최소 크기에서 멈추는 것과 같다).
+ * 둘 다 들어갈 수 없으면 null.
+ */
+export function fitRatio(total, ratio, minA = 0, minB = 0){
+  if (minA + minB > total) return null;
+  const lo = minA / total, hi = 1 - minB / total;
+  return Math.min(hi, Math.max(lo, ratio));
+}
+
 /** 요청한 위치·크기와 실제 값이 허용 오차 안인지. */
 export function rectClose(a, b, tol = 16){
   return ['x', 'y', 'width', 'height'].every(k => Math.abs((a?.[k] ?? NaN) - (b?.[k] ?? NaN)) <= tol);
