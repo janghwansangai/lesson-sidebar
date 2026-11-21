@@ -12,6 +12,8 @@ export const EXT_TYPE = {
 export const BLOCKED = /\.(exe|bat|cmd|com|msi|app|command|sh|bash|zsh|ps1|psm1|vbs|vbe|wsf|hta|reg|cpl|jar|scr|dmg|pkg|pif|lnk|apk|py|pyw|pl|rb|scpt|workflow|terminal)$/i;
 
 /** 시작 위치를 쓸 수 있는 종류와 예시 */
+// 오피스·한컴 등이 문서를 여는 동안 만드는 잠금 파일과 운영체제 숨김 파일 (사용자 이름이 들어 있기도 함)
+export const TEMP_FILE = /^(~\$|\.~lock\.|~WRL)|^(\.DS_Store|Thumbs\.db|desktop\.ini)$/i;
 export const START_HINT = { youtube: '0:45', video: '1:20', pdf: '3쪽', pptx: '3번 슬라이드' };
 
 export function extOf(name){
