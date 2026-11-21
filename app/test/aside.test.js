@@ -27,3 +27,18 @@ test('오른쪽 끝이 화면 끝이면 넘지 않고, 사이드바 폭이 0(자
   assert.deepEqual(plan[0].to, { x: 420, y: 0, width: 1500, height: 600 });
   assert.deepEqual(planAside([win(1, {})], T, 0, { displays: [T, S] }), []);
 });
+
+// 맥: 포인트 단위, 위쪽 메뉴 막대(33) 아래가 사용 영역. 맥 도우미는 maximized가 없고(초록 단추로 채운 창도 보통 창),
+// 슬라이드 쇼처럼 메뉴 막대까지 화면 전체를 덮는 창은 fullscreen으로 알린다.
+const MAC = { index: 0, primary: true, scale: 2, x: 0, y: 0, width: 1512, height: 982, visible: { x: 0, y: 33, width: 1512, height: 949 } };
+
+test('맥: 화면을 채운 창은 왼쪽만 사이드바 오른쪽으로, 슬라이드 쇼(전체 화면)는 그대로', () => {
+  const plan = planAside([
+    win(1, { x: 0, y: 33, width: 1512, height: 949 }),                    // 초록 단추로 채운 창
+    win(2, { x: 0, y: 0, width: 1512, height: 982, fullscreen: true }),   // 슬라이드 쇼
+    win(3, { x: 300, y: 100 }),                                           // 사이드바와 겹치지 않음
+  ], MAC, 280, { displays: [MAC] });
+  assert.deepEqual(plan.map(p => p.wid), [1]);
+  assert.deepEqual(plan[0].to, { x: 280, y: 33, width: 1232, height: 949 });
+  assert.equal(plan[0].maximized, false);
+});
