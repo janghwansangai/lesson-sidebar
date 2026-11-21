@@ -160,6 +160,8 @@ window.addEventListener('beforeunload', () => flushTyping(true));
 $('#run').addEventListener('click', () => api.act('run'));
 $('#tidy').addEventListener('click', () => api.act('tidy'));
 $('#reveal').addEventListener('click', () => api.act('reveal'));
+$('#export').addEventListener('click', () => api.act('exportBundle'));
+$('#import').addEventListener('click', () => api.act('importBundle'));
 
 // ---------- 자료 넣기 ----------
 $('#add-sec').addEventListener('change', e => { addSec = e.target.value; });
