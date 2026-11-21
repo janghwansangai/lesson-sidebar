@@ -18,6 +18,7 @@ let msgTimer = 0, lastMsg = '';
 
 function render(){
   if (!S) return;
+  if (S.platform === 'win32') $('#reveal').textContent = '탐색기에서 보기';
   renderLibrary();
   const d = S.doc;
   $('#empty').hidden = !!d;

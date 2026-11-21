@@ -11,7 +11,11 @@ const ALIVE_GRACE = 4000;   // 막 연결한 창은 잠시 "사라짐" 판단에
 const CLOSE_WAIT = 6000;
 
 export class Session extends EventEmitter {
-  constructor({ helper, files, ownPid, launcher = L, sidebarWidth = 280, closeWait = CLOSE_WAIT }){
+  /**
+   * sidebarWidth는 Electron 화면 단위(맥 포인트, 윈도우 DIP). physicalPixels: 도우미가 물리 픽셀을 쓰면 true (윈도우) —
+   * 사이드바 폭에 교사 화면 배율을 곱해 도우미 단위로 바꾼다.
+   */
+  constructor({ helper, files, ownPid, launcher = L, sidebarWidth = 280, physicalPixels = false, closeWait = CLOSE_WAIT }){
     super();
     this.closeWait = closeWait;
     this.helper = helper;
@@ -19,6 +23,7 @@ export class Session extends EventEmitter {
     this.ownPid = ownPid;
     this.launcher = launcher;
     this.sidebarWidth = sidebarWidth;
+    this.physicalPixels = physicalPixels;
     this.lesson = null;
     this.state = new Map();
     this.displays = [];
@@ -80,10 +85,15 @@ export class Session extends EventEmitter {
   home(it){ return it.screen ?? (['memo', 'folder'].includes(it.type) ? 'teacher' : 'student'); }
   /** 이번에 열 곳: 모니터 한 대이거나 "교사 화면에서 먼저"면 교사 화면. */
   target(it){ return !this.dual || this.openTo === 'teacher' ? 'teacher' : this.home(it); }
+  /** 교사 화면에서 사이드바가 차지하는 폭 (도우미 단위). */
+  sidebarSpan(){
+    if (this.autoHide) return 0;
+    return Math.round(this.sidebarWidth * (this.physicalPixels ? (this.teacher?.scale ?? 1) : 1));
+  }
   area(where){
     return where === 'student' && this.student
       ? M.workArea(this.student)
-      : M.workArea(this.teacher, this.autoHide ? 0 : this.sidebarWidth);
+      : M.workArea(this.teacher, this.sidebarSpan());
   }
   rectFor(where){
     const a = this.area(where);
@@ -338,7 +348,9 @@ export class Session extends EventEmitter {
       if (st.wid || key === 'browser' || !it.abs) continue;
       const app = this.launcher.APPS[key];
       const taken = new Set([...this.state.values()].map(s => s.wid).filter(Boolean));
-      const w = M.findByTitle(all.filter(x => !taken.has(x.wid) && (x.app.includes(app.match) || (x.bundle ?? '').includes(app.match))), M.stem(it.abs))[0];
+      // 윈도우 도우미의 app은 실행 파일 이름(POWERPNT.EXE, Hwp.exe 등)이라 대소문자 없이 비교한다
+      const m = (app.match ?? '').toLowerCase();
+      const w = m && M.findByTitle(all.filter(x => !taken.has(x.wid) && ((x.app ?? '').toLowerCase().includes(m) || (x.bundle ?? '').toLowerCase().includes(m))), M.stem(it.abs))[0];
       if (!w) continue;
       st.wid = w.wid; st.status = 'open'; st.linkedAt = Date.now();
       st.disp = this.student && M.displayOf(w, this.displays) === this.student.index ? 'student' : 'teacher';

@@ -72,7 +72,7 @@ function makeLesson(){
 }
 
 /** realCloseWait: 닫기 뒤 저장 창을 기다리는 시간을 실제 값(6초)으로. 아니면 시험이 빨리 끝나게 1.2초. */
-function makeSession(displays = [TEACHER, STUDENT], { realCloseWait = false } = {}){
+function makeSession(displays = [TEACHER, STUDENT], { realCloseWait = false, ...opts } = {}){
   const helper = new FakeHelper(displays);
   const launcher = {
     APPS: { powerpoint: { app: 'PP', match: 'PowerPoint', label: '파워포인트' }, text: { app: 'TE', match: 'TextEdit', label: '텍스트 편집기' }, excel: {}, hwp: {} },
@@ -81,7 +81,7 @@ function makeSession(displays = [TEACHER, STUDENT], { realCloseWait = false } = 
     openInBrowser: async () => { helper.spawn('Chrome', '참고 - Chrome'); },
     openWithApp: async (app, file) => { helper.spawn(app.app === 'PP' ? 'PowerPoint' : 'TextEdit', path.basename(file).replace(/\.pptx$/, '')); },
   };
-  const s = new Session({ helper, files: { url: f => `http://127.0.0.1/t/${f}` }, ownPid: 1, launcher, closeWait: realCloseWait ? undefined : 1200 });
+  const s = new Session({ helper, files: { url: f => `http://127.0.0.1/t/${f}` }, ownPid: 1, launcher, closeWait: realCloseWait ? undefined : 1200, ...opts });
   return { s, helper };
 }
 
@@ -119,6 +119,23 @@ test('모니터 한 대면 사이드바를 뺀 영역에 연다', async () => {
   await s.refreshDisplays(); s.load(makeLesson());
   await s.open('ppt');
   assert.deepEqual([helper.wins[0].x, helper.wins[0].width], [280, 1232]);
+});
+
+test('윈도우(물리 픽셀): 사이드바 폭에 교사 화면 배율을 곱해 뺀다', async () => {
+  const T = { index: 0, primary: true, builtin: true, scale: 1.5, x: 0, y: 0, width: 2880, height: 1800, visible: { x: 0, y: 0, width: 2880, height: 1728 } };
+  const { s, helper } = makeSession([T], { physicalPixels: true });
+  await s.refreshDisplays(); s.load(makeLesson());
+  await s.open('ppt');
+  assert.deepEqual([helper.wins[0].x, helper.wins[0].width, helper.wins[0].height], [420, 2460, 1728]);
+});
+
+test('윈도우: 실행 파일 이름(POWERPNT.EXE)의 대소문자가 달라도 다시 연결한다', async () => {
+  const { s, helper } = makeSession();
+  s.launcher.APPS.powerpoint.match = 'powerpnt.exe';
+  helper.spawn('POWERPNT.EXE', '04_발표자료.pptx - PowerPoint');
+  await s.refreshDisplays(); s.load(makeLesson());
+  assert.equal(await s.relink(), 1);
+  assert.equal(s.state.get('ppt').status, 'open');
 });
 
 test('나란히 놓을 때 최소 폭이 넓은 창이면 비율을 조정한다', async () => {

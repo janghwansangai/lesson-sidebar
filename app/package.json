@@ -3,14 +3,85 @@
   "productName": "수업 사이드바",
   "version": "0.1.0",
   "private": true,
-  "description": "수업 사이드바 체험판",
+  "description": "수업 사이드바 — 수업 자료를 원래 프로그램으로 열고 사이드바 하나로 창을 관리하는 프로그램",
   "type": "module",
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
-    "test": "node --test \"test/*.test.js\""
+    "test": "node --test \"test/*.test.js\"",
+    "build:helper": "npm --prefix ../poc run build:mac",
+    "dist:mac": "npm run electron:get && npm run build:helper && electron-builder --mac --arm64",
+    "dist:mac:dir": "npm run electron:get && npm run build:helper && electron-builder --mac --arm64 --dir",
+    "smoke:mac": "node scripts/smoke-packaged.mjs",
+    "electron:get": "node node_modules/electron/install.js"
   },
   "devDependencies": {
-    "electron": "45.4.1"
+    "electron": "45.4.1",
+    "electron-builder": "26.18.1"
+  },
+  "build": {
+    "appId": "kr.lessonsidebar.app",
+    "productName": "LessonSidebar",
+    "copyright": "수업 사이드바",
+    "electronDist": "node_modules/electron/dist",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../poc/mac-helper/.build/release/winctl",
+        "to": "winctl"
+      },
+      {
+        "from": "../poc/lib",
+        "to": "poc/lib",
+        "filter": [
+          "*.js"
+        ]
+      },
+      {
+        "from": "../poc/package.json",
+        "to": "poc/package.json"
+      },
+      {
+        "from": "sample-lesson",
+        "to": "sample-lesson",
+        "filter": [
+          "**/*",
+          "!.sidebar/**",
+          "!**/~$*",
+          "!**/.DS_Store"
+        ]
+      },
+      {
+        "from": "build/ko.lproj",
+        "to": "ko.lproj"
+      },
+      {
+        "from": "build/en.lproj",
+        "to": "en.lproj"
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.education",
+      "target": [
+        "dmg"
+      ],
+      "identity": "-",
+      "hardenedRuntime": false,
+      "artifactName": "lesson-sidebar-${version}-mac-${arch}.${ext}",
+      "extendInfo": {
+        "LSUIElement": true,
+        "CFBundleDisplayName": "LessonSidebar",
+        "LSHasLocalizedDisplayName": true
+      }
+    },
+    "dmg": {
+      "title": "수업 사이드바 ${version}"
+    }
   }
 }
