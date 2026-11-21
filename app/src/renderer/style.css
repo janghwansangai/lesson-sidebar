@@ -17,7 +17,7 @@ button{font-family:inherit;color:inherit}
 :focus-visible{outline:2px solid var(--chalk);outline-offset:1px}
 
 .strip{position:fixed;inset:0;background:var(--sb-bg)}
-.strip::after{content:"";position:absolute;left:3px;top:50%;width:4px;height:72px;margin-top:-36px;border-radius:3px;background:var(--chalk)}
+.strip::after{content:"";position:absolute;left:3px;top:6px;bottom:6px;width:4px;border-radius:3px;background:var(--chalk)}
 
 .panel{height:100%;display:flex;flex-direction:column}
 .head{padding:12px 12px 10px;border-bottom:1px solid var(--sb-line);display:flex;flex-direction:column;gap:3px}
