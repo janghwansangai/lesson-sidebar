@@ -26,6 +26,8 @@ const SIDEBAR_W = 280;
 const BAR_W = 6, BAR_H = 84;
 const EDGE_W = 10;       // 교사 화면 왼쪽 끝 이 폭 안에 마우스를 대면 (높이 어디든) 펼친다
 const HOT_MARGIN = 48;   // 막대 높이 위아래 여유: 이 높이에서 왼쪽 모니터로 넘어가도 펼친다
+// 펼친 사이드바 배경 투명도 (설정에서 고름). 글씨·단추는 그대로 진하고 배경만 비친다. 70%보다 옅으면 뒤 창 글자와 겹쳐 읽기 어렵다
+const OPACITY_STEPS = [100, 90, 80, 70];
 const DEVICE = deviceName();
 
 // 개발 중에는 설정·로그를 이 폴더 안에 둔다 (패키지로 만들면 운영체제 기본 위치)
@@ -83,6 +85,9 @@ function makeHelper(){
 let win = null, prepWin = null, session = null, helper = null, files = null;
 let collapsed = false, outSince = 0, cursorTimer = null;
 let doc = null, prepMsg = '', sessionMtime = 0;
+// 사이드바 설정. aside: 고정해 둘 때 가려지는 창을 옆으로 비키기 (윈도우만 — 맥은 맥 Claude 확인 뒤)
+let prefs = { opacity: 100, aside: false };
+const ASIDE_OK = IS_WIN;
 
 // ---------- 설정 ----------
 const settingsFile = () => path.join(app.getPath('userData'), 'settings.json');
@@ -141,17 +146,46 @@ function createSidebar(){
   win.on('closed', () => { win = null; });
 }
 
-function push(){ win?.webContents.send('state', { ...session.snapshot(), collapsed }); }
+const fullState = () => ({ ...session.snapshot(), collapsed, prefs: { ...prefs, steps: OPACITY_STEPS, asideAvailable: ASIDE_OK } });
+function push(){ win?.webContents.send('state', fullState()); }
 
 // ---------- 자동 숨김 ----------
-function setAutoHide(v){
+async function setAutoHide(v){
   session.autoHide = !!v;
   saveSettings({ autoHide: session.autoHide });
   clearInterval(cursorTimer);
   collapsed = session.autoHide;
   placeSidebar();
   if (session.autoHide) cursorTimer = setInterval(watchCursor, 120);
-  session.say(session.autoHide ? '자동 숨김: 화면 왼쪽 끝에 마우스를 대면 나타납니다 (왼쪽 가운데 노란 막대)' : '사이드바를 화면 왼쪽에 고정했습니다');
+  if (session.autoHide){
+    // 고정을 풀면 옆으로 옮겼던 창을 돌려놓는다 (자동 숨김 중에는 펼칠 때마다 창이 들썩이지 않게 옮기지 않음)
+    const n = await session.restoreAside();
+    session.say(`자동 숨김: 화면 왼쪽 끝에 마우스를 대면 나타납니다 (왼쪽 가운데 노란 막대)${n ? ` · 옮겼던 창 ${n}개를 돌려놓았습니다` : ''}`);
+  } else {
+    const n = prefs.aside ? await session.stepAside() : 0;
+    session.say(`사이드바를 화면 왼쪽에 고정했습니다${n ? ` · 가려지던 창 ${n}개를 오른쪽으로 옮겼습니다` : ''}`);
+  }
+}
+
+// ---------- 설정 ----------
+function setOpacity(v){
+  const n = Number(v);
+  if (!OPACITY_STEPS.includes(n)) return;
+  prefs.opacity = n;
+  saveSettings({ opacity: n });
+  push();
+}
+
+async function setAside(v){
+  prefs.aside = ASIDE_OK && !!v;
+  saveSettings({ aside: prefs.aside });
+  if (!prefs.aside){
+    const n = await session.restoreAside();
+    return session.say(`고정해 두어도 다른 창을 옮기지 않습니다${n ? ` · 옮겼던 창 ${n}개를 돌려놓았습니다` : ''}`);
+  }
+  if (session.autoHide) return session.say('사이드바를 고정하면(자동 숨김 끄기) 가려지는 창을 오른쪽으로 옮깁니다');
+  const n = await session.stepAside();
+  session.say(n ? `가려지던 창 ${n}개를 사이드바 오른쪽으로 옮겼습니다 · 고정을 풀거나 이 설정을 끄면 돌려놓습니다` : '사이드바에 가려진 창이 없습니다 · 고정해 둔 동안 새로 연 창은 옮기지 않습니다');
 }
 
 let lastCursor = null;
@@ -417,6 +451,7 @@ const ACTIONS = {
   activate: id => session.activate(id),
   move: id => session.move(id),
   close: id => session.close(id),
+  closeTab: id => session.closeTab(id),
   toggleSel: id => session.toggleSel(id),
   split: () => session.split(),
   untile: () => session.untile(),
@@ -425,6 +460,8 @@ const ACTIONS = {
   hideOthers: () => session.hideOthers(),
   openTo: v => session.setOpenTo(v),
   autoHide: v => setAutoHide(v === true || v === 'true'),
+  opacity: v => setOpacity(v),
+  aside: v => setAside(v === true || v === 'true'),
   prep: () => openPrep(),
   quit: () => app.quit(),
 };
@@ -437,7 +474,7 @@ async function act(action, arg){
   return true;
 }
 
-ipcMain.handle('state', () => ({ ...session.snapshot(), collapsed }));
+ipcMain.handle('state', () => fullState());
 ipcMain.handle('act', (e, action, arg) => {
   if (e.sender !== win?.webContents) return false;
   act(action, arg).catch(err => session.say(err.message));
@@ -489,7 +526,7 @@ async function startDebugServer(){
       out = prepSnapshot();
     } else {
       if (cmd === 'act') await act(u.searchParams.get('do'), u.searchParams.get('arg') ?? undefined).catch(e => session.say(e.message));
-      out = { ...session.snapshot(), collapsed };
+      out = fullState();
     }
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
     res.end(JSON.stringify(out));
@@ -523,6 +560,7 @@ app.whenReady().then(async () => {
   await session.refreshDisplays();
 
   const settings = readSettings();
+  prefs = { opacity: OPACITY_STEPS.includes(settings.opacity) ? settings.opacity : 100, aside: ASIDE_OK && !!settings.aside };
   createSidebar();
   if (!(settings.lastFolder && existsSync(settings.lastFolder) && runLesson(settings.lastFolder))) runLesson(sampleLesson());
   if (settings.lastPrepFolder && existsSync(path.join(settings.lastPrepFolder, 'lesson.json'))){
@@ -535,6 +573,11 @@ app.whenReady().then(async () => {
   if (trusted) await session.relink();
   else { session.say(NO_TRUST); waitForTrust(); }
   helper.startWatch();
+  // 고정한 채로 켜면 가려지는 창을 옆으로 (설정을 켰을 때만)
+  if (trusted && prefs.aside && !session.autoHide){
+    const n = await session.stepAside();
+    if (n) session.say(`가려지던 창 ${n}개를 사이드바 오른쪽으로 옮겼습니다 · 끝내거나 자동 숨김으로 바꾸면 돌려놓습니다`);
+  }
 
   let t = null;
   const onDisplays = () => { clearTimeout(t); t = setTimeout(async () => { await session.onDisplaysChanged(); placeSidebar(); }, 800); };
@@ -549,7 +592,15 @@ app.whenReady().then(async () => {
 });
 
 app.on('window-all-closed', () => app.quit());
-app.on('before-quit', () => {
+let restoringOnQuit = false;
+app.on('before-quit', e => {
+  // 끝낼 때 옆으로 옮겼던 창을 먼저 돌려놓는다 (오래 걸려도 5초까지만 기다림)
+  if (session?.aside?.length && !restoringOnQuit){
+    e.preventDefault();
+    restoringOnQuit = true;
+    Promise.race([session.restoreAside(), new Promise(r => setTimeout(r, 5000))]).finally(() => app.quit());
+    return;
+  }
   for (const root of new Set([doc?.root, session?.lesson?.root].filter(Boolean))) clearLock(root, DEVICE);
   helper?.stop(); files?.close(); clearInterval(cursorTimer);
 });

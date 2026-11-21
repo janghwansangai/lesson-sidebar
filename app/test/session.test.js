@@ -11,18 +11,41 @@ import { loadLesson } from '../src/core/lesson.js';
 const TEACHER = { index: 0, primary: true, builtin: true, x: 0, y: 0, width: 1512, height: 982, visible: { x: 0, y: 33, width: 1512, height: 949 } };
 const STUDENT = { index: 1, primary: false, builtin: false, x: -1280, y: 182, width: 1280, height: 800, visible: { x: -1280, y: 212, width: 1280, height: 770 } };
 
-/** 창 목록을 흉내 내는 도우미. 프로그램을 "열면" 창 하나가 생긴다. */
+/**
+ * 창 목록을 흉내 내는 도우미. 프로그램을 "열면" 창 하나가 생긴다.
+ * 탭 메모장 흉내: 창에 tabs(파일 이름들)가 있으면 제목은 보이는 탭(tabs[0])이고, closetab이 그 이름의 탭만 뺀다.
+ * dirty에 든 탭은 닫을 때 저장 여부를 묻는다(waiting). notepadTabs=false면 탭 없는 메모장(윈도우 10).
+ */
 class FakeHelper extends EventEmitter {
-  constructor(displays){ super(); this.displays = displays; this.wins = []; this.next = 100; this.minW = {}; this.stuck = new Set(); }
+  constructor(displays){ super(); this.displays = displays; this.wins = []; this.next = 100; this.minW = {}; this.stuck = new Set(); this.dirty = new Set(); this.notepadTabs = true; this.calls = []; }
   spawn(app, title){ const w = { wid: this.next++, app, title, x: 100, y: 100, width: 800, height: 600 }; this.wins.push(w); return w; }
+  tabsOf(w){ return w.tabs ?? [w.title.replace(/ - 메모장$/, '')]; }
+  closeTab(w, name){
+    w.tabs = this.tabsOf(w).filter(t => t !== name);
+    if (!w.tabs.length){ this.wins = this.wins.filter(x => x !== w); return true; }
+    w.title = `${w.tabs[0]} - 메모장`;
+    return false;
+  }
   async call(cmd, ...a){
+    this.calls.push(cmd);
     switch (cmd){
+      case 'closetab': case 'findtab': {
+        const w = this.wins.find(x => x.wid === Number(a[0])); if (!w) throw new Error('없음');
+        const name = a[1], count = this.tabsOf(w).filter(t => t === name).length;
+        if (!this.notepadTabs) return { ok: true, tabs: false, found: w.title.startsWith(name), count };
+        if (cmd === 'findtab') return { ok: true, tabs: true, found: count === 1, count, dialog: !!w.asking };
+        if (count !== 1) return { ok: true, tabs: true, found: false, count, closed: false, waiting: null };
+        if (this.dirty.has(name)){ w.asking = name; w.tabs = [name, ...this.tabsOf(w).filter(t => t !== name)]; w.title = `*${name} - 메모장`; return { ok: true, tabs: true, found: true, count, closed: false, waiting: { wid: null, title: '메모장 안의 확인 창' } }; }
+        const windowClosed = this.closeTab(w, name);
+        return { ok: true, tabs: true, found: true, count, closed: true, windowClosed, waiting: null };
+      }
+      case 'maximize': { const w = this.wins.find(x => x.wid === Number(a[0])); w.maximized = true; return { ok: true }; }
       case 'displays': return { ok: true, displays: this.displays };
       case 'list': { const i = a.indexOf('--app'); const f = i >= 0 ? a[i + 1] : null; return { ok: true, windows: this.wins.filter(w => !f || w.app.includes(f)) }; }
       case 'raise': { const w = this.wins.find(x => x.wid === Number(a[0])); if (!w) throw new Error('없음'); return { ok: true }; }
       case 'move': {
         const w = this.wins.find(x => x.wid === Number(a[0])); const [x, y, width, height] = a.slice(1).map(Number);
-        Object.assign(w, { x, y, width: Math.max(width, this.minW[w.app] ?? 0), height });
+        Object.assign(w, { x, y, width: Math.max(width, this.minW[w.app] ?? 0), height, maximized: false });
         return { ok: true, actual: { x: w.x, y: w.y, width: w.width, height: w.height } };
       }
       case 'minimize': return { ok: true };
@@ -153,32 +176,42 @@ test('윈도우: 도우미가 waiting(저장 창)을 알려 주면 기다리지 
   assert.match(s.msg, /답을 기다립니다/);
 });
 
-test('윈도우 메모장(탭): 열기 전부터 있던 창에 탭으로 열렸으면 창을 닫지 않고 연결만 푼다', async () => {
+test('윈도우 메모장(탭): 열기 전부터 있던 창(선생님 메모장)이면 창을 닫지 않고, 안내 단추를 누르면 이 탭만 닫는다', async () => {
   const { s, helper } = makeSession();
   s.launcher.APPS.text.tabbed = true;
-  helper.spawn('TextEdit', '선생님 메모.txt - 메모장');    // 선생님이 미리 열어 둔 메모장 창
-  s.launcher.openWithApp = async () => { helper.wins[0].title = '01_진행메모.md - 메모장'; };   // 새 창 없이 그 창의 새 탭으로
+  const mine = helper.spawn('TextEdit', '선생님 메모.txt - 메모장');    // 선생님이 미리 열어 둔 메모장 창
+  s.launcher.openWithApp = async () => { mine.tabs = ['01_진행메모.md', '선생님 메모.txt']; mine.title = '01_진행메모.md - 메모장'; };   // 새 창 없이 그 창의 새 탭으로
   await s.refreshDisplays(); s.load(makeLesson());
   await s.open('memo');
   assert.equal(s.state.get('memo').status, 'open');
   await s.close('memo');
   assert.equal(helper.wins.length, 1, '선생님 메모장 창은 남아 있어야 함');
+  assert.deepEqual(mine.tabs, ['01_진행메모.md', '선생님 메모.txt'], '단추를 누르기 전에는 아무 탭도 닫지 않음');
   assert.equal(s.state.get('memo').status, 'closed');
-  assert.match(s.msg, /탭만 닫아/);
+  assert.match(s.msg, /탭만 닫으려면/);
+  assert.deepEqual(s.snapshot().offer, { act: 'closeTab', id: 'memo', label: '사이드바에서 이 탭만 닫기' });
+  assert.ok(!helper.calls.includes('close'), '창 닫기 요청을 보내지 않음');
+  await s.closeTab('memo');                                  // 안내 옆 단추
+  assert.deepEqual(mine.tabs, ['선생님 메모.txt'], '선생님 탭은 그대로');
+  assert.match(s.msg, /탭을 닫았습니다.*다른 탭은 그대로/);
+  assert.equal(s.snapshot().offer, null);
 });
 
-test('윈도우 메모장(탭): 사이드바가 연 창이라도 지금 보이는 탭이 다른 파일이면 닫지 않는다', async () => {
+test('윈도우 메모장(탭): 사이드바가 연 창은 ✕로 이 메모 탭만 닫는다 (지난번 탭이 되살아나 함께 있어도)', async () => {
   const { s, helper } = makeSession();
   s.launcher.APPS.text.tabbed = true;
   await s.refreshDisplays(); s.load(makeLesson());
   await s.open('memo');
-  helper.wins[0].title = '다른 파일.txt - 메모장';          // 선생님이 다른 파일을 열어 그 탭이 앞에 옴
+  const w = helper.wins[0];
+  w.tabs = ['다른 파일.txt', '01_진행메모.md']; w.title = '다른 파일.txt - 메모장';   // 다른 탭이 앞에 보임
   await s.close('memo');
+  assert.deepEqual(w.tabs, ['다른 파일.txt']);
   assert.equal(helper.wins.length, 1);
-  assert.match(s.msg, /탭만 닫아/);
+  assert.equal(s.state.get('memo').status, 'closed');
+  assert.ok(!helper.calls.includes('close'), '창 닫기(WM_CLOSE)를 쓰지 않음');
 });
 
-test('윈도우 메모장(탭): 사이드바가 연 창이고 메모 탭이 보이면 평소처럼 닫는다', async () => {
+test('윈도우 메모장(탭): 메모 탭 하나뿐이면 창도 닫힌다', async () => {
   const { s, helper } = makeSession();
   s.launcher.APPS.text.tabbed = true;
   await s.refreshDisplays(); s.load(makeLesson());
@@ -186,6 +219,74 @@ test('윈도우 메모장(탭): 사이드바가 연 창이고 메모 탭이 보�
   await s.close('memo');
   assert.equal(helper.wins.length, 0);
   assert.equal(s.state.get('memo').status, 'closed');
+  assert.ok(helper.calls.includes('closetab'));
+});
+
+test('윈도우 메모장(탭): 저장 안 한 메모면 "답 기다림"으로 표시하고, 답해서 탭이 닫히면 닫힘으로 바꾼다', async () => {
+  const { s, helper } = makeSession();
+  s.launcher.APPS.text.tabbed = true;
+  await s.refreshDisplays(); s.load(makeLesson());
+  await s.open('memo');
+  const w = helper.wins[0];
+  w.tabs = ['01_진행메모.md', '다른 파일.txt'];
+  helper.dirty.add('01_진행메모.md');
+  await s.close('memo');
+  assert.equal(s.state.get('memo').status, 'blocked');
+  assert.match(s.msg, /저장할지 묻고 있습니다/);
+  // 선생님이 "저장하지 않음"을 누름 → 탭이 닫히고 보이는 탭이 바뀜
+  w.asking = null; helper.closeTab(w, '01_진행메모.md');
+  await new Promise(r => setTimeout(r, 1800));
+  assert.equal(s.state.get('memo').status, 'closed');
+  assert.match(s.msg, /탭을 닫았습니다/);
+  assert.deepEqual(w.tabs, ['다른 파일.txt']);
+});
+
+test('윈도우 메모장(탭): 같은 이름의 탭이 둘이면 어느 것인지 몰라 닫지 않는다', async () => {
+  const { s, helper } = makeSession();
+  s.launcher.APPS.text.tabbed = true;
+  await s.refreshDisplays(); s.load(makeLesson());
+  await s.open('memo');
+  const w = helper.wins[0];
+  w.tabs = ['01_진행메모.md', '01_진행메모.md'];
+  await s.close('memo');
+  assert.equal(w.tabs.length, 2);
+  assert.match(s.msg, /탭이 2개/);
+});
+
+test('탭 없는 메모장(윈도우 10): 창에 이 메모만 있으므로 창을 닫는다', async () => {
+  const { s, helper } = makeSession();
+  s.launcher.APPS.text.tabbed = true;
+  helper.notepadTabs = false;
+  await s.refreshDisplays(); s.load(makeLesson());
+  await s.open('memo');
+  await s.close('memo');
+  assert.equal(helper.wins.length, 0);
+  assert.ok(helper.calls.includes('close'));
+  assert.equal(s.state.get('memo').status, 'closed');
+});
+
+test('사이드바를 고정하면 교사 화면에서 가려지는 창을 옆으로 옮기고, 풀면 돌려놓는다 (그사이 옮긴 창은 그대로)', async () => {
+  const { s, helper } = makeSession();
+  await s.refreshDisplays(); s.load(makeLesson());
+  const max = Object.assign(helper.spawn('Chrome', '업무 - Chrome'), { x: 0, y: 33, width: 1512, height: 949, maximized: true });
+  const half = Object.assign(helper.spawn('Explorer', '문서'), { x: 0, y: 100, width: 700, height: 500 });
+  const moved = Object.assign(helper.spawn('Kakao', '메신저'), { x: 100, y: 200, width: 400, height: 500 });
+  const far = Object.assign(helper.spawn('Hwp', '보고서'), { x: 600, y: 100, width: 800, height: 600 });
+  const stu = Object.assign(helper.spawn('PowerPoint', '발표'), { x: -1280, y: 212, width: 1280, height: 770 });
+  const n = await s.stepAside();
+  assert.equal(n, 3);
+  assert.deepEqual([max.x, max.y, max.width, max.height, max.maximized], [280, 33, 1232, 949, false]);
+  assert.deepEqual([half.x, half.width], [280, 480], '오른쪽 끝(700)이 너무 왼쪽이면 480은 남긴다');
+  assert.deepEqual([far.x, far.width], [600, 800], '가려지지 않은 창은 그대로');
+  assert.deepEqual([stu.x, stu.width], [-1280, 1280], '학생 화면 창은 그대로');
+  assert.equal(await s.stepAside(), 0, '두 번 옮기지 않음');
+  Object.assign(moved, { x: 900, y: 50 });                   // 선생님이 직접 옮김
+  const back = await s.restoreAside();
+  assert.equal(back, 2);
+  assert.equal(max.maximized, true);
+  assert.deepEqual([half.x, half.y, half.width, half.height], [0, 100, 700, 500]);
+  assert.deepEqual([moved.x, moved.y], [900, 50], '선생님이 옮긴 창은 그대로');
+  assert.equal(await s.restoreAside(), 0);
 });
 
 test('학생 화면 연결이 끊기면 교사 화면으로 모으고, 다시 연결되면 돌려놓는다', async () => {
