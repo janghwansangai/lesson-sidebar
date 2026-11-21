@@ -19,9 +19,12 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const APP_DIR = path.resolve(HERE, '..');
 const REPO = path.resolve(APP_DIR, '..');
 const SIDEBAR_W = 280;
-// 자동 숨김으로 접으면 교사 화면 왼쪽 가운데에 노란 막대만 남긴다 (선생님 의견, 2026-11-21)
-const BAR_W = 6, BAR_H = 72;
-const HOT_W = 16, HOT_MARGIN = 48;   // 막대 옆 이 범위로 마우스를 밀면 펼친다
+// 자동 숨김으로 접히면 교사 화면 왼쪽 가운데에 반투명 노란 막대(손잡이)만 남긴다.
+// 화면 높이 전체 띠는 다른 프로그램을 가려서 막대만큼으로 줄이고 반투명하게 했다 (선생님 의견, 2026-11-21, 맥·윈도우 모두).
+// 반투명 정도는 style.css의 .strip (55%)
+const BAR_W = 6, BAR_H = 84;
+const EDGE_W = 10;       // 교사 화면 왼쪽 끝 이 폭 안에 마우스를 대면 (높이 어디든) 펼친다
+const HOT_MARGIN = 48;   // 막대 높이 위아래 여유: 이 높이에서 왼쪽 모니터로 넘어가도 펼친다
 const DEVICE = deviceName();
 
 // 개발 중에는 설정·로그를 이 폴더 안에 둔다 (패키지로 만들면 운영체제 기본 위치)
@@ -130,14 +133,14 @@ function watchCursor(){
   const prev = lastCursor;
   lastCursor = p;
   if (collapsed){
-    const edge = teacherArea().x, bar = barRect();
-    const inBand = pt => pt.y >= bar.y - HOT_MARGIN && pt.y <= bar.y + bar.height + HOT_MARGIN;
-    // 막대 옆(교사 화면 왼쪽 끝 HOT_W 안)에 마우스가 오면 펼친다. 왼쪽 끝을 넘어간 다른 모니터(학생 화면)는 제외
-    const atBar = inBand(p) && p.x >= edge && p.x <= edge + HOT_W;
+    const wa = teacherArea(), bar = barRect();
+    // 손잡이는 작아도 교사 화면 왼쪽 끝 어디에 대든 나온다. 왼쪽에 다른 모니터(학생 화면)가 있으면 그 화면은 빼고
+    const atEdge = p.y >= wa.y && p.y <= wa.y + wa.height && p.x >= wa.x && p.x <= wa.x + EDGE_W;
     // 학생 화면이 왼쪽에 있으면 마우스가 끝에서 멈추지 않고 넘어가므로, 막대 높이에서 왼쪽으로 넘어간 것도 "밀었다"로 본다
     // (넘어간 뒤의 높이는 보지 않는다: 배율이 다른 화면에서는 같은 높이도 화면 단위 값이 달라진다)
-    const pushedPast = prev && inBand(prev) && prev.x >= edge && p.x < edge;
-    if (atBar || pushedPast){ collapsed = false; outSince = 0; placeSidebar(); push(); }
+    const inBand = pt => pt.y >= bar.y - HOT_MARGIN && pt.y <= bar.y + bar.height + HOT_MARGIN;
+    const pushedPast = prev && inBand(prev) && prev.x >= wa.x && p.x < wa.x;
+    if (atEdge || pushedPast){ collapsed = false; outSince = 0; placeSidebar(); push(); }
     return;
   }
   const b = win.getBounds();
