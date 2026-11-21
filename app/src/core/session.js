@@ -155,6 +155,8 @@ export class Session extends EventEmitter {
       if (!w) throw new Error('창을 찾지 못했습니다 (30초)');
 
       st.wid = w.wid; st.status = 'open'; st.home = this.home(it); st.linkedAt = Date.now();
+      // 열기 전부터 있던 창이면 (이미 열려 있던 문서, 또는 윈도우 메모장이 기존 창에 탭으로 연 경우) 기억해 둔다 → close()
+      st.adopted = before.some(x => x.wid === w.wid);
       const where = this.target(it);
       await this.place(id, where);
       if (raise){ await this.raiseWid(w.wid); this.highlight = id; }
@@ -194,26 +196,52 @@ export class Session extends EventEmitter {
     this.say(`'${it.title}' 창을 ${to === 'student' ? '학생' : '교사'} 화면으로 보냈습니다`);
   }
 
+  unlink(id){
+    const st = this.state.get(id);
+    st.status = 'closed'; st.wid = null; st.disp = null; st.adopted = false;
+    if (this.highlight === id) this.highlight = null;
+    if (this.tile?.ids.includes(id)) this.tile = null;
+    this.sel = this.sel.filter(x => x !== id);
+  }
+
   async close(id){
     const it = this.item(id), st = this.state.get(id);
     if (!st?.wid) return;
+    const app = this.launcher.APPS[this.launcher.appKeyFor(it)];
+    if (app?.tabbed && it.abs){
+      // 윈도우 11 메모장은 한 창에 여러 파일을 탭으로 연다. 창을 닫으면 다른 탭(선생님 파일)까지 닫히므로,
+      // 사이드바가 만든 창이고 지금 보이는 탭이 이 메모일 때만 닫는다 (docs/poc/windows.md 체험판 8)
+      const cur = (await this.list()).find(w => w.wid === st.wid);
+      if (cur && (st.adopted || !M.titleMatches(cur.title, M.stem(it.abs)))){
+        this.unlink(id);
+        return this.say(`'${it.title}'은(는) 다른 파일과 같은 ${app.label} 창에 탭으로 열려 있어, 다른 탭까지 닫히지 않도록 창을 닫지 않았습니다. ${app.label}에서 이 탭만 닫아 주세요`);
+      }
+    }
     try { await this.helper.call('close', st.wid); } catch { /* 아래에서 남았는지 본다 */ }
-    for (let i = 0; i < 8; i++){
+    // 윈도우 도우미는 창마다 waiting(답을 기다리는 저장·확인 창)을 알려 준다 → 뜨는 즉시 알리고, 그동안은 조금 더 기다린다
+    // (저장 창은 2.5초 넘게 걸려 뜨기도 한다). 맥 도우미는 이 정보가 없어 전처럼 2.4초 뒤 판단한다
+    let waiting = null, knows = false;
+    for (let i = 0; i < 16; i++){
       await sleep(300);
-      const alive = new Set((await this.list()).map(w => w.wid));
-      if (!alive.has(st.wid)){
-        st.status = 'closed'; st.wid = null; st.disp = null;
-        if (this.highlight === id) this.highlight = null;
-        if (this.tile?.ids.includes(id)) this.tile = null;
-        this.sel = this.sel.filter(x => x !== id);
+      const me = (await this.list()).find(w => w.wid === st.wid);
+      if (!me){
+        this.unlink(id);
         return this.say(`'${it.title}'을(를) 닫았습니다`);
       }
+      if ('waiting' in me) knows = true;
+      if (me.waiting){ waiting = me.waiting; break; }
+      if (!knows && i >= 7) break;
+      // 윈도우 엑셀은 뒤에 있는 동안 저장 창을 띄우지 않는다 (8초 넘게 기다려도 안 뜸, 앞으로 가져오면 0.2초).
+      // 1초쯤 지나도 창이 남아 있으면 앞으로 가져와 프로그램이 묻게 한다
+      if (knows && i === 2) await this.raiseWid(st.wid);
     }
     // 저장 여부·로그인 같은 확인 창이 떠 있으면 닫기 요청이 무시된다 → 그 창을 보여 주고 선생님이 답하게
     st.status = 'blocked';
     await this.raiseWid(st.wid);
     this.highlight = id;
-    this.say(`'${it.title}'이(가) 닫히지 않았습니다. 프로그램이 답을 기다리는 창(저장 여부 등)을 띄웠는지 확인해 주세요`);
+    this.say(waiting
+      ? `'${it.title}'이(가) 닫기 전에 답을 기다립니다 (저장 여부 등). 앞으로 가져온 창에서 답해 주세요`
+      : `'${it.title}'이(가) 닫히지 않았습니다. 프로그램이 답을 기다리는 창(저장 여부 등)을 띄웠는지 확인해 주세요`);
   }
 
   // ---------- 나란히 보기 ----------
@@ -323,7 +351,8 @@ export class Session extends EventEmitter {
       const m = (app.match ?? '').toLowerCase();
       const w = m && M.findByTitle(all.filter(x => !taken.has(x.wid) && ((x.app ?? '').toLowerCase().includes(m) || (x.bundle ?? '').toLowerCase().includes(m))), M.stem(it.abs))[0];
       if (!w) continue;
-      st.wid = w.wid; st.status = 'open'; st.linkedAt = Date.now();
+      // 다시 켜기 전에 누가 연 창인지 모르므로 "있던 창"으로 본다 (탭을 쓰는 메모장은 사이드바가 닫지 않음)
+      st.wid = w.wid; st.status = 'open'; st.linkedAt = Date.now(); st.adopted = true;
       st.disp = this.student && M.displayOf(w, this.displays) === this.student.index ? 'student' : 'teacher';
       st.home = st.disp;
       n++;
