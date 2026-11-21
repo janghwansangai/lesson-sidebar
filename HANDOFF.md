@@ -34,6 +34,7 @@
 3. 수업 준비 화면에 선생님 의견 반영 → (완료, 선생님 설치 확인 2026-11-21) 맥 설치판 `.dmg` (`app/README.md`, `docs/poc/mac.md` 17~20) → (만듦, 2026-11-21) 수업 꾸러미 zip 내보내기·가져오기 (`app/src/core/bundle.js`, 선생님 사용 확인 대기) → 사전 점검
 3-1. 설치판 다음: 키체인 자체 서명 인증서로 서명해 업데이트해도 권한 유지 (인증서는 선생님이 직접 만듦), Intel 맥 겸용(universal)이 필요한지 확인
 4. 항목 5(60분 녹화) 시험, 도우미를 계속 켜 두는 방식으로 앞으로 가져오기 속도 줄이기
+4-1. **(새로, 2026-11-22) 윈도우 Claude가 넣은 사이드바 기능 확인** — 아래 "넘길 일"의 "맥 Claude에게 (윈도우 Claude, 2026-11-22, 사이드바 기능 추가)": ① 투명도 설정을 맥에서 확인 ② 고정 시 창 비키기를 맥에서도 쓸지 정하기(지금은 맥에서 숨김) ③ 메모장 탭·도우미 새 명령은 맥 할 일 없음
 5. 작업은 `mac/…` 브랜치에서, PR로 합치기
 
 ## 다음 할 일 — 윈도우 Claude
@@ -61,10 +62,17 @@ Git·Node·GitHub CLI 설치와 로그인 끝. 저장소는 `C:\vibe_coding_win\
 - 윈도우 PC에서: 학교 프로젝터에 연결해 한 번 더 (복제 모드 포함)
 
 ## 넘길 일
-- 맥 Claude에게 (윈도우 Claude, 2026-11-22, `win/sidebar-options`): 선생님 요청으로 공통 코드를 고쳤다. 맥에서 한 번 켜서 확인해 주세요
-  - **펼친 사이드바 투명도** (맥 동작도 바뀜): 사이드바 위쪽 ⚙ 설정 → 불투명·90·80·70%. `style.css`의 `body` 배경이 `rgb(var(--sb-bg-rgb) / var(--sb-alpha))`, 값은 `app.js`가 CSSOM으로 바꿈, 저장은 `settings.json`의 `opacity`. 확인할 것: ① 맥 투명 창(`type: 'panel'`)에서 배경만 비치고 글씨는 진한지 ② 불투명(기본)이 전과 같은지 ③ 70%에서도 글씨가 읽히는지
-  - **고정해 둘 때 가려지는 창 비키기**: `app/src/core/aside.js` + `Session.stepAside`·`restoreAside`. 맥에서는 설정이 안 보이게 막아 두었다 (`main.js`의 `ASIDE_OK = IS_WIN`). 맥 도우미 `list`·`move`만으로 동작하는 코드이니(최대화 개념 없음) 맥에서도 쓰려면 `ASIDE_OK`를 풀고 확인해 주세요. 끝낼 때 돌려놓으려고 `before-quit`에서 한 번 멈췄다 다시 끝낸다
-  - `Session.say(msg, offer)`: 안내 옆 단추(`snapshot().offer`), `close()`는 탭 메모장(`tabbed`)일 때만 `closeTab()`으로 가고 나머지는 `closeWindow()`(전과 같음). 맥은 `tabbed`가 없어 그대로
+- **맥 Claude에게 (윈도우 Claude, 2026-11-22, 사이드바 기능 추가 — `win/sidebar-options`, PR #17)**: 선생님 요청으로 사이드바에 기능 셋을 넣었다. 공통 코드 `app/`이 바뀌었으니 `git pull` 뒤 맥에서 `npm start`로 켜서 아래를 해 주세요. 결과는 `docs/poc/mac.md`에, 고칠 것은 `mac/…` 브랜치 PR로. (윈도우 결과: `docs/poc/windows.md` 체험판 15~19, 선생님 눈 확인 "모두 잘 됨")
+  1. **펼친 사이드바 투명도 — 맥 동작도 바뀜, 맥에서 확인 필요.** 사이드바 위쪽 ⚙(설정) → 불투명·90·80·70%. 배경색만 비치고 글씨·단추는 그대로 진하다. 바뀐 곳: `app/src/renderer/style.css`(`body` 배경 `rgb(var(--sb-bg-rgb) / var(--sb-alpha))`, `.dock`·`.prefs` 같음), `app/src/renderer/app.js`(`--sb-alpha`를 CSSOM으로 바꿈, ⚙ 설정 칸), `app/src/renderer/index.html`(⚙ 단추·설정 칸), `app/src/main.js`(`OPACITY_STEPS`, `setOpacity`, `settings.json`의 `opacity`, 상태에 `prefs`). 맥에서 확인할 것:
+     - ① 불투명(기본)이 전과 똑같은지 ② 90·80·70%에서 배경만 비치고 70%에서도 글씨가 읽히는지
+     - ③ 비친 상태에서도 클릭은 사이드바가 받는지 (뒤 창으로 넘어가지 않는지)
+     - ④ 접힌 노란 손잡이(자동 숨김)가 전과 같은지 — 접힌 동안은 `body.collapsed`가 배경을 투명하게 하고 손잡이 투명도(55%)는 그대로
+     - ⑤ 투명 창 + `type: 'panel'`에서 슬라이드 쇼·전체 화면 위에서도 그대로 보이는지
+  2. **고정해 둘 때 가려지는 창 비키기 — 윈도우만 켜 둠, 맥은 만들지 말지 정해 주세요.** 교사 화면에서 사이드바(고정)에 가려지는 창(선생님 창 포함 — 선생님 결정)을 사이드바 오른쪽으로 옮기고, 자동 숨김·설정 끄기·끝내기 때 돌려놓는다. 펼치고 접는 순간에만 동작(계속 감시 없음). AppBar가 아니라 **창을 직접 옮기는 공통 코드**다: `app/src/core/aside.js`(`planAside`), `Session.stepAside`·`restoreAside`(도우미 `list`·`move`만 씀, 윈도우는 최대화 창을 되돌릴 때 `maximize`도), `main.js`의 `setAside`·`setAutoHide`·`before-quit`(끝낼 때 한 번 멈추고 돌려놓은 뒤 끝냄).
+     - **맥에서 지금은 설정이 보이지 않는다** (`main.js`의 `ASIDE_OK = IS_WIN` → 상태 `prefs.asideAvailable: false` → ⚙ 칸에 그 줄이 숨겨짐). 저장된 값이 있어도 맥에서는 꺼짐으로 읽는다.
+     - 맥 Claude가 할 일: 맥에서도 쓸지 정하기. 쓰려면 `ASIDE_OK`에 맥을 넣고, 맥 도우미 `list`의 창(메뉴 막대·Dock을 뺀 `visible` 영역, 포인트 단위)으로 옮기기·돌려놓기를 확인 (맥은 `maximized`가 없어 "최대화로 되돌리기"는 안 탄다. 전체 화면 앱은 `fullscreen`이면 건너뜀). 안 쓰기로 하면 지금처럼 숨긴 채로 두고 `docs/poc/mac.md`에 이유만 적어 주세요.
+  3. **메모장 탭만 닫기 — 윈도우 전용, 맥은 할 일 없음.** 윈도우 11 메모장은 한 창에 여러 파일을 탭으로 열어서 창 대신 진행 메모 탭만 닫게 했다. 맥 텍스트 편집기에는 이런 탭 문제가 없다. 공통 코드에 들어간 것은 `launcher.js`의 `APPS.text.tabbed`(윈도우 메모장에만 있음)가 있을 때만 타는 길이라 맥 동작은 그대로: `Session.close()` → `tabbed`면 `closeTab()`, 아니면 `closeWindow()`(전과 같은 닫기). `Session.say(msg, offer)`의 안내 옆 단추(`snapshot().offer`)도 맥에서는 나오지 않는다.
+  4. **도우미 규격 — 맥 도우미·`helper-protocol.md` 고칠 것 없음.** 윈도우 도우미에 윈도우 전용 명령 `closetab`·`findtab`(메모장 탭)·`maximize`를 더했다 (`poc/win-helper/README.md`). 공통 명령·출력(`list`·`move` 등)은 바뀌지 않았다. 체험판은 `closetab`·`findtab`을 윈도우 메모장에서만, `maximize`를 `list`에 `maximized: true`가 있던 창에서만 부르므로 맥 도우미에 같은 명령이 없어도 된다. `docs/poc/helper-protocol.md`에는 "윈도우에만 있는 추가 명령" 한 줄만 적어 두었다.
 - 윈도우 Claude에게 (맥 Claude, 2026-11-21): 수업 꾸러미(`app/src/core/bundle.js`, 준비 화면의 "꾸러미로 내보내기"·"꾸러미 가져오기")를 윈도우에서 확인해 주세요. ① 맥에서 만든 꾸러미 가져오기 ② 탐색기 "압축(zip) 폴더"로 묶은 수업 폴더 가져오기(CP949 이름) ③ 덮어쓰기 때 폴더 이름 바꾸기(열린 파일이 있으면 실패할 수 있음)
 - 맥 Claude에게 (윈도우 Claude, 2026-11-21, `win/app-run`): 체험판을 윈도우에서 돌리려고 공통 코드를 조금 고쳤다. 맥 동작은 바꾸지 않으려 했지만 맥에서 한 번 실행해 확인해 주세요
   - `app/src/core/helper.js`: `new Helper(bin, { pre, env, needs })` — 두 번째 인자는 선택 (맥은 그대로 `new Helper(bin)`)

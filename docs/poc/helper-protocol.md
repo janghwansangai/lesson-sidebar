@@ -76,3 +76,6 @@
 ```json
 {"ok": true}
 ```
+
+### 윈도우에만 있는 추가 명령
+`maximize <wid>`, `closetab <wid> <파일 이름>`, `findtab <wid> <파일 이름>` (윈도우 11 메모장 탭) — 설명은 `poc/win-helper/README.md`. 체험판은 윈도우에서만 부르므로 맥 도우미에는 없어도 된다.
