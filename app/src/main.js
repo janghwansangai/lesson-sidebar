@@ -1,4 +1,4 @@
-// 수업 사이드바 체험판 — Electron 시작점 (맥)
+// 수업 사이드바 체험판 — Electron 시작점 (맥·윈도우)
 // 사이드바 창(교사 화면 왼쪽)과 수업 준비 창을 띄우고, 수업 진행 로직(Session)·수업 편집(LessonDoc)과 잇는다.
 import { app, BrowserWindow, ipcMain, screen, dialog, shell } from 'electron';
 import { readFileSync, writeFileSync, mkdirSync, existsSync, statSync } from 'node:fs';
@@ -13,14 +13,18 @@ import { Session } from './core/session.js';
 import { LessonDoc } from './core/editor.js';
 import { listLessons, suggestRoots, LIB_NAME } from './core/library.js';
 import { writeLock, clearLock, otherLock, deviceName } from './core/lock.js';
+import * as L from './core/launcher.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const APP_DIR = path.resolve(HERE, '..');
 const REPO = path.resolve(APP_DIR, '..');
 const SIDEBAR_W = 280;
-// 자동 숨김으로 접히면 화면 왼쪽 가운데에 작은 손잡이만 남긴다.
-// 화면 높이 전체 띠는 다른 프로그램을 가려서 손잡이만큼으로 줄이고 반투명하게 했다 (선생님 의견, 2026-11-21).
-const STRIP_W = 10, STRIP_H = 84, STRIP_OPACITY = 0.55;
+// 자동 숨김으로 접히면 교사 화면 왼쪽 가운데에 반투명 노란 막대(손잡이)만 남긴다.
+// 화면 높이 전체 띠는 다른 프로그램을 가려서 막대만큼으로 줄이고 반투명하게 했다 (선생님 의견, 2026-11-21, 맥·윈도우 모두).
+// 반투명 정도는 style.css의 .strip (55%)
+const BAR_W = 6, BAR_H = 84;
+const EDGE_W = 10;       // 교사 화면 왼쪽 끝 이 폭 안에 마우스를 대면 (높이 어디든) 펼친다
+const HOT_MARGIN = 48;   // 막대 높이 위아래 여유: 이 높이에서 왼쪽 모니터로 넘어가도 펼친다
 const DEVICE = deviceName();
 
 // 개발 중에는 설정·로그를 이 폴더 안에 둔다 (패키지로 만들면 운영체제 기본 위치)
@@ -32,9 +36,21 @@ if (!app.isPackaged){
   app.setPath('logs', path.join(ud, 'logs'));
 }
 
-const helperPath = () => app.isPackaged
-  ? path.join(process.resourcesPath, 'winctl')
-  : path.join(REPO, 'poc', 'mac-helper', '.build', 'release', 'winctl');
+const IS_WIN = process.platform === 'win32';
+
+/** 창 관리 도우미. 윈도우는 winctl.js를 Electron에 들어 있는 Node로 실행한다 (koffi는 N-API라 그대로 동작). */
+function makeHelper(){
+  if (IS_WIN){
+    const dir = app.isPackaged ? path.join(process.resourcesPath, 'win-helper') : path.join(REPO, 'poc', 'win-helper');
+    const script = path.join(dir, 'winctl.js');
+    return {
+      helper: new Helper(process.execPath, { pre: [script], env: { ELECTRON_RUN_AS_NODE: '1' }, needs: [script, path.join(dir, 'node_modules', 'koffi')] }),
+      where: script, fix: 'poc\\win-helper 폴더에서 npm install',
+    };
+  }
+  const bin = app.isPackaged ? path.join(process.resourcesPath, 'winctl') : path.join(REPO, 'poc', 'mac-helper', '.build', 'release', 'winctl');
+  return { helper: new Helper(bin), where: bin, fix: 'poc 폴더에서 npm run build:mac' };
+}
 
 let win = null, prepWin = null, session = null, helper = null, files = null;
 let collapsed = false, outSince = 0, cursorTimer = null;
@@ -53,12 +69,19 @@ const mtimeOf = f => { try { return statSync(f).mtimeMs; } catch { return 0; } }
 // ---------- 사이드바 창 ----------
 function teacherArea(){ return screen.getPrimaryDisplay().workArea; }
 
+function barRect(){
+  const wa = teacherArea();
+  return { x: wa.x, y: Math.round(wa.y + wa.height / 2 - BAR_H / 2), width: BAR_W, height: BAR_H };
+}
+
+// 접으면 창을 막대 크기로 줄인다. 윈도우는 창이 약 32픽셀보다 좁아지지 않아, 창을 투명하게 만들고(transparent) 막대만 그린다.
+// (창 모양 setShape는 클릭만 막고 그리기는 막지 못해 회색 띠가 남았다 — docs/poc/windows.md 체험판 6)
+// 접힌 동안은 창 전체가 클릭을 아래 창으로 넘긴다. 펼치기는 마우스 위치(watchCursor)로 판단하므로 클릭이 필요 없다.
 function placeSidebar(){
   if (!win) return;
   const wa = teacherArea();
-  if (collapsed) win.setBounds({ x: wa.x, y: Math.round(wa.y + (wa.height - STRIP_H) / 2), width: STRIP_W, height: STRIP_H });
-  else win.setBounds({ x: wa.x, y: wa.y, width: SIDEBAR_W, height: wa.height });
-  win.setOpacity(collapsed ? STRIP_OPACITY : 1);
+  win.setIgnoreMouseEvents(collapsed);
+  win.setBounds(collapsed ? barRect() : { x: wa.x, y: wa.y, width: SIDEBAR_W, height: wa.height });
 }
 
 const SECURE = file => ({ preload: path.join(HERE, file), contextIsolation: true, sandbox: true, nodeIntegration: false });
@@ -73,8 +96,12 @@ function createSidebar(){
   win = new BrowserWindow({
     x: wa.x, y: wa.y, width: SIDEBAR_W, height: wa.height,
     frame: false, resizable: false, movable: false, minimizable: false, maximizable: false, fullscreenable: false,
-    alwaysOnTop: true, skipTaskbar: true, show: false, backgroundColor: '#1b2f2a', title: '수업 사이드바',
+    alwaysOnTop: true, skipTaskbar: true, show: false, title: '수업 사이드바',
+    // 접은 막대 주변이 비쳐 보이도록 투명 창. 펼쳤을 때는 화면(body)의 칠판색 배경이 창을 채운다
+    transparent: true, backgroundColor: '#00000000',
     type: process.platform === 'darwin' ? 'panel' : undefined,
+    // 윈도우: 보이지 않는 크기 조절 테두리(8픽셀)를 없애 창이 화면 왼쪽 끝(x=0)에 정확히 붙게 한다 (투명 창에도 필요)
+    thickFrame: false,
     webPreferences: SECURE('preload.cjs'),
   });
   // PPT 전체 화면 슬라이드 쇼 위에서도 보이게 (기술 검증 항목 4)
@@ -96,19 +123,28 @@ function setAutoHide(v){
   collapsed = session.autoHide;
   placeSidebar();
   if (session.autoHide) cursorTimer = setInterval(watchCursor, 120);
-  session.say(session.autoHide ? '자동 숨김: 화면 왼쪽 끝에 마우스를 대면 나타납니다' : '사이드바를 화면 왼쪽에 고정했습니다');
+  session.say(session.autoHide ? '자동 숨김: 화면 왼쪽 가운데 노란 막대 옆으로 마우스를 밀면 나타납니다' : '사이드바를 화면 왼쪽에 고정했습니다');
 }
 
+let lastCursor = null;
 function watchCursor(){
   if (!win) return;
   const p = screen.getCursorScreenPoint();
-  const b = win.getBounds();
-  const inY = p.y >= b.y && p.y <= b.y + b.height;
+  const prev = lastCursor;
+  lastCursor = p;
   if (collapsed){
-    // 손잡이는 작아도 화면 왼쪽 끝 어디에 대든 나온다. 왼쪽에 다른 모니터(학생 화면)가 있으면 그 화면은 빼고.
-    const wa = teacherArea();
-    if (p.y >= wa.y && p.y <= wa.y + wa.height && p.x >= wa.x && p.x <= wa.x + STRIP_W){ collapsed = false; placeSidebar(); push(); }
-  } else if (inY && p.x >= b.x && p.x <= b.x + b.width + 16){
+    const wa = teacherArea(), bar = barRect();
+    // 손잡이는 작아도 교사 화면 왼쪽 끝 어디에 대든 나온다. 왼쪽에 다른 모니터(학생 화면)가 있으면 그 화면은 빼고
+    const atEdge = p.y >= wa.y && p.y <= wa.y + wa.height && p.x >= wa.x && p.x <= wa.x + EDGE_W;
+    // 학생 화면이 왼쪽에 있으면 마우스가 끝에서 멈추지 않고 넘어가므로, 막대 높이에서 왼쪽으로 넘어간 것도 "밀었다"로 본다
+    // (넘어간 뒤의 높이는 보지 않는다: 배율이 다른 화면에서는 같은 높이도 화면 단위 값이 달라진다)
+    const inBand = pt => pt.y >= bar.y - HOT_MARGIN && pt.y <= bar.y + bar.height + HOT_MARGIN;
+    const pushedPast = prev && inBand(prev) && prev.x >= wa.x && p.x < wa.x;
+    if (atEdge || pushedPast){ collapsed = false; outSince = 0; placeSidebar(); push(); }
+    return;
+  }
+  const b = win.getBounds();
+  if (p.y >= b.y && p.y <= b.y + b.height && p.x >= b.x && p.x <= b.x + b.width + 16){
     outSince = 0;
   } else {
     outSince ||= Date.now();
@@ -167,7 +203,7 @@ function prepSnapshot(){
   return {
     library: { root, lessons: root ? listLessons(root) : [], suggestions: root ? [] : suggestRoots(), libName: LIB_NAME },
     doc: doc ? { ...doc.snapshot(), lockedBy } : null,
-    running: session.lesson?.root ?? null, openIds, device: DEVICE, msg: prepMsg,
+    running: session.lesson?.root ?? null, openIds, device: DEVICE, msg: prepMsg, platform: process.platform,
   };
 }
 function prepPush(){ prepWin?.webContents.send('prep:state', prepSnapshot()); }
@@ -252,7 +288,13 @@ const PREP_ACTIONS = {
       ? `파일 ${r.renamed.length}개 이름을 순서에 맞췄습니다${r.skipped.length ? ` · ${r.skipped.length}개는 건너뜀 (${r.skipped.map(s => `${s.title}: ${s.reason}`).join(', ')})` : ''}`
       : '이미 순서대로 정리되어 있습니다');
   },
-  editMemo(p){ const loc = needDoc().locate(str(p.id, 60)); if (loc?.item.file) shell.openPath(doc.abs(loc.item.file)); },
+  editMemo(p){
+    const loc = needDoc().locate(str(p.id, 60));
+    if (!loc?.item.file) return;
+    // 윈도우는 .md에 연결된 프로그램이 없는 PC가 많아 메모장으로 연다
+    if (IS_WIN) return L.openWithApp(L.APPS.text, doc.abs(loc.item.file));
+    shell.openPath(doc.abs(loc.item.file));
+  },
   reveal(){ shell.openPath(needDoc().root); },
   run(){
     const d = needDoc();
@@ -361,14 +403,17 @@ async function startDebugServer(){
 // ---------- 시작 ----------
 app.whenReady().then(async () => {
   if (process.platform === 'darwin') app.dock?.hide();
-  helper = new Helper(helperPath());
+  const h = makeHelper();
+  helper = h.helper;
   if (!helper.available()){
-    dialog.showErrorBox('수업 사이드바', `창 관리 도우미를 찾지 못했습니다.\n${helperPath()}\n(poc 폴더에서 npm run build:mac)`);
+    dialog.showErrorBox('수업 사이드바', `창 관리 도우미를 찾지 못했습니다.\n${h.where}\n(${h.fix})`);
     app.quit();
     return;
   }
+  // 윈도우: 문서는 Electron의 shell.openPath(ShellExecute)로 연다 — cmd를 거치지 않아 파일 이름의 특수 문자도 안전
+  if (IS_WIN) L.setFileOpener(async p => { const err = await shell.openPath(p); if (err) throw new Error(err); });
   files = await startFileServer(() => session?.lesson?.root);
-  session = new Session({ helper, files, ownPid: process.pid, sidebarWidth: SIDEBAR_W });
+  session = new Session({ helper, files, ownPid: process.pid, sidebarWidth: SIDEBAR_W, physicalPixels: IS_WIN });
   session.on('change', push);
   await session.refreshDisplays();
 
