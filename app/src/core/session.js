@@ -169,6 +169,8 @@ export class Session extends EventEmitter {
       if (!w) throw new Error('창을 찾지 못했습니다 (30초)');
 
       st.wid = w.wid; st.status = 'open'; st.home = this.home(it); st.linkedAt = Date.now();
+      // 열기 전부터 있던 창이면 (이미 열려 있던 문서, 또는 윈도우 메모장이 기존 창에 탭으로 연 경우) 기억해 둔다 → close()
+      st.adopted = before.some(x => x.wid === w.wid);
       const where = this.target(it);
       await this.place(id, where);
       if (raise){ await this.raiseWid(w.wid); this.highlight = id; }
@@ -211,30 +213,47 @@ export class Session extends EventEmitter {
     this.say(`'${it.title}' 창을 ${to === 'student' ? '학생' : '교사'} 화면으로 보냈습니다`);
   }
 
+  unlink(id){
+    const st = this.state.get(id);
+    st.status = 'closed'; st.wid = null; st.disp = null; st.adopted = false;
+    if (this.highlight === id) this.highlight = null;
+    if (this.tile?.ids.includes(id)) this.tile = null;
+    this.sel = this.sel.filter(x => x !== id);
+  }
+
   async close(id){
     const it = this.item(id), st = this.state.get(id);
     if (!st?.wid) return;
-    const wid = st.wid, match = this.appFor(it)?.match;
-    // 이미 답을 기다리는 창(저장 여부·로그인 등)이 있으면 닫기 요청을 또 보내지 않는다.
-    // 맥 한글은 저장 창이 하나 더 생기고, 그 창은 문서가 닫힌 뒤에도 남아 다른 한글 창까지 막는다 (docs/poc/mac.md)
+    const wid = st.wid, app = this.appFor(it), match = app?.match;
     let w = await this.findWid(wid, match);
-    if (w && !w.waiting){
+    if (!w){ this.unlink(id); return this.say(`'${it.title}'을(를) 닫았습니다`); }
+    if (app?.tabbed && it.abs && (st.adopted || !M.titleMatches(w.title, M.stem(it.abs)))){
+      // 윈도우 11 메모장은 한 창에 여러 파일을 탭으로 연다. 창을 닫으면 다른 탭(선생님 파일)까지 닫히므로,
+      // 사이드바가 만든 창이고 지금 보이는 탭이 이 메모일 때만 닫는다 (docs/poc/windows.md 체험판 8)
+      this.unlink(id);
+      return this.say(`'${it.title}'은(는) 다른 파일과 같은 ${app.label} 창에 탭으로 열려 있어, 다른 탭까지 닫히지 않도록 창을 닫지 않았습니다. ${app.label}에서 이 탭만 닫아 주세요`);
+    }
+    // 이미 답을 기다리는 창(저장 여부·로그인 등)이 있으면 닫기 요청을 또 보내지 않는다.
+    // 맥 한글은 저장 창이 하나 더 생기고, 그 창은 문서가 닫힌 뒤에도 남아 다른 한글 창까지 막는다 (docs/poc/mac.md 24)
+    if (!w.waiting){
       try { await this.helper.call('close', wid); } catch { /* 아래에서 남았는지 본다 */ }
+      // 도우미가 창마다 waiting을 알려 주면 뜨는 즉시 알리고, 그때까지 closeWait만큼 기다린다 (저장 창은 2.5초 넘게 걸려 뜨기도 한다).
+      // waiting을 모르는 도우미면 예전처럼 2.4초 뒤 판단한다
+      const knows = 'waiting' in w;
+      const limit = knows ? this.closeWait : 2400;
       const t0 = Date.now();
-      let told = false;
+      let raised = false, told = false;
       do {
         await sleep(300);
         w = await this.findWid(wid, match);
-        if (w && !w.waiting && !told && Date.now() - t0 > 1500){ told = true; this.say(`'${it.title}'을(를) 닫는 중입니다…`); }
-      } while (w && !w.waiting && Date.now() - t0 < this.closeWait);
+        if (!w || w.waiting) break;
+        // 윈도우 엑셀은 뒤에 있는 동안 저장 창을 띄우지 않는다 (8초 넘게 기다려도 안 뜸, 앞으로 가져오면 0.2초, docs/poc/windows.md).
+        // 1초쯤 지나도 창이 남아 있으면 앞으로 가져와 프로그램이 묻게 한다
+        if (knows && !raised && Date.now() - t0 > 900){ raised = true; await this.raiseWid(wid); }
+        if (!told && Date.now() - t0 > 1500){ told = true; this.say(`'${it.title}'을(를) 닫는 중입니다…`); }
+      } while (Date.now() - t0 < limit);
     }
-    if (!w){
-      st.status = 'closed'; st.wid = null; st.disp = null;
-      if (this.highlight === id) this.highlight = null;
-      if (this.tile?.ids.includes(id)) this.tile = null;
-      this.sel = this.sel.filter(x => x !== id);
-      return this.say(`'${it.title}'을(를) 닫았습니다`);
-    }
+    if (!w){ this.unlink(id); return this.say(`'${it.title}'을(를) 닫았습니다`); }
     // 저장 여부·로그인 같은 확인 창이 떠 있으면 닫기 요청이 무시된다 → 그 창을 앞으로 가져와 선생님이 답하게.
     // 바탕 창을 앞으로 가져오면 도우미가 그 창(시트·대화상자)도 함께 앞으로 가져온다 (윈도우·맥 모두 확인)
     st.status = 'blocked';
@@ -352,7 +371,8 @@ export class Session extends EventEmitter {
       const m = (app.match ?? '').toLowerCase();
       const w = m && M.findByTitle(all.filter(x => !taken.has(x.wid) && ((x.app ?? '').toLowerCase().includes(m) || (x.bundle ?? '').toLowerCase().includes(m))), M.stem(it.abs))[0];
       if (!w) continue;
-      st.wid = w.wid; st.status = 'open'; st.linkedAt = Date.now();
+      // 다시 켜기 전에 누가 연 창인지 모르므로 "있던 창"으로 본다 (탭을 쓰는 메모장은 사이드바가 닫지 않음)
+      st.wid = w.wid; st.status = 'open'; st.linkedAt = Date.now(); st.adopted = true;
       st.disp = this.student && M.displayOf(w, this.displays) === this.student.index ? 'student' : 'teacher';
       st.home = st.disp;
       n++;

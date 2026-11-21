@@ -29,12 +29,12 @@ class FakeHelper extends EventEmitter {
         this.lists++;
         for (const [wid, at] of this.pending) if (this.lists >= at){ this.pending.delete(wid); this.waiting.set(wid, { wid: 900 + this.dialogs++, title: '저장' }); }
         const i = a.indexOf('--app'); const f = i >= 0 ? a[i + 1] : null;
-        return { ok: true, windows: this.wins.filter(w => !f || w.app.includes(f)).map(w => ({ ...w, waiting: this.waiting.get(w.wid) ?? null })) };
+        return { ok: true, windows: this.wins.filter(w => !f || w.app.includes(f)).map(w => ({ ...w, waiting: this.waiting.get(w.wid) ?? w.waiting ?? null })) };
       }
       case 'raise': {
         const w = this.wins.find(x => x.wid === Number(a[0])); if (!w) throw new Error('없음');
         this.raises.push(w.wid);
-        return { ok: true, detail: { waiting: this.waiting.get(w.wid) ?? null } };
+        return { ok: true, detail: { waiting: this.waiting.get(w.wid) ?? w.waiting ?? null } };
       }
       case 'move': {
         const w = this.wins.find(x => x.wid === Number(a[0])); const [x, y, width, height] = a.slice(1).map(Number);
@@ -174,7 +174,7 @@ test('닫기 뒤 저장 창이 2.5초 넘게 늦게 떠도 "답을 기다리는 
   assert.ok(Date.now() - t0 > 2500, '저장 창이 뜰 때까지 기다렸어야 한다');
   assert.equal(s.state.get('ppt').status, 'blocked');
   assert.match(s.msg, /답을 기다리는 창\(저장 여부 등\)을 띄웠습니다/);
-  assert.deepEqual(helper.raises, [wid]);   // 그 창을 앞으로 가져왔다
+  assert.equal(helper.raises.at(-1), wid);   // 그 창을 앞으로 가져왔다 (1초쯤 뒤에도 한 번: 윈도우 엑셀은 뒤에 있으면 저장 창을 안 띄움)
   assert.equal(s.highlight, 'ppt');
 });
 
@@ -221,6 +221,55 @@ test('선생님이 저장 창에서 답해 창이 닫히면 "닫았습니다"로
   s.onAlive(new Set());              // "저장 안 함"으로 답해 창이 닫힘
   assert.equal(s.state.get('ppt').status, 'closed');
   assert.match(s.msg, /'발표 자료'을\(를\) 닫았습니다/);
+});
+
+test('윈도우: 도우미가 waiting(저장 창)을 알려 주면 기다리지 않고 바로 "답 기다림"으로 표시한다', async () => {
+  const { s, helper } = makeSession();
+  await s.refreshDisplays(); s.load(makeLesson());
+  await s.open('ppt');
+  const w = helper.wins.find(x => x.wid === s.state.get('ppt').wid);
+  helper.stuck.add(w.wid);
+  w.waiting = { wid: 999, title: 'Microsoft PowerPoint' };
+  const t0 = Date.now();
+  await s.close('ppt');
+  assert.equal(s.state.get('ppt').status, 'blocked');
+  assert.ok(Date.now() - t0 < 1500, `너무 오래 기다림: ${Date.now() - t0}ms`);
+  assert.match(s.msg, /답을 기다리는 창/);
+});
+
+test('윈도우 메모장(탭): 열기 전부터 있던 창에 탭으로 열렸으면 창을 닫지 않고 연결만 푼다', async () => {
+  const { s, helper } = makeSession();
+  s.launcher.APPS.text.tabbed = true;
+  helper.spawn('TextEdit', '선생님 메모.txt - 메모장');    // 선생님이 미리 열어 둔 메모장 창
+  s.launcher.openWithApp = async () => { helper.wins[0].title = '01_진행메모.md - 메모장'; };   // 새 창 없이 그 창의 새 탭으로
+  await s.refreshDisplays(); s.load(makeLesson());
+  await s.open('memo');
+  assert.equal(s.state.get('memo').status, 'open');
+  await s.close('memo');
+  assert.equal(helper.wins.length, 1, '선생님 메모장 창은 남아 있어야 함');
+  assert.equal(s.state.get('memo').status, 'closed');
+  assert.match(s.msg, /탭만 닫아/);
+});
+
+test('윈도우 메모장(탭): 사이드바가 연 창이라도 지금 보이는 탭이 다른 파일이면 닫지 않는다', async () => {
+  const { s, helper } = makeSession();
+  s.launcher.APPS.text.tabbed = true;
+  await s.refreshDisplays(); s.load(makeLesson());
+  await s.open('memo');
+  helper.wins[0].title = '다른 파일.txt - 메모장';          // 선생님이 다른 파일을 열어 그 탭이 앞에 옴
+  await s.close('memo');
+  assert.equal(helper.wins.length, 1);
+  assert.match(s.msg, /탭만 닫아/);
+});
+
+test('윈도우 메모장(탭): 사이드바가 연 창이고 메모 탭이 보이면 평소처럼 닫는다', async () => {
+  const { s, helper } = makeSession();
+  s.launcher.APPS.text.tabbed = true;
+  await s.refreshDisplays(); s.load(makeLesson());
+  await s.open('memo');
+  await s.close('memo');
+  assert.equal(helper.wins.length, 0);
+  assert.equal(s.state.get('memo').status, 'closed');
 });
 
 test('학생 화면 연결이 끊기면 교사 화면으로 모으고, 다시 연결되면 돌려놓는다', async () => {
