@@ -4,12 +4,15 @@
 //
 //   node winctl.js trusted | displays | list [--app <이름 일부>] | front
 //   node winctl.js raise <wid> | move <wid> <x> <y> <width> <height> | minimize <wid> | close <wid>
+//   node winctl.js maximize <wid> | closetab <wid> <파일 이름> | findtab <wid> <파일 이름>   (윈도우에만 있는 추가 명령)
 //   node winctl.js watch          (계속 실행하며 바뀐 것만 한 줄씩 알림)
 //
 // 출력: 표준 출력 마지막 줄에 JSON 하나. 실패하면 {"ok":false,"error":"…"} + 종료 코드 1.
 // 좌표: 물리 픽셀, 주 모니터 왼쪽 위가 (0, 0). 이 프로세스를 Per-Monitor DPI Aware V2로 설정해
 //       배율이 다른 모니터에서도 좌표가 어긋나지 않게 한다. 창 위치는 그림자를 뺀 실제 테두리 기준.
 // 안전: 닫기는 WM_CLOSE(정상 종료 요청)만 보낸다. 강제 종료하지 않는다.
+
+import { spawnSync } from 'node:child_process';
 
 class Fail extends Error {}
 const emit = o => process.stdout.write(JSON.stringify(o) + '\n');
@@ -75,7 +78,7 @@ const W = {
 const GW_OWNER = 4, GW_ENABLEDPOPUP = 6, GA_ROOT = 2, GWL_EXSTYLE = -20;
 const WS_EX_TOOLWINDOW = 0x80, WS_EX_APPWINDOW = 0x40000;
 const DWMWA_EXTENDED_FRAME_BOUNDS = 9, DWMWA_CLOAKED = 14;
-const SW_RESTORE = 9, SW_MINIMIZE = 6;
+const SW_RESTORE = 9, SW_MINIMIZE = 6, SW_MAXIMIZE = 3;
 const SWP_NOZORDER = 0x4, SWP_NOACTIVATE = 0x10, SWP_NOOWNERZORDER = 0x200;
 const WM_CLOSE = 0x10;
 const PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
@@ -180,18 +183,20 @@ function className(h){
 function pidOf(h){ const p = [0]; W.GetWindowThreadProcessId(h, p); return p[0]; }
 
 const exeCache = new Map();
-function exeName(pid){
+/** 프로그램 실행 파일의 전체 경로 */
+function exePath(pid){
   if (exeCache.has(pid)) return exeCache.get(pid);
-  let name = '';
+  let full = '';
   const hp = num(W.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid));
   if (hp){
     const b = Buffer.alloc(2048), size = [1024];
-    if (W.QueryFullProcessImageNameW(hp, 0, b, size)) name = b.toString('utf16le', 0, size[0] * 2).split('\\').pop();
+    if (W.QueryFullProcessImageNameW(hp, 0, b, size)) full = b.toString('utf16le', 0, size[0] * 2);
     W.CloseHandle(hp);
   }
-  exeCache.set(pid, name);
-  return name;
+  exeCache.set(pid, full);
+  return full;
 }
+function exeName(pid){ return exePath(pid).split('\\').pop(); }
 
 function windowRect(h){ const b = Buffer.alloc(16); W.GetWindowRect(h, b); return readRect(b); }
 /** 그림자를 뺀 실제 테두리 (윈도우 10·11은 창 둘레에 보이지 않는 7~8픽셀 그림자 테두리가 있다). */
@@ -358,6 +363,127 @@ function minimize(h){
   return { ok: waitUntil(() => !!W.IsIconic(h), 1500) };
 }
 
+function maximize(h){
+  W.ShowWindowAsync(h, SW_MAXIMIZE);
+  return { ok: waitUntil(() => !!W.IsZoomed(h), 1500) };
+}
+
+// ---------- 탭을 쓰는 메모장에서 탭 하나만 닫기 ----------
+// 윈도우 11 메모장은 한 창에 여러 파일을 탭으로 연다. 창을 닫으면(WM_CLOSE) 다른 탭까지 닫히므로 그 파일의 탭만 닫는다.
+// 방법: UI 자동화(UIAutomation, 화면 읽기 프로그램이 쓰는 윈도우 기능)로 이름이 정확히 그 파일인 탭을 골라(Select)
+//       그 탭에 달린 "탭 닫기" 단추를 누른다(Invoke). 키보드를 쓰지 않으므로 다른 탭에 글자가 들어가거나 다른 탭이 닫힐 일이 없다.
+//       저장 안 한 탭은 닫기 단추 대신 점(●)이 있어 단추가 없다 → 그때만 Ctrl+W(보이는 탭만 닫는 단축키)를 보낸다.
+//       보내기 바로 앞에 키보드 초점이 그 메모장 창 안이고, 창 제목(보이는 탭)이 그 파일이고, 확인 창이 없는지 다시 본다.
+//   - 키보드로 탭을 넘기며(Ctrl+Tab) 찾는 방법은 믿을 수 없었다: 탭을 넘기다 메모장 안의 알림 창("지정된 경로를 찾을 수 없습니다",
+//     예전 세션에서 되살린 탭)이 뜨면 그 뒤로는 키가 먹지 않았다 (docs/poc/windows.md 체험판 15).
+//   - 메모장 안의 확인·저장 창은 별도 창이 아니라 창 안의 팝업이라 list의 waiting으로는 안 보인다 → 여기서 따로 본다.
+//     ("변경 내용을 …에 저장하시겠습니까?" 저장 / 저장하지 않음 / 취소)
+//   - 같은 이름의 탭이 둘 이상이면(다른 폴더의 같은 이름 파일) 어느 것인지 모르므로 닫지 않는다.
+// UI 자동화는 윈도우 기본 PowerShell로 부른다 (koffi로 COM을 직접 부르는 것보다 단순, 한 번에 약 1초).
+// 파일 이름과 창 번호는 환경 변수로 넘겨 명령 글자에 섞이지 않게 한다. 출력은 영문 키의 JSON 한 줄.
+const TAB_PS = String.raw`
+$ErrorActionPreference = 'Stop'
+Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
+$A = [System.Windows.Automation.AutomationElement]
+$TS = [System.Windows.Automation.TreeScope]::Descendants
+$h = [IntPtr][long]$env:WINCTL_HWND
+$name = $env:WINCTL_NAME
+function Say($o){ [Console]::Out.WriteLine(($o | ConvertTo-Json -Compress)) }
+function Root(){ try { $A::FromHandle($h) } catch { $null } }
+function Tabs($r){
+  $c = New-Object System.Windows.Automation.PropertyCondition($A::ControlTypeProperty, [System.Windows.Automation.ControlType]::TabItem)
+  @($r.FindAll($TS, $c) | Where-Object { $_.Current.Name -eq $name -or $_.Current.Name.StartsWith("$name. ") })
+}
+function Dialog($r){
+  # 메모장 안의 확인·저장 창(ContentDialog): 팝업 창 안의 PrimaryButton·SecondaryButton·CloseButton
+  # (탭의 "탭 닫기" 단추도 이름이 CloseButton이지만 부모가 탭이다. 탭에 마우스를 올리면 뜨는 설명 팝업은 단추가 없다)
+  foreach ($id in 'PrimaryButton', 'SecondaryButton', 'CloseButton'){
+    foreach ($b in $r.FindAll($TS, (New-Object System.Windows.Automation.PropertyCondition($A::AutomationIdProperty, $id)))){
+      $p = [System.Windows.Automation.TreeWalker]::ControlViewWalker.GetParent($b)
+      if ($p -and $p.Current.ControlType -eq [System.Windows.Automation.ControlType]::Window){ return $true }
+    }
+  }
+  $false
+}
+function Front(){
+  # 키보드 초점이 이 메모장 창 안에 있는지 (= 메모장이 맨 앞)
+  try {
+    $e = $A::FocusedElement; $w = [System.Windows.Automation.TreeWalker]::ControlViewWalker
+    while ($e -and $e.Current.NativeWindowHandle -ne [int]$h){ $e = $w.GetParent($e) }
+    $null -ne $e
+  } catch { $false }
+}
+function Shows($r){ $s = $r.Current.Name -replace '^[*•●]\s*', ''; $s -eq $name -or $s.StartsWith("$name - ") }
+$r = Root
+if (-not $r){ Say @{ gone = $true }; exit }
+if ($env:WINCTL_MODE -eq 'find'){ $n = (Tabs $r).Count; Say @{ found = ($n -eq 1); count = $n; dialog = (Dialog $r) }; exit }
+if (Dialog $r){ Say @{ found = $false; dialog = $true }; exit }
+$t = Tabs $r
+if ($t.Count -ne 1){ Say @{ found = $false; count = $t.Count }; exit }
+$t[0].GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
+for ($i = 0; $i -lt 10 -and -not (Shows $r); $i++){ Start-Sleep -Milliseconds 50 }
+if (-not (Shows $r)){ Say @{ found = $true; count = 1; closed = $false; how = 'notShown' }; exit }
+$b = $t[0].FindFirst($TS, (New-Object System.Windows.Automation.PropertyCondition($A::AutomationIdProperty, 'CloseButton')))
+if ($b){ $b.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke(); $how = 'button' }
+else {
+  # 저장 안 한 탭은 닫기 단추 대신 점(●)이 있어 단추가 없다 → Ctrl+W (지금 보이는 탭만 닫는 단축키)
+  # 메모장이 맨 앞이고 보이는 탭이 그 파일인지 바로 앞에서 다시 확인한 뒤에만 보낸다
+  if (-not (Front) -or -not (Shows $r) -or (Dialog $r)){ Say @{ found = $true; count = 1; closed = $false; how = 'notFront' }; exit }
+  Add-Type -AssemblyName System.Windows.Forms
+  [System.Windows.Forms.SendKeys]::SendWait('^w'); $how = 'ctrlW'
+}
+for ($i = 0; $i -lt 25; $i++){
+  Start-Sleep -Milliseconds 60
+  $r = Root
+  if (-not $r){ Say @{ found = $true; count = 1; closed = $true; how = $how }; exit }
+  try {
+    if ((Tabs $r).Count -eq 0){ Say @{ found = $true; count = 1; closed = $true; how = $how }; exit }
+    if (Dialog $r){ Say @{ found = $true; count = 1; closed = $false; dialog = $true; how = $how }; exit }
+  } catch { Say @{ found = $true; count = 1; closed = $true; how = $how }; exit }
+}
+Say @{ found = $true; count = 1; closed = $false; how = $how }
+`;
+const POWERSHELL = `${process.env.SystemRoot ?? 'C:\\Windows'}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe`;
+const isTabbedNotepad = h => /\\Microsoft\.WindowsNotepad_[^\\]*\\Notepad\\Notepad\.exe$/i.test(exePath(pidOf(h)));
+
+/** PowerShell로 TAB_PS 실행 → JSON. mode: 'close'(고르고 닫기) | 'find'(그 이름의 탭 수와 확인 창만) */
+function runTabScript(h, name, mode){
+  // -EncodedCommand는 스크립트 파일이 아니라서 "스크립트 실행 안 함" 정책과 상관없이 실행된다 (정책은 바꾸지 않음)
+  const r = spawnSync(POWERSHELL, ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(TAB_PS, 'utf16le').toString('base64')], {
+    env: { ...process.env, WINCTL_HWND: String(h), WINCTL_NAME: name, WINCTL_MODE: mode }, encoding: 'utf8', timeout: 15000, windowsHide: true,
+  });
+  let out = null;
+  try { out = JSON.parse(String(r.stdout ?? '').trim().split(/\r?\n/).pop()); } catch { /* 아래 */ }
+  if (!out) fail(`메모장 탭을 읽지 못했습니다 (UI 자동화${r.error ? `: ${r.error.message}` : ''})`);
+  if (out.gone) fail(`창 ${h}을(를) 찾지 못했습니다`);
+  return out;
+}
+
+const plainTitleIs = (h, name) => { const t = title(h).replace(/^[*•●]\s*/, ''); return t === name || t.startsWith(`${name} - `); };
+
+function findTab(h, name){
+  if (!isTabbedNotepad(h)) return { ok: true, tabs: false, found: plainTitleIs(h, name), count: plainTitleIs(h, name) ? 1 : 0, dialog: false };
+  const out = runTabScript(h, name, 'find');
+  return { ok: true, tabs: true, found: !!out.found, count: out.count ?? 0, dialog: !!out.dialog };
+}
+
+function closeTab(h, name){
+  const t0 = Date.now();
+  // 탭이 없는 메모장(윈도우 10 등)은 창 하나에 파일 하나 → 알려만 준다 (닫기는 close로)
+  if (!isTabbedNotepad(h)) return { ok: true, tabs: false, found: plainTitleIs(h, name), closed: false, ms: Date.now() - t0 };
+  // 앞으로 가져와 둔다: 저장 여부를 물으면 선생님이 바로 보고 답하도록 (탭 닫기 단추는 앞에 없어도 눌린다)
+  const raised = raise(h).ok;
+  const out = runTabScript(h, name, 'close');
+  const gone = !W.IsWindow(h);
+  return {
+    ok: true, tabs: true, found: !!out.found, count: out.count ?? (out.found ? 1 : 0), closed: !!out.closed, windowClosed: gone,
+    // 메모장 안의 저장 여부·알림 창 (waiting과 같은 모양)
+    waiting: out.dialog && !gone ? { wid: null, title: '메모장 안의 확인 창' } : null,
+    how: out.how ?? null,   // button(탭 닫기 단추) | ctrlW(저장 안 한 탭) | notShown·notFront(멈춤)
+    raised, ms: Date.now() - t0,
+  };
+}
+
 function close(h){
   // 정상 종료 요청만 보낸다. 저장 여부를 묻는 창이 뜨면 그대로 둔다.
   const ok = !!W.PostMessageW(h, WM_CLOSE, 0, 0);
@@ -416,11 +542,22 @@ try {
     case 'close':
       emit(close(findWin(args[1])));
       break;
+    case 'maximize':
+      emit(maximize(findWin(args[1])));
+      break;
+    case 'closetab':
+      if (!args[2]) fail('사용법: winctl closetab <wid> <파일 이름>');
+      emit(closeTab(findWin(args[1]), args[2]));
+      break;
+    case 'findtab':
+      if (!args[2]) fail('사용법: winctl findtab <wid> <파일 이름>');
+      emit(findTab(findWin(args[1]), args[2]));
+      break;
     case 'watch':
       await watch();
       break;
     default:
-      fail(cmd ? `모르는 명령: ${cmd}` : '사용법: winctl <trusted|displays|list|front|raise|move|minimize|close|watch> ...');
+      fail(cmd ? `모르는 명령: ${cmd}` : '사용법: winctl <trusted|displays|list|front|raise|move|minimize|close|maximize|closetab|findtab|watch> ...');
   }
 } catch (e){
   emit({ ok: false, error: e instanceof Fail ? e.message : `도우미 내부 오류: ${e.message}` });
