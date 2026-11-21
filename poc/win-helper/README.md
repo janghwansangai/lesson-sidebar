@@ -10,6 +10,7 @@ node winctl.js displays     # 모니터 목록이 나오면 준비 끝
 cd ..
 node runner/run.js --browsers=chrome,edge,whale
 node runner/raise-lock.js   # 앞으로 가져오기 제한 시험 (사람이 함께)
+node runner/replug.js       # 외부 모니터 뺐다 꽂기 시험 (사람이 함께, 맥에서도 됨)
 ```
 - 맥 도우미와 다른 점: `list`의 창마다 `maximized`(최대화)가 더 있고, `front`는 확인·저장 창이 앞에 있으면 `dialog`(그 창 번호와 제목)를 함께 준다. `raise`의 `detail.method`는 통한 방법(`direct`, `dummyInput`, `attachThreadInput`, 이미 앞이면 `already`).
 - `app`은 실행 파일 이름(`chrome.exe`, `POWERPNT.EXE`, `Hwp.exe` 등)이다.
