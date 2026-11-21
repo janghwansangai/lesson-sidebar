@@ -59,12 +59,13 @@ npm start
 | 자료 열기 / 앞으로 가져오기 | 목록 누르기 (듀얼 모니터면 학생 화면에, 진행 메모는 교사 화면에) |
 | 교사 화면에서 먼저 보기 | 위쪽 "여는 곳"에서 "교사 화면에서 먼저" → 확인 후 ⇄ |
 | 다른 화면으로 보내기 | 열린 자료에 마우스를 올리고 ⇄ |
-| 닫기 | ✕ (저장 확인 창 등이 뜨면 그 창을 앞으로 가져오고 "답 기다림" 표시. 윈도우 메모장이 다른 파일과 한 창에 탭으로 열려 있으면 창을 닫지 않고 "이 탭만 닫아 주세요"라고 알림) |
+| 닫기 | ✕ (저장 확인 창 등이 뜨면 그 창을 앞으로 가져오고 "답 기다림" 표시). 윈도우 11 메모장은 창을 닫지 않고 진행 메모 탭만 닫음 — 사이드바가 연 창이면 바로, 선생님이 열어 둔 메모장이면 안내 옆 "사이드바에서 이 탭만 닫기" 단추로 |
 | 반반으로 나란히 | 체크 두 개 → "반반으로 나란히" (프로그램 최소 폭에서 멈춤) |
 | 다음 자료 | 위쪽 "다음" |
 | 모두 미리 열기 | 아래 버튼 — 학생 화면에는 첫 자료만 보이고 나머지는 최소화 |
 | 다른 창 숨기기 | 학생 화면에서 지금 자료만 남기기 |
 | 자동 숨김 | 오른쪽 위 버튼 — 접히면 교사 화면 왼쪽 가운데에 반투명 노란 막대(손잡이)만 남음 (막대 자리 클릭은 아래 창으로 감). 교사 화면 왼쪽 끝에 마우스를 대면 나타남. 왼쪽에 학생 화면이 있으면 막대 높이에서 왼쪽으로 넘어가도 나타남 |
+| 설정 (⚙) | 펼친 사이드바 투명도 (불투명·90·80·70%, 배경만 비치고 글씨는 그대로). 윈도우: "고정해 둘 때 가려지는 창을 옆으로 비키기" — 교사 화면에서 사이드바에 가려지는 창(선생님 창 포함)을 오른쪽으로 옮기고, 자동 숨김·설정 끄기·끝내기 때 돌려놓음 (펼치고 접는 순간에만 동작, 고정해 둔 동안 새로 연 창은 그대로) |
 | 모니터 연결이 바뀔 때 | 학생 화면이 빠지면 창을 교사 화면으로 모으고, 다시 꽂으면 돌려놓음 |
 | 다시 켰을 때 | 이미 열린 문서 창(PPT·엑셀·한글·메모)을 다시 연결 |
 
@@ -73,6 +74,7 @@ npm start
 src/main.js            Electron 시작점: 사이드바 창, 자동 숨김, 모니터 변화, 화면 요청 처리
 src/preload.cjs        화면에 열어 주는 기능 (state, act, onState)
 src/core/session.js    수업 진행 로직 — 화면 없이 시험 가능 (test/session.test.js)
+src/core/aside.js      사이드바 고정 시 옆으로 비킬 창 계산 (test/aside.test.js)
 src/core/bundle.js     수업 꾸러미(.zip) 내보내기·가져오기, 경로·크기·손상 검사 (test/bundle.test.js)
 src/core/editor.js     수업 편집 (자료 복사·순서·정리하기·저장/백업) (test/editor.test.js)
 src/core/library.js    수업 보관함 목록, 보관함 위치 추천
@@ -92,4 +94,4 @@ npm test                                 # 수업 진행 로직 (가짜 도우�
 SIDEBAR_DEBUG=1 npm start                # 개발용 원격 조작 주소를 .userdata/debug.json에 남김
 ```
 윈도우 PowerShell에서는 `$env:SIDEBAR_DEBUG='1'; npm start`.
-원격 조작: `GET <debug.json의 url>/act?do=activate&arg=it4` → 동작 후 상태(JSON). `do`는 `activate, move, close, toggleSel, split, untile, openAll, next, hideOthers, openTo, autoHide`.
+원격 조작: `GET <debug.json의 url>/act?do=activate&arg=it4` → 동작 후 상태(JSON). `do`는 `activate, move, close, closeTab, toggleSel, split, untile, openAll, next, hideOthers, openTo, autoHide, opacity(100·90·80·70), aside(true·false)`.

@@ -12,12 +12,26 @@ const BADGE = {
 
 const api = window.sidebar ?? demoApi();
 let S = null;
+let prefsOpen = false;
+
+function renderPrefs(){
+  const P = S.prefs ?? { opacity: 100, steps: [100, 90, 80, 70], aside: false, asideAvailable: false };
+  // 펼친 사이드바 배경 투명도 (CSSOM으로 바꾸므로 보안 정책(CSP)에 걸리지 않음)
+  document.documentElement.style.setProperty('--sb-alpha', String(P.opacity / 100));
+  $('#btn-prefs').setAttribute('aria-pressed', String(prefsOpen));
+  $('#btn-prefs').setAttribute('aria-expanded', String(prefsOpen));
+  $('#prefs').hidden = !prefsOpen;
+  $('#opacity').innerHTML = P.steps.map(v => `<button data-op="${v}" aria-pressed="${P.opacity === v}">${v === 100 ? '불투명' : v + '%'}</button>`).join('');
+  $('#aside-row').hidden = !P.asideAvailable;
+  $('#aside').checked = !!P.aside;
+}
 
 function render(){
   if (!S) return;
   $('#strip').hidden = !S.collapsed;
   $('#panel').hidden = !!S.collapsed;
   document.body.classList.toggle('collapsed', !!S.collapsed);
+  renderPrefs();
   const L = S.lesson;
   $('#title').textContent = L ? L.title : '수업 폴더를 열어 주세요';
   const openN = Object.values(S.state).filter(s => s.status === 'open' || s.status === 'blocked').length;
@@ -53,6 +67,9 @@ function render(){
   } else dock.hidden = true;
 
   $('#msg').textContent = S.msg || '';
+  // 안내 옆 단추 (예: 메모장에서 이 탭만 닫기)
+  $('#offer').hidden = !S.offer;
+  $('#offer').textContent = S.offer?.label ?? '';
 }
 
 function row(it){
@@ -102,6 +119,10 @@ $('#dock').addEventListener('click', e => {
 });
 $('#next').addEventListener('click', () => api.act('next'));
 $('#btn-hide').addEventListener('click', () => api.act('autoHide', !S.autoHide));
+$('#btn-prefs').addEventListener('click', () => { prefsOpen = !prefsOpen; render(); });
+$('#opacity').addEventListener('click', e => { const b = e.target.closest('[data-op]'); if (b) api.act('opacity', b.dataset.op); });
+$('#aside').addEventListener('change', e => api.act('aside', e.target.checked));
+$('#offer').addEventListener('click', () => { if (S.offer) api.act(S.offer.act, S.offer.id); });
 $('#openall').addEventListener('click', () => api.act('openAll'));
 $('#hideothers').addEventListener('click', () => api.act('hideOthers'));
 $('#folder').addEventListener('click', () => api.act('prep'));
@@ -123,6 +144,8 @@ function demoApi(){
       { id: 'f', title: '없는 파일 예시', type: 'pdf', app: '크롬', home: 'student', problem: '파일이 없습니다 (아직 동기화 중일 수 있습니다)' } ] } ] };
   const s = { lesson, state: { a: { status: 'open', disp: 'teacher' }, b: { status: 'open', disp: 'student' }, d: { status: 'open', disp: 'student' }, e: { status: 'blocked', disp: 'student' }, c: { status: 'opening' } },
     highlight: 'd', sel: [], tile: null, dual: true, studentName: 'MB16NCG', openTo: 'student', autoHide: false, collapsed: false,
-    msg: "'발표 자료'를 학생 화면에 열었습니다 · 0.8초" };
+    msg: "'진행 메모'은(는) 다른 파일과 같은 메모장 창에 탭으로 열려 있어 창을 닫지 않았습니다. 이 탭만 닫으려면 아래 단추를 누르세요",
+    offer: { act: 'closeTab', id: 'a', label: '사이드바에서 이 탭만 닫기' },
+    prefs: { opacity: 90, steps: [100, 90, 80, 70], aside: false, asideAvailable: true } };
   return { state: async () => s, act: async () => true, onState: () => () => {} };
 }
