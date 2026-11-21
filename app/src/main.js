@@ -22,8 +22,9 @@ const STRIP_W = 10;
 const DEVICE = deviceName();
 
 // 개발 중에는 설정·로그를 이 폴더 안에 둔다 (패키지로 만들면 운영체제 기본 위치)
+// (SIDEBAR_USERDATA를 주면 그 폴더를 쓴다: 선생님이 쓰는 체험판 설정을 건드리지 않고 시험할 때)
 if (!app.isPackaged){
-  const ud = path.join(APP_DIR, '.userdata');
+  const ud = process.env.SIDEBAR_USERDATA ? path.resolve(process.env.SIDEBAR_USERDATA) : path.join(APP_DIR, '.userdata');
   app.setPath('userData', ud);
   app.setPath('crashDumps', path.join(ud, 'crash'));
   app.setPath('logs', path.join(ud, 'logs'));
@@ -296,6 +297,15 @@ ipcMain.handle('act', (e, action, arg) => {
 });
 ipcMain.handle('prep:state', e => (e.sender === prepWin?.webContents ? prepSnapshot() : null));
 ipcMain.handle('prep:act', (e, action, payload) => (e.sender === prepWin?.webContents ? prepAct(action, payload) : false));
+// 준비 창이 닫히는 순간 입력 중이던 글자를 놓치지 않도록, 글자 칸 고치기만 동기로 받아 바로 저장한다
+const SYNC_EDITS = new Set(['info', 'updateSection', 'updateItem']);
+ipcMain.on('prep:act-sync', (e, action, payload) => {
+  let ok = false;
+  if (e.sender === prepWin?.webContents && SYNC_EDITS.has(action) && payload && typeof payload === 'object' && !Array.isArray(payload)){
+    try { PREP_ACTIONS[action](payload); ok = true; } catch (err){ prepMsg = err.message; }
+  }
+  e.returnValue = ok;
+});
 
 // ---------- 다른 PC·프로그램이 바꾼 내용 알아채기 (클라우드 동기화) ----------
 function watchOutside(){

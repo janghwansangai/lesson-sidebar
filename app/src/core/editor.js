@@ -7,6 +7,14 @@ import { BLOCKED, typeOfFile, detectUrl, safeName, pad2, extOf, START_HINT } fro
 import { deviceName } from './lock.js';
 
 const BACKUPS = 10;
+const BACKUP_GAP_MS = 60 * 1000;
+/** 같은 이름이 이미 있으면 `이름_2.확장자`처럼 비어 있는 이름을 고른다 (같은 순간에 만든 백업·휴지통 파일이 서로 덮지 않게) */
+function freeName(dir, name){
+  const ext = path.extname(name), stem = name.slice(0, name.length - ext.length);
+  let n = name;
+  for (let i = 2; existsSync(path.join(dir, n)); i++) n = `${stem}_${i}${ext}`;
+  return n;
+}
 const newId = p => `${p}_${randomBytes(4).toString('hex')}`;
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -15,6 +23,7 @@ export class LessonDoc {
     this.root = path.resolve(root);
     this.data = null;
     this.mtime = 0;
+    this.backedUpAt = 0;   // 마지막으로 백업을 만든 때
   }
 
   get file(){ return path.join(this.root, 'lesson.json'); }
@@ -60,10 +69,14 @@ export class LessonDoc {
     d.updatedAt = new Date().toISOString();
     d.device = deviceName();
     const side = path.join(this.root, '.sidebar', 'backup');
-    if (existsSync(this.file)){
+    // 글자를 칠 때마다 저장하므로 백업은 1분에 하나만 만든다 (오래된 백업이 금방 밀려나지 않게).
+    // 다른 PC 등에서 바뀐 파일을 덮어쓰게 될 때는 시간과 상관없이 먼저 백업한다.
+    const now = Date.now();
+    if (existsSync(this.file) && (this.changedOutside() || now - this.backedUpAt >= BACKUP_GAP_MS)){
+      this.backedUpAt = now;
       mkdirSync(side, { recursive: true });
       const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-      writeFileSync(path.join(side, `lesson-${stamp}.json`), readFileSync(this.file));
+      writeFileSync(path.join(side, freeName(side, `lesson-${stamp}.json`)), readFileSync(this.file));
       const old = readdirSync(side).filter(f => f.startsWith('lesson-')).sort();
       for (const f of old.slice(0, Math.max(0, old.length - BACKUPS))){ try { unlinkSync(path.join(side, f)); } catch { /* 계속 */ } }
     }
@@ -196,7 +209,7 @@ export class LessonDoc {
           const trash = path.join(this.root, '.sidebar', '휴지통');
           mkdirSync(trash, { recursive: true });
           const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-          renameSync(src, path.join(trash, `${stamp}_${path.basename(src)}`));
+          renameSync(src, path.join(trash, freeName(trash, `${stamp}_${path.basename(src)}`)));
         }
       } catch { /* 흐름에서는 빠짐 */ }
     }

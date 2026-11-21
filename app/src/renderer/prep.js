@@ -115,9 +115,47 @@ $('#new-form').addEventListener('submit', e => {
 });
 $('#open-other').addEventListener('click', () => api.act('openOther'));
 
+// ---------- 글자 칸 저장 ----------
+// 수업 이름·날짜·구간·자료 칸은 따로 저장 버튼이 없다. 이렇게 저장한다:
+//   ① 치다가 잠깐(1.2초) 멈추면  ② Enter·다른 곳 누르기(change)  ③ 다른 창으로 갈 때  ④ 창을 닫을 때(동기로 확실히)
+const IDLE_MS = 1200;
+let dirty = null, idleTimer = 0, sent = { el: null, value: null };
+
+function editOf(el){
+  if (!(el instanceof HTMLElement)) return null;
+  if (el.id === 'title') return ['info', { title: el.value }];
+  if (el.id === 'date') return ['info', { date: el.value }];
+  const f = el.dataset.f; if (!f || !$('#flow').contains(el)) return null;
+  const sec = el.closest('[data-sec]')?.dataset.sec, id = el.closest('[data-id]')?.dataset.id;
+  switch (f){
+    case 'sec-title': return ['updateSection', { id: sec, title: el.value }];
+    case 'sec-min': return ['updateSection', { id: sec, minutes: Number(el.value) }];
+    case 'title': return ['updateItem', { id, title: el.value }];
+    case 'start': return ['updateItem', { id, start: el.value }];
+    case 'screen': return ['updateItem', { id, screen: el.value || null }];
+  }
+  return null;
+}
+function commit(el, sync = false){
+  if (el === dirty){ dirty = null; clearTimeout(idleTimer); }
+  if (sent.el === el && sent.value === el.value) return;   // 방금 보낸 그대로면 또 저장하지 않는다
+  const e = editOf(el); if (!e) return;
+  sent = { el, value: el.value };
+  if (sync) api.actSync(...e); else api.act(...e);
+}
+const flushTyping = sync => { if (dirty) commit(dirty, sync); };
+document.addEventListener('input', e => {
+  if (!editOf(e.target)) return;
+  if (sent.el === e.target) sent = { el: null, value: null };
+  dirty = e.target;
+  clearTimeout(idleTimer);
+  idleTimer = setTimeout(() => flushTyping(false), IDLE_MS);
+});
+document.addEventListener('change', e => commit(e.target));
+window.addEventListener('blur', () => flushTyping(false));
+window.addEventListener('beforeunload', () => flushTyping(true));
+
 // ---------- 수업 정보 ----------
-$('#title').addEventListener('change', e => api.act('info', { title: e.target.value }));
-$('#date').addEventListener('change', e => api.act('info', { date: e.target.value }));
 $('#run').addEventListener('click', () => api.act('run'));
 $('#tidy').addEventListener('click', () => api.act('tidy'));
 $('#reveal').addEventListener('click', () => api.act('reveal'));
@@ -154,15 +192,6 @@ $('#add-sec-btn').addEventListener('click', () => api.act('addSection'));
 
 // ---------- 흐름 고치기 ----------
 const flow = $('#flow');
-flow.addEventListener('change', e => {
-  const f = e.target.dataset.f; if (!f) return;
-  const secEl = e.target.closest('[data-sec]'), itEl = e.target.closest('[data-id]');
-  if (f === 'sec-title') api.act('updateSection', { id: secEl.dataset.sec, title: e.target.value });
-  else if (f === 'sec-min') api.act('updateSection', { id: secEl.dataset.sec, minutes: Number(e.target.value) });
-  else if (f === 'title') api.act('updateItem', { id: itEl.dataset.id, title: e.target.value });
-  else if (f === 'start') api.act('updateItem', { id: itEl.dataset.id, start: e.target.value });
-  else if (f === 'screen') api.act('updateItem', { id: itEl.dataset.id, screen: e.target.value || null });
-});
 flow.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.tagName === 'INPUT') e.target.blur(); });
 flow.addEventListener('click', e => {
   const b = e.target.closest('[data-do]'); if (!b) return;
