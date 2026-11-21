@@ -17,6 +17,21 @@ node runner/elevated.js     # 관리자 권한 창 시험 (사람이 명령 프�
 - 맥 도우미와 다른 점: `list`의 창마다 `maximized`(최대화)와 `waiting`(답을 기다리는 저장·확인 창의 번호와 제목, 없으면 `null`)이 더 있고, `front`는 확인·저장 창이 앞에 있으면 `dialog`(그 창 번호와 제목)를 함께 준다. `raise`의 `detail.method`는 통한 방법(`direct`, `dummyInput`, `attachThreadInput`, 이미 앞이면 `already`).
 - `app`은 실행 파일 이름(`chrome.exe`, `POWERPNT.EXE`, `Hwp.exe` 등)이다.
 
+## 윈도우에만 있는 추가 명령 (체험판이 씀, 2026-11-22)
+| 명령 | 하는 일 | 출력 |
+|---|---|---|
+| `maximize <wid>` | 창 최대화 (사이드바 고정 때 옆으로 옮긴 최대화 창을 돌려놓을 때) | `{ok}` |
+| `closetab <wid> <파일 이름>` | 윈도우 11 메모장에서 그 파일의 탭만 닫는다. 다른 탭은 건드리지 않는다 | `{ok, tabs, found, count, closed, windowClosed, waiting, how, ms}` |
+| `findtab <wid> <파일 이름>` | 그 이름의 탭이 몇 개인지, 메모장 안에 확인·저장 창이 떠 있는지 (아무것도 바꾸지 않음) | `{ok, tabs, found, count, dialog}` |
+
+`closetab`·`findtab` 자세히 (결과: `docs/poc/windows.md` 체험판 16):
+- `<파일 이름>`은 확장자까지 (`01_진행메모.md`). 탭 이름이 정확히 그 파일일 때만 (`"01_진행메모.md. 수정되지 않았습니다."`처럼 상태가 붙는다).
+- 방법: UI 자동화(UIAutomation)로 그 탭을 고르고(Select) 탭의 "탭 닫기" 단추를 누른다(Invoke). 저장 안 한 탭은 단추 대신 점이 있어 Ctrl+W를 보낸다 — 키보드 초점이 그 메모장 창 안이고, 창 제목이 그 파일이고, 확인 창이 없을 때만. UI 자동화는 PowerShell `-EncodedCommand`로 부른다 (스크립트 파일이 아니라 실행 정책과 상관없음, 0.5~0.8초). 파일 이름·창 번호는 환경 변수로 넘긴다.
+- `tabs: false`: 탭을 쓰지 않는 메모장(윈도우 10 등, `WindowsApps\Microsoft.WindowsNotepad_…`이 아닌 것). 키도 UI 자동화도 쓰지 않고 `found`(창 제목이 그 파일인지)만 알려 준다 → 닫기는 `close`로.
+- `found: false`: 그 이름의 탭이 없거나(`count: 0`) 둘 이상이면(`count: 2…`, 다른 폴더의 같은 이름 파일일 수 있어) 아무것도 닫지 않는다. 메모장 안에 확인 창이 이미 떠 있어도 닫지 않는다(`waiting`).
+- `closed: false` + `waiting`: 메모장이 저장할지 묻는 중 ("변경 내용을 …에 저장하시겠습니까?"). 이 창은 메모장 창 안의 팝업이라 `list`의 `waiting`에는 나오지 않는다.
+- `how`: `button`(탭 닫기 단추) · `ctrlW`(저장 안 한 탭) · `notShown`/`notFront`(고른 탭이 안 보이거나 메모장이 맨 앞이 아니어서 멈춤).
+
 ## 만든 것
 - `poc/win-helper/package.json` (이 폴더 전용, 의존성: `koffi`) — 맥 쪽 `poc/package.json`에는 넣지 않는다
 - `poc/win-helper/winctl.js` — `node winctl.js <명령> [인자]`로 실행, 마지막 줄에 JSON 한 줄 출력
