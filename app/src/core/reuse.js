@@ -27,14 +27,14 @@ export function duplicateLesson(srcRoot, libraryRoot, { title, date } = {}){
     return !SKIP_DIRS.has(first) && !TEMP_FILE.test(leaf) && !/^lesson.*\(\d+\)\.json$/i.test(leaf);
   } });
   const d = { ...src, id: `les_${randomBytes(4).toString('hex')}`, title, date };
-  delete d.updatedAt; delete d.device;
+  delete d.updatedAt; delete d.device; delete d.review;   // 돌아보기는 그 수업의 것 — 새 수업은 빈 칸으로
   writeFileSync(path.join(dest, 'lesson.json'), JSON.stringify(d, null, 2) + '\n');
   return dest;
 }
 
-/** 지난 수업 검색에 쓰는 글: 수업 이름·날짜·구간·자료 이름·링크 (소문자, NFC) */
+/** 지난 수업 검색에 쓰는 글: 수업 이름·날짜·돌아보기·구간·자료 이름·링크 (소문자, NFC) */
 export function searchText(d){
-  const parts = [d?.title, d?.date];
+  const parts = [d?.title, d?.date, d?.review];
   for (const s of d?.sections ?? []){ parts.push(s?.title); for (const it of s?.items ?? []) parts.push(it?.title, it?.url); }
   return parts.filter(Boolean).join(' ').normalize('NFC').toLowerCase();
 }

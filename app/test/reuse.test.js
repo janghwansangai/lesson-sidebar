@@ -80,3 +80,15 @@ test('충돌 사본 이름: 원드라이브(lesson-PC이름.json)·구글 드라
   writeFileSync(path.join(doc.root, 'my lesson.json'), body);
   assert.deepEqual(findConflicts(doc.root).map(c => c.file).sort(), ['lesson.json', ...copies].sort());
 });
+
+test('수업 후 돌아보기: 검색에 잡히고, 안내 페이지와 복제한 수업에는 들어가지 않는다', async () => {
+  const { doc } = await lesson();
+  doc.setInfo({ review: '모둠 활동 시간이 모자랐다' }); doc.save();
+  const d = JSON.parse(readFileSync(doc.file, 'utf8'));
+  assert.ok(matches(searchText(d), '모둠 모자랐'));
+  assert.ok(!guideHtml(d).includes('모자랐'));
+  const lib = path.dirname(doc.root);
+  const copy = duplicateLesson(doc.root, lib, { title: '2차' });
+  assert.equal(JSON.parse(readFileSync(path.join(copy, 'lesson.json'), 'utf8')).review, undefined);
+  assert.equal(doc.snapshot().review, '모둠 활동 시간이 모자랐다');
+});

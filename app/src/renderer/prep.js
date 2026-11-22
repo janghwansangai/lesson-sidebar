@@ -55,6 +55,7 @@ function renderDoc(d){
   const keep = active && active.id ? active.id : null;
   if (keep !== 'title') $('#title').value = d.title;
   if (keep !== 'date') $('#date').value = d.date;
+  if (keep !== 'review') $('#review').value = d.review ?? '';
   const total = d.sections.reduce((a, s) => a + (s.minutes || 0), 0);
   const count = d.sections.reduce((a, s) => a + s.items.length, 0);
   const saved = d.updatedAt ? new Date(d.updatedAt).toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' }) : '';
@@ -154,6 +155,7 @@ function editOf(el){
   if (!(el instanceof HTMLElement)) return null;
   if (el.id === 'title') return ['info', { title: el.value }];
   if (el.id === 'date') return ['info', { date: el.value }];
+  if (el.id === 'review') return ['info', { review: el.value }];
   const f = el.dataset.f; if (!f || !$('#flow').contains(el)) return null;
   const sec = el.closest('[data-sec]')?.dataset.sec, id = el.closest('[data-id]')?.dataset.id;
   switch (f){

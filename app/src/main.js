@@ -1063,7 +1063,7 @@ const PREP_ACTIONS = {
     if (r.canceled || !r.filePaths[0]) return;
     PREP_ACTIONS.openLesson({ folder: r.filePaths[0] });
   },
-  info(p){ needDoc().setInfo({ title: str(p.title, 120), date: str(p.date, 10) }); afterEdit(); },
+  info(p){ needDoc().setInfo({ title: str(p.title, 120), date: str(p.date, 10), review: str(p.review, 4000) }); afterEdit(); },
   addSection(){ needDoc().addSection(); afterEdit('구간을 넣었습니다'); },
   updateSection(p){ needDoc().updateSection(str(p.id, 60), { title: str(p.title, 40), minutes: p.minutes }); afterEdit(); },
   removeSection(p){ needDoc().removeSection(str(p.id, 60)); afterEdit('구간을 지웠습니다'); },
