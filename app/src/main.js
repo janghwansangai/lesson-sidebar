@@ -748,6 +748,7 @@ ipcMain.on('overlay:wheel', (e, dy) => {
 ipcMain.on('overlay:close', e => { if (fromOverlay(e)) setTool('spot', false); });
 
 // ---------- 배치 저장 (lesson.json layouts) ----------
+let lastRemovedLayout = null;   // { root, layout, at } — 저장한 배치 지우기 되돌리기
 function editLayouts(root, fn){
   const d = new LessonDoc(root).load();
   d.data.layouts = fn(Array.isArray(d.data.layouts) ? d.data.layouts : []);
@@ -910,14 +911,14 @@ function syncLive(){
   if (want && !thumbTimer){ thumbTimer = setInterval(refreshThumb, 3000); refreshThumb(); }
   else if (!want && thumbTimer){ clearInterval(thumbTimer); thumbTimer = null; nextThumb = null; }
 }
-/** 다음 자료 창이 미리 열려 있으면 작게 찍어 둔다 (화면 기록 권한이 있을 때만). 다음 자료가 바뀌면 바로, 그대로면 10초마다 */
+/** 다음 자료 창이 미리 열려 있으면 작게 찍어 둔다 (화면 기록 권한이 있을 때만). 다음 자료가 바뀌면 바로, 그대로면 30초마다 */
 let thumbBusy = false;
 async function refreshThumb(){
   if (thumbBusy || screenAccess() !== 'granted' || !session.lesson) return;
   const nx = liveView(session.snapshot().lesson, session.highlight, timing)?.next;
   const wid = nx ? session.state.get(nx.id)?.wid : null;
   if (!wid){ if (nextThumb){ nextThumb = null; liveSrv.broadcast(); } return; }
-  if (nextThumb?.id === nx.id && Date.now() - nextThumb.at < 10000) return;
+  if (nextThumb?.id === nx.id && Date.now() - nextThumb.at < 30000) return;   // 같은 자료면 30초마다 (창 그림 찍기는 모든 창을 찍어 1초쯤 걸림)
   thumbBusy = true;
   try {
     const srcs = await desktopCapturer.getSources({ types: ['window'], thumbnailSize: { width: 480, height: 300 } });
@@ -1378,8 +1379,17 @@ const ACTIONS = {
   },
   removeLayout: v => {
     const root = session.lesson?.root; if (!root) return;
-    editLayouts(root, ls => ls.filter(l => l.id !== v));
-    session.say('저장한 배치를 지웠습니다');
+    let gone = null, at = -1;
+    editLayouts(root, ls => { at = ls.findIndex(l => l.id === v); gone = ls[at] ?? null; return ls.filter(l => l.id !== v); });
+    if (!gone) return;
+    lastRemovedLayout = { root, layout: gone, at };   // 잘못 눌렀을 때 되돌리기 (다음 안내가 오면 단추는 사라짐)
+    session.say(`저장한 배치 '${gone.name ?? ''}'를 지웠습니다`, { act: 'restoreLayout', label: '되돌리기' });
+  },
+  restoreLayout: () => {
+    const r = lastRemovedLayout; lastRemovedLayout = null;
+    if (!r || r.root !== session.lesson?.root) return;
+    editLayouts(r.root, ls => ls.some(l => l.id === r.layout.id) ? ls : [...ls.slice(0, Math.max(0, r.at)), r.layout, ...ls.slice(Math.max(0, r.at))]);
+    session.say(`저장한 배치 '${r.layout.name ?? ''}'를 되돌렸습니다`);
   },
   untile: () => session.untile(),
   openAll: () => session.openAll(),

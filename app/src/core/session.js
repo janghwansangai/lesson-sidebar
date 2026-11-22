@@ -676,6 +676,18 @@ export class Session extends EventEmitter {
     return this.aside_(async () => {
       if (!this.teacher || this.trusted === false) return 0;
       const span = Math.round(this.sidebarWidth * (this.physicalPixels ? (this.teacher.scale ?? 1) : 1));
+      // 먼저 사이드바 띠와 겹치는 창이 있는지만 싸게 본다 (맥 도우미 'covered' — 창 목록 서버만).
+      // 없거나 이미 1분에 3번 옮긴 창뿐이면 모든 프로그램에 묻는 전체 목록을 건너뛴다. 모르는 도우미면 예전처럼 늘 전체 목록
+      if (!this.noCovered){
+        let hit = null;
+        try { hit = (await this.helper.call('covered', this.teacher.x, this.teacher.y, span, this.teacher.height, this.ownPid))?.wids; }
+        catch { /* 아래 */ }
+        if (!Array.isArray(hit)) this.noCovered = true;
+        else {
+          const now = Date.now();
+          if (!hit.some(w => (this.asideTries.get(w) ?? []).filter(t => now - t < 60000).length < 3)) return 0;
+        }
+      }
       let wins;
       try { wins = await this.list(); } catch { return 0; }
       const plan = planAside(wins, this.teacher, span, { ownPid: this.ownPid, displays: this.displays });
