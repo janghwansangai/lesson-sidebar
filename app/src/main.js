@@ -589,7 +589,7 @@ async function startRecording(){
     if (!rec?.recWin || rec.recWin.isDestroyed() || req.frame?.top !== rec.recWin.webContents.mainFrame) return cb({});
     cb({ video: src, audio: 'loopback' });
   });
-  recWc.send('rec:start', { sourceId: src.id, mic: prefs.recMic !== false, sys: prefs.recSys !== false, light: !!prefs.recLight });
+  recWc.send('rec:start', { sourceId: src.id, mic: prefs.recMic !== false, sys: !!prefs.recSys, light: !!prefs.recLight });
   rec.spaceTimer = setInterval(() => {
     const f = freeAt(recDir());
     if (f != null && f < 1024 ** 3){ session.say(`남은 공간이 ${fmtBytes(f)}라 녹화를 멈춥니다`); stopRecording(); }
@@ -661,8 +661,8 @@ ipcMain.on('rec:started', (e, info) => {
   if (!fromRec(e)) return;
   rec.mic = !!info?.mic;
   rec.sys = !!info?.sys;
-  const sysMiss = prefs.recSys !== false && !rec.sys
-    ? ` · 컴퓨터 소리는 담지 못했습니다${process.platform === 'darwin' ? " (시스템 설정 → 개인정보 보호 및 보안 → 화면 및 시스템 오디오 기록에서 '수업 사이드바' 확인)" : ''}` : '';
+  const sysMiss = prefs.recSys && !rec.sys
+    ? ` · 컴퓨터 소리는 담지 못했습니다${process.platform === 'darwin' ? ' (맥에서는 아직 시험 중인 기능입니다 · 화면·마이크는 그대로 녹화)' : ''}` : '';
   session.say(`녹화를 시작했습니다 · ${rec.where}${rec.sys ? ' + 컴퓨터 소리' : ''}${rec.mic ? ' + 마이크' : ''}${sysMiss} · 학생 얼굴·목소리·이름이 담길 수 있으니 공유하기 전에 확인하세요`);
   push();
 });
@@ -1450,7 +1450,8 @@ app.whenReady().then(async () => {
   await session.refreshDisplays();
 
   const settings = readSettings();
-  prefs = { opacity: OPACITY_STEPS.includes(settings.opacity) ? settings.opacity : 100, aside: ASIDE_OK && !!settings.aside, recMic: settings.recMic !== false, recSys: settings.recSys !== false, recScreen: settings.recScreen === 'teacher' ? 'teacher' : 'student', recLight: !!settings.recLight, updateCheck: settings.updateCheck !== false, shortcuts: settings.shortcuts !== false };
+  prefs = { opacity: OPACITY_STEPS.includes(settings.opacity) ? settings.opacity : 100, aside: ASIDE_OK && !!settings.aside, recMic: settings.recMic !== false, recSys: typeof settings.recSys === 'boolean' ? settings.recSys : IS_WIN,   // 맥은 아직 시험 중이라 기본은 끔 (docs/poc/mac.md 49)
+     recScreen: settings.recScreen === 'teacher' ? 'teacher' : 'student', recLight: !!settings.recLight, updateCheck: settings.updateCheck !== false, shortcuts: settings.shortcuts !== false };
   createSidebar();
   if (!(settings.lastFolder && existsSync(settings.lastFolder) && runLesson(settings.lastFolder))) runLesson(sampleLesson());
   if (settings.lastPrepFolder && existsSync(path.join(settings.lastPrepFolder, 'lesson.json'))){

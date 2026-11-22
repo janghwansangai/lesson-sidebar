@@ -51,7 +51,7 @@ function render(){
   $('#record').setAttribute('aria-pressed', String(!!S.rec));
   if (S.rec){ $('#rec-where').textContent = `${S.rec.where}${S.rec.mic ? ' + 마이크' : ''}`; $('#rec-stop').disabled = !!S.rec.stopping; }
   $('#rec-mic').checked = S.prefs?.recMic !== false;
-  $('#rec-sys').checked = S.prefs?.recSys !== false;
+  $('#rec-sys').checked = !!S.prefs?.recSys;
   $('#keys-on').checked = S.prefs?.shortcuts !== false;
   $('#keys').hidden = S.prefs?.shortcuts === false;
   $('#keys').innerHTML = (S.prefs?.keys ?? []).map(k => `<li><kbd>${esc(k.key)}</kbd><span>${esc(k.label)}</span></li>`).join('');
