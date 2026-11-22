@@ -24,6 +24,7 @@ function renderPrefs(){
   $('#opacity').innerHTML = P.steps.map(v => `<button data-op="${v}" aria-pressed="${P.opacity === v}">${v === 100 ? '불투명' : v + '%'}</button>`).join('');
   $('#aside-row').hidden = !P.asideAvailable;
   $('#aside').checked = !!P.aside;
+  $('#trustbar').hidden = S.trusted !== false;
 }
 
 function render(){
@@ -37,13 +38,53 @@ function render(){
   const openN = Object.values(S.state).filter(s => s.status === 'open' || s.status === 'blocked').length;
   $('#meta').textContent = L ? `${L.date ? L.date + ' · ' : ''}${L.sections.reduce((a, s) => a + (s.minutes || 0), 0)}분 · 열린 창 ${openN}개` : '';
   $('#btn-hide').setAttribute('aria-pressed', String(!!S.autoHide));
+  $('#tool-pointer').setAttribute('aria-pressed', String(!!S.tools?.pointer));
+  $('#tool-spot').setAttribute('aria-pressed', String(!!S.tools?.spot));
+  $('#tool-zoom').setAttribute('aria-pressed', String(S.tools?.grab === 'zoom'));
+  $('#tool-pin').setAttribute('aria-pressed', String(S.tools?.grab === 'pick'));
+  $('#pins-close').hidden = !S.tools?.pins;
+  // 녹화: 위쪽 빨간 막대(REC)와 경과 시간, 아래 단추
+  $('#recbar').hidden = !S.rec;
+  $('#record').dataset.tip = S.rec ? '녹화 끝내기|지금까지 녹화한 것을 수업 폴더 _녹화에 저장합니다' : '녹화|학생 화면(모니터 한 대면 이 화면)을 녹화합니다. 자료를 바꿀 때마다 목차를 남깁니다';
+  $('#record').setAttribute('aria-label', S.rec ? '녹화 끝내기' : '녹화');
+  $('#record').setAttribute('aria-pressed', String(!!S.rec));
+  if (S.rec){ $('#rec-where').textContent = `${S.rec.where}${S.rec.mic ? ' + 마이크' : ''}`; $('#rec-stop').disabled = !!S.rec.stopping; }
+  $('#rec-mic').checked = S.prefs?.recMic !== false;
+  $('#rec-light').checked = !!S.prefs?.recLight;
 
   $('#screens').innerHTML = S.dual
     ? `<div class="scr-line"><i class="scr-dot"></i>학생 화면: ${esc(S.studentName)}</div>
        <div class="seg" role="group" aria-label="새로 여는 자료를 띄울 곳"><span>여는 곳</span>
          <button data-to="student" aria-pressed="${S.openTo === 'student'}">학생 화면</button>
-         <button data-to="teacher" aria-pressed="${S.openTo === 'teacher'}">교사 화면에서 먼저</button></div>`
-    : `<div class="scr-line"><i class="scr-dot off"></i>모니터 1개 · 학생도 이 화면을 봅니다</div>`;
+         <button data-to="teacher" aria-pressed="${S.openTo === 'teacher'}">교사 화면에서 먼저</button></div>
+       <div class="stu" role="group" aria-label="학생 화면">
+         <button class="stu-b" data-cover="freeze" aria-pressed="${S.cover === 'freeze'}" title="학생 화면을 지금 장면으로 멈춥니다 (그동안 창을 정리해도 학생에게 안 보임)">정지</button>
+         <button class="stu-b" data-cover="blank" aria-pressed="${S.cover === 'blank'}" title="학생 화면을 '잠시 후 계속합니다'로 가립니다">가리기</button>
+         <button class="stu-b" data-preview="${!S.preview}" aria-pressed="${!!S.preview}" title="학생 화면을 작게 미리 봅니다">미리보기</button></div>`
+    : `<div class="scr-line"><i class="scr-dot off"></i>모니터 1개 · 학생도 이 화면을 봅니다</div>
+       <div class="stu"><button class="stu-b" data-cover="blank" aria-pressed="${S.cover === 'blank'}" title="화면을 '잠시 후 계속합니다'로 가립니다 (사이드바는 보임)">화면 가리기</button></div>`;
+  $('#preview').hidden = !(S.dual && S.preview);
+  $('#preview-tag').textContent = S.cover === 'freeze' ? '정지 중 · 학생에게는 멈춘 장면' : S.cover === 'blank' ? '가리는 중 · 학생에게는 검은 화면' : '학생 화면';
+
+  // 새 버전 알림
+  $('#updbar').hidden = !S.update;
+  if (S.update) $('#upd-t').textContent = `새 버전 ${S.update.version}이 있습니다${S.update.size ? ` (${Math.round(S.update.size / 1048576)}MB)` : ''}${S.update.notes ? ` · ${S.update.notes.split('\n')[0].slice(0, 60)}` : ''}`;
+  $('#upd-check').checked = S.prefs?.updateCheck !== false;
+  $('#ver').textContent = S.version ? `(지금 ${S.version})` : '';
+
+  // 발표자 화면 · 휴대폰 리모컨
+  $('#presenter').setAttribute('aria-pressed', !!S.presenter);
+  $('#remote-on').setAttribute('aria-pressed', !!S.remote);
+  $('#remote').hidden = !S.remote;
+  if (S.remote){
+    const r = S.remote;
+    $('#rm-phones').textContent = r.phones ? `휴대폰 ${r.phones}대 연결됨` : '연결 기다리는 중';
+    $('#rm-qr').hidden = !r.showQr;
+    if (r.showQr && $('#rm-qr').dataset.url !== r.url){ $('#rm-qr').innerHTML = r.qr; $('#rm-qr').dataset.url = r.url; }
+    $('#rm-url').hidden = !r.showQr;
+    $('#rm-url').textContent = r.url.replace(/[0-9a-f]{32}\/$/, '…');
+    $('#rm-toggleqr').textContent = r.showQr ? 'QR 닫기' : 'QR 다시 보기';
+  }
 
   const flat = L ? L.sections.flatMap(s => s.items) : [];
   const i = flat.findIndex(it => it.id === S.highlight);
@@ -59,11 +100,20 @@ function render(){
   const dock = $('#dock');
   if (S.tile){
     dock.hidden = false;
-    dock.innerHTML = `<div class="dock-h"><b>나란히 보는 중</b></div><button class="dbtn" data-dock="untile">나란히 보기 풀기</button>`;
+    const opts = (S.layouts?.[S.tile.ids.length] ?? []).map(l => `<button class="seg-b" data-lay="${l.id}" aria-pressed="${S.tile.layout === l.id}">${esc(l.label)}</button>`).join('');
+    dock.innerHTML = `<div class="dock-h"><b>나란히 보는 중</b></div><p>창 사이 노란 막대를 끌면 폭이 바뀝니다</p>` +
+      (opts ? `<div class="lays" data-mode="relayout">${opts}</div>` : '') +
+      `<button class="dbtn" data-dock="saveLayout">이 배치 수업에 저장</button><button class="dbtn" data-dock="untile">원래대로 (나란히 보기 풀기)</button>`;
   } else if (S.sel.length){
     dock.hidden = false;
     dock.innerHTML = `<div class="dock-h"><b>${S.sel.length}개 선택</b><button class="link" data-dock="clear">선택 해제</button></div>` +
-      (S.sel.length === 2 ? `<button class="dbtn" data-dock="split">${S.dual ? '학생 화면에 ' : ''}반반으로 나란히</button>` : '<p>하나 더 고르면 반반으로 나란히 놓습니다</p>');
+      (S.sel.length >= 2 ? `<p>${S.dual ? '학생 화면에 ' : ''}어떻게 놓을까요?</p><div class="lays" data-mode="split">${(S.layouts?.[S.sel.length] ?? []).map(l => `<button class="seg-b" data-lay="${l.id}">${esc(l.label)}</button>`).join('')}</div>`
+        : '<p>하나 더 고르면 나란히 놓을 수 있습니다 (네 개까지)</p>');
+  } else if (S.saved?.length){
+    // 저장한 배치: 누르면 그 자료들을 그 배치·비율로 다시 놓는다
+    dock.hidden = false;
+    dock.innerHTML = `<div class="dock-h"><b>저장한 배치</b></div>` + S.saved.map(l =>
+      `<div class="saved"><button class="dbtn" data-apply="${esc(l.id)}" title="이 배치로 다시 놓기">${esc(l.name)}</button><button class="act x" data-unsave="${esc(l.id)}" title="저장한 배치 지우기" aria-label="${esc(l.name)} 지우기">✕</button></div>`).join('');
   } else dock.hidden = true;
 
   $('#msg').textContent = S.msg || '';
@@ -110,10 +160,32 @@ $('#list').addEventListener('click', e => {
 $('#list').addEventListener('keydown', e => {
   if ((e.key === 'Enter' || e.key === ' ') && e.target.classList.contains('it')){ e.preventDefault(); api.act('activate', e.target.dataset.id); }
 });
-$('#screens').addEventListener('click', e => { const b = e.target.closest('[data-to]'); if (b) api.act('openTo', b.dataset.to); });
+$('#screens').addEventListener('click', e => {
+  const b = e.target.closest('[data-to]'); if (b) return api.act('openTo', b.dataset.to);
+  const c = e.target.closest('[data-cover]'); if (c) return api.act(c.dataset.cover);
+  const p = e.target.closest('[data-preview]'); if (p) return api.act('preview', p.dataset.preview);
+});
+// 미리보기: 보통은 학생 화면 그림 한 장. 맥에서 정지 중이면 바탕 + 창 그림들을 앞뒤 순서대로 쌓아 그린다
+const loadImg = src => new Promise(r => { const i = new Image(); i.onload = () => r(i); i.onerror = () => r(null); i.src = src; });
+api.onPreview?.(async p => {
+  if (!p) return;
+  const img = $('#preview-img'), cv = $('#preview-canvas');
+  if (typeof p === 'string'){ img.src = p; img.hidden = false; cv.hidden = true; return; }
+  const W = 264, k = W / p.w;
+  cv.width = W; cv.height = Math.round(p.h * k);
+  const g = cv.getContext('2d');
+  const bg = await loadImg(p.bg); if (bg) g.drawImage(bg, 0, 0, cv.width, cv.height);
+  for (const w of p.wins){ const im = await loadImg(w.src); if (im) g.drawImage(im, w.x * k, w.y * k, w.width * k, w.height * k); }
+  img.hidden = true; cv.hidden = false;
+});
 $('#dock').addEventListener('click', e => {
+  const ap = e.target.closest('[data-apply]'); if (ap) return api.act('applyLayout', ap.dataset.apply);
+  const un = e.target.closest('[data-unsave]'); if (un) return api.act('removeLayout', un.dataset.unsave);
+  const lay = e.target.closest('[data-lay]');
+  if (lay) return api.act(lay.closest('[data-mode]').dataset.mode, lay.dataset.lay);
   const d = e.target.closest('[data-dock]')?.dataset.dock;
   if (d === 'split') api.act('split');
+  else if (d === 'saveLayout') api.act('saveLayout');
   else if (d === 'untile') api.act('untile');
   else if (d === 'clear') S.sel.forEach(id => api.act('toggleSel', id));
 });
@@ -125,8 +197,64 @@ $('#aside').addEventListener('change', e => api.act('aside', e.target.checked));
 $('#offer').addEventListener('click', () => { if (S.offer) api.act(S.offer.act, S.offer.id); });
 $('#openall').addEventListener('click', () => api.act('openAll'));
 $('#hideothers').addEventListener('click', () => api.act('hideOthers'));
+$('#record').addEventListener('click', () => api.act('record'));
+$('#rec-stop').addEventListener('click', () => api.act('record'));
+$('#rec-mic').addEventListener('change', e => api.act('recMic', e.target.checked));
+$('#rec-light').addEventListener('change', e => api.act('recLight', e.target.checked));
+setInterval(() => {
+  if (!S?.rec) return;
+  const s = Math.floor((Date.now() - S.rec.since) / 1000), p = n => String(n).padStart(2, '0');
+  $('#rec-time').textContent = s >= 3600 ? `${Math.floor(s / 3600)}:${p(Math.floor(s % 3600 / 60))}:${p(s % 60)}` : `${p(Math.floor(s / 60))}:${p(s % 60)}`;
+}, 500);
+$('#tool-pointer').addEventListener('click', () => api.act('pointer', !S.tools?.pointer));
+$('#tool-spot').addEventListener('click', () => api.act('spot', !S.tools?.spot));
+$('#tool-zoom').addEventListener('click', () => api.act('zoom'));
+$('#tool-pin').addEventListener('click', () => api.act('pin'));
+$('#pins-close').addEventListener('click', () => api.act('closePins'));
+$('#ax-open').addEventListener('click', () => api.act('axSettings'));
+// 모두 닫기는 한 번 더 눌러야 한다 (실수로 수업 중 창을 다 닫지 않게)
+let closeArm = 0;
+$('#closeall').addEventListener('click', e => {
+  const b = e.currentTarget;
+  if (Date.now() - closeArm < 4000){ closeArm = 0; b.textContent = '모두 닫기'; b.classList.remove('arm'); return api.act('closeAll'); }
+  closeArm = Date.now(); b.textContent = '한 번 더'; b.classList.add('arm');
+  setTimeout(() => { if (Date.now() - closeArm >= 3900){ b.textContent = '모두 닫기'; b.classList.remove('arm'); } }, 4000);
+});
+$('#upd-get').addEventListener('click', () => api.act('getUpdate'));
+$('#upd-later').addEventListener('click', () => api.act('dismissUpdate'));
+$('#upd-check').addEventListener('change', e => api.act('updateCheck', e.target.checked));
+$('#upd-now').addEventListener('click', () => api.act('checkUpdateNow'));
+$('#presenter').addEventListener('click', () => api.act('presenter', !S.presenter));
+$('#remote-on').addEventListener('click', () => api.act('remote', !S.remote));
+$('#rm-toggleqr').addEventListener('click', () => api.act('remoteQr', !S.remote?.showQr));
+$('#rm-new').addEventListener('click', () => api.act('remoteNew'));
 $('#folder').addEventListener('click', () => api.act('prep'));
 $('#quit').addEventListener('click', () => api.act('quit'));
+
+// 마우스를 올리면 이름과 설명 (아이콘 단추용). 사이드바 창 밖으로 나가지 않게 위·아래·좌우를 맞춘다
+const tip = $('#tip');
+let tipFor = null, tipTimer = 0;
+function showTip(el){
+  const [name, desc] = (el.dataset.tip ?? '').split('|');
+  tip.querySelector('b').textContent = name; tip.querySelector('span').textContent = desc ?? '';
+  tip.hidden = false;
+  const r = el.getBoundingClientRect(), w = tip.offsetWidth, h = tip.offsetHeight;
+  const x = Math.max(6, Math.min(window.innerWidth - w - 6, r.left + r.width / 2 - w / 2));
+  const y = r.top - h - 8 >= 4 ? r.top - h - 8 : r.bottom + 8;
+  tip.style.left = `${x}px`; tip.style.top = `${y}px`;
+}
+function hideTip(){ clearTimeout(tipTimer); tipFor = null; tip.hidden = true; }
+document.addEventListener('mouseover', e => {
+  const el = e.target.closest('[data-tip]');
+  if (el === tipFor) return;
+  hideTip();
+  if (!el) return;
+  tipFor = el; tipTimer = setTimeout(() => showTip(el), 350);
+});
+document.addEventListener('mouseleave', hideTip);
+document.addEventListener('mousedown', hideTip);
+document.addEventListener('focusin', e => { const el = e.target.closest('[data-tip]'); if (el?.matches(':focus-visible')){ tipFor = el; showTip(el); } });
+document.addEventListener('focusout', hideTip);
 
 api.onState(s => { S = s; render(); });
 api.state().then(s => { S = s; render(); });

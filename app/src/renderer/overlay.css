@@ -1,0 +1,15 @@
+/* 발표 도구 겹침 창 (화면 전체, 투명). 포인터 강조는 노란 원, 스포트라이트는 커서 주변만 밝게 */
+html,body{margin:0;width:100%;height:100%;background:transparent;overflow:hidden;cursor:default}
+.ring{position:fixed;left:0;top:0;width:var(--d,64px);height:var(--d,64px);margin:calc(var(--d,64px) / -2) 0 0 calc(var(--d,64px) / -2);
+  border-radius:50%;border:4px solid rgba(242,205,92,.95);background:rgba(242,205,92,.22);box-shadow:0 0 0 2px rgba(0,0,0,.25);
+  transform:translate(var(--x,-200px),var(--y,-200px));pointer-events:none;will-change:transform}
+.spot{position:fixed;inset:0;pointer-events:auto;
+  background:radial-gradient(circle at var(--x,50%) var(--y,50%), transparent 0 var(--r,150px), rgba(0,0,0,.78) calc(var(--r,150px) + 3px))}
+.hint{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);padding:7px 14px;border-radius:999px;background:rgba(20,30,27,.85);color:#f2cd5c;
+  font:600 14px -apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;pointer-events:none}
+/* 확대·캡처 핀: 멈춘 화면 그림 */
+.grab{position:fixed;inset:0;overflow:hidden;background:#000;cursor:crosshair}
+.grab img{position:absolute;left:0;top:0;width:100%;height:100%;transform-origin:var(--ox,50%) var(--oy,50%);transform:scale(var(--z,1));user-select:none;-webkit-user-drag:none}
+.grab.zoom{cursor:zoom-out}
+.grab.pick img{filter:brightness(.55)}
+.sel{position:absolute;border:2px solid #f2cd5c;background-repeat:no-repeat;box-shadow:0 0 0 1px rgba(0,0,0,.4)}

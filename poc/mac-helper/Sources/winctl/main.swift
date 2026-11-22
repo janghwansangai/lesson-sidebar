@@ -197,6 +197,15 @@ func frame(_ w: Win) -> CGRect {
     CGRect(origin: point(w.el) ?? .zero, size: size(w.el) ?? .zero)
 }
 
+/// 창 앞뒤 순서 (0이 맨 앞). 화면에 있는 창 목록(CGWindowList)은 앞에서 뒤 순서로 나온다.
+/// 가려진 창을 따로 찍어 쌓을 때 쓴다 (학생 화면 정지 중 미리보기, docs/poc/mac.md 41)
+let zOrder: [CGWindowID: Int] = {
+    var m: [CGWindowID: Int] = [:]
+    let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
+    for (i, w) in list.enumerated() { if let n = w[kCGWindowNumber as String] as? Int { m[CGWindowID(n)] = i } }
+    return m
+}()
+
 func winJSON(_ w: Win, _ displays: [[String: Any]]) -> [String: Any] {
     let f = frame(w)
     var d = rectJSON(f)
@@ -215,6 +224,7 @@ func winJSON(_ w: Win, _ displays: [[String: Any]]) -> [String: Any] {
     d["fullscreen"] = (bool(w.el, "AXFullScreen") ?? false) || coversDisplay
     d["display"] = displayIndex(of: f, in: displays)
     d["waiting"] = waitingFor(w)
+    if let z = zOrder[w.wid] { d["z"] = z }
     return d
 }
 

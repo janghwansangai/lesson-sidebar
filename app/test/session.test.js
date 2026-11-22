@@ -451,6 +451,34 @@ test('사용자가 직접 닫은 창은 목록에서 닫힘으로 바뀐다 (막
   assert.equal(s.state.get('ppt').status, 'closed');
 });
 
+test('브라우저가 업데이트 뒤 다시 시작을 기다리면 새로 띄우지 않고 탭으로 연 것을 알린다 (기다리지 않음)', async () => {
+  const { s, helper } = makeSession();
+  s.launcher.openInBrowser = async () => ({ tab: true, reason: 'stale' });
+  await s.refreshDisplays(); s.load(makeLesson());
+  const t0 = Date.now();
+  await s.open('web');
+  assert.ok(Date.now() - t0 < 2000);
+  assert.equal(s.state.get('web').status, 'closed');
+  assert.match(s.msg, /탭으로 열었습니다.*다시 시작/);
+  assert.equal(helper.wins.length, 0);
+});
+
+test('열 때 브라우저 창이 여러 개 생기면 하나만 짝짓고 나머지는 기억했다가 "모두 닫기"로 함께 닫는다 (선생님 창은 그대로)', async () => {
+  const { s, helper } = makeSession();
+  helper.spawn('Chrome', '선생님이 원래 쓰던 창');
+  const mine = helper.wins[0].wid;
+  s.launcher.openInBrowser = async () => { for (let i = 0; i < 3; i++) helper.spawn('Chrome', `되살아난 창 ${i}`); };
+  await s.refreshDisplays(); s.load(makeLesson());
+  await s.open('web');
+  await s.open('ppt');
+  assert.equal(s.extras.size, 2);
+  await s.closeAll();
+  assert.deepEqual(helper.wins.map(w => w.wid), [mine]);
+  assert.match(s.msg, /사이드바가 연 창 4개를 닫았습니다/);
+  assert.equal(s.state.get('web').status, 'closed');
+  assert.equal(s.extras.size, 0);
+});
+
 test('앞으로 가져오기가 막혀도(도우미 raise가 ok:false) 창이 남아 있으면 다시 열지 않고, 앞을 막은 창을 알려 준다', async () => {
   const { s, helper } = makeSession();
   await s.refreshDisplays(); s.load(makeLesson());
@@ -522,4 +550,96 @@ test('앞으로 가져오기가 실패하고 창 목록도 못 읽으면 예전�
   helper.blockFront = null;
   assert.equal((await s.raiseInfo(wid)).state, 'ok');
   assert.equal((await s.raiseInfo(12345)).state, 'gone');
+});
+
+test('계속 비키기(맥): 고정해 둔 동안 새로 가려진 창도 옮기고, 스스로 되돌아가는 창은 1분에 3번까지만, 돌려놓기는 처음 자리로', async () => {
+  const { s, helper } = makeSession([TEACHER]);
+  await s.refreshDisplays(); s.load(makeLesson());
+  helper.spawn('Finder', '선생님 창 1'); Object.assign(helper.wins[0], { x: 0, y: 200, width: 900, height: 500 });
+  assert.equal(await s.keepAside(), 1);
+  assert.deepEqual([helper.wins[0].x, helper.wins[0].width], [280, 620]);
+  helper.spawn('Notes', '나중에 연 창'); Object.assign(helper.wins[1], { x: 40, y: 100, width: 600, height: 400 });
+  assert.equal(await s.keepAside(), 1);                  // 새로 가려진 창
+  assert.equal(helper.wins[1].x, 280);
+  assert.equal(await s.keepAside(), 0);                  // 이미 비킨 창은 그대로
+  for (let i = 0; i < 3; i++){ helper.wins[1].x = 40; await s.keepAside(); }   // 스스로 제자리로 돌아가는 창
+  helper.wins[1].x = 40;
+  assert.equal(await s.keepAside(), 0);                  // 1분에 3번 넘게는 옮기지 않음
+  helper.wins[1].x = 280;
+  assert.equal(await s.restoreAside(), 2);
+  assert.deepEqual([helper.wins[0].x, helper.wins[0].width], [0, 900]);
+  assert.deepEqual([helper.wins[1].x, helper.wins[1].width], [40, 600]);
+});
+
+test('손쉬운 사용 권한이 없으면 30초 기다리지 않고 바로 알리고, 창 비키기도 하지 않는다', async () => {
+  const { s, helper } = makeSession([TEACHER]);
+  await s.refreshDisplays(); s.load(makeLesson());
+  s.trusted = false;
+  const t0 = Date.now();
+  await s.open('ppt');
+  assert.ok(Date.now() - t0 < 1000);
+  assert.equal(s.state.get('ppt').status, 'closed');
+  assert.match(s.msg, /손쉬운 사용 권한이 꺼져 있어/);
+  helper.spawn('Finder', '선생님 창'); Object.assign(helper.wins.at(-1), { x: 0, width: 900 });
+  assert.equal(await s.keepAside(), 0);
+  s.trusted = true;
+  assert.ok(await s.keepAside() >= 1);            // 권한이 켜지면 바로 비킨다 (앞에서 연 PPT 창도 사이드바 아래라 함께)
+  assert.equal(helper.wins.find(w => w.app === 'Finder').x, 280);
+});
+
+test('나란히 보기: 2개 7:3·3:7, 3개 3분할·큰 화면+2, 4개 4분할, 조절 바로 경계 옮기기', async () => {
+  const { s, helper } = makeSession();
+  let n = 0;
+  s.launcher.openInBrowser = async () => { helper.spawn('Chrome', `웹 ${n++}`); };
+  await s.refreshDisplays(); s.load(makeLesson());
+  const W = STUDENT.visible;   // 학생 화면 사용 영역 x=-1280, 폭 1280
+  const winOf = id => helper.wins.find(w => w.wid === s.state.get(id).wid);
+  // 2개 7:3
+  s.toggleSel('ppt'); s.toggleSel('web');
+  await s.split('7:3');
+  assert.deepEqual([winOf('ppt').x, winOf('ppt').width, winOf('web').x, winOf('web').width], [W.x, 896, W.x + 896, 384]);
+  assert.equal(s.tileDivider().x, W.x + 896);
+  // 조절 바로 경계를 가운데로
+  const r = await s.setTileRatio(0.5);
+  assert.equal(r, 0.5);
+  assert.equal(winOf('ppt').width, 640);
+  assert.equal(s.tileDivider().x, W.x + 640);
+  assert.equal(await s.setTileRatio(0.99), 0.85);     // 너무 끝으로는 안 간다
+  // 같은 창으로 배치만 3:7로
+  await s.relayout('3:7');
+  assert.equal(winOf('ppt').width, 384);
+  // 3개·4개
+  await s.untile();
+  s.toggleSel('ppt'); s.toggleSel('web'); s.toggleSel('memo');
+  await s.split('main2');
+  assert.equal(winOf('ppt').width, 768);              // 큰 화면 60%
+  assert.equal(winOf('web').height + winOf('memo').height, W.height);
+  await s.untile();
+  assert.equal(s.tileDivider(), null);
+  s.toggleSel('ppt'); s.toggleSel('web'); s.toggleSel('memo');
+  await s.split('thirds');
+  assert.deepEqual(s.tile.ids.length, 3);
+});
+
+test('저장한 배치: 빠진 자료는 걸러 읽고, 그 배치·비율로 다시 놓는다 · 큰 화면+2는 가로 경계 조절 바도', async () => {
+  const { s, helper } = makeSession();
+  let n = 0;
+  s.launcher.openInBrowser = async () => { helper.spawn('Chrome', `웹 ${n++}`); };
+  await s.refreshDisplays();
+  const lesson = makeLesson();
+  // lesson.json의 layouts는 loadLesson이 걸러 준다 (여기서는 같은 모양을 직접 넣음)
+  lesson.layouts = [{ id: 'lay_1', name: '발표+참고 (7:3)', layout: '7:3', items: ['ppt', 'web'], c: [0.6], r: [] },
+                    { id: 'lay_2', name: '셋', layout: 'main2', items: ['ppt', 'web', 'memo'], c: [0.6], r: [0.3] }];
+  s.load(lesson);
+  assert.deepEqual(s.snapshot().saved.map(l => l.id), ['lay_1', 'lay_2']);
+  await s.applyLayout('lay_1');
+  const W = STUDENT.visible, winOf = id => helper.wins.find(w => w.wid === s.state.get(id).wid);
+  assert.equal(winOf('ppt').width, 768);           // 저장한 비율 0.6 (7:3 기본 0.7이 아님)
+  assert.equal(s.tileDividers().length, 1);
+  await s.applyLayout('lay_2');
+  const ds = s.tileDividers();
+  assert.deepEqual(ds.map(d => d.dir), ['v', 'h']);
+  assert.equal(ds[1].y, Math.round(W.y + W.height * 0.3));
+  assert.equal(await s.setTileRatio(0.5, 'h'), 0.5);
+  assert.equal(winOf('web').height, Math.round(W.height * 0.5));
 });

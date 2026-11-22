@@ -196,3 +196,17 @@ test('수업 폴더 밖 경로로는 파일을 쓰지 않는다', () => {
   const doc = LessonDoc.create(tmp(), { title: '시험', date: '2026-12-05' });
   assert.throws(() => doc.abs('../../밖.txt'), /수업 폴더 밖/);
 });
+
+test('저장한 배치(layouts)는 lesson.json에 남고, 빠진 자료는 읽을 때 걸러진다', async () => {
+  const src = sourceFiles();
+  const doc = LessonDoc.create(tmp(), { title: '시험', date: '2026-12-05' });
+  const r = await doc.addFiles(['수업자료 발표.pptx', '활동지.hwp', '연수 안내.pdf'].map(n => path.join(src, n)), doc.data.sections[1].id);
+  const [a, b, c] = r.added.map(x => x.id);
+  doc.data.layouts = [{ id: 'lay_1', name: '둘', layout: 'half', items: [a, b], c: [0.5] }, { id: 'lay_2', name: '셋', layout: 'thirds', items: [a, b, c] }];
+  doc.save();
+  doc.removeItem(c); doc.save();
+  const L = loadLesson(doc.root);
+  assert.deepEqual(L.layouts.map(l => [l.id, l.items.length]), [['lay_1', 2], ['lay_2', 2]]);
+  doc.removeItem(b); doc.save();
+  assert.deepEqual(loadLesson(doc.root).layouts, []);      // 자료가 하나만 남으면 배치도 빠짐
+});

@@ -128,6 +128,8 @@ export async function precheck(lesson, d){
     : { level: 'warn', title: '모니터', detail: '1개 · 학생도 사이드바를 보게 됩니다 · 자동 숨김을 켜 두세요 (프로젝터를 복제 모드로 연결했다면 확장 모드로 바꾸면 학생 화면을 따로 쓸 수 있습니다)' });
   sys.push(d.trusted ? { level: 'ok', title: '창 제어 권한', detail: '허용됨' }
                      : { level: 'bad', title: '창 제어 권한', detail: "없습니다 · 시스템 설정 → 개인정보 보호 및 보안 → 손쉬운 사용에서 '수업 사이드바'를 켜 주세요" });
+  if (d.screenRec && d.screenRec !== 'granted') sys.push({ level: 'warn', title: '화면 기록 권한', detail: "없습니다 · 확대·캡처 핀에 필요합니다 · 시스템 설정 → 개인정보 보호 및 보안 → 화면 및 시스템 오디오 기록에서 '수업 사이드바'를 켜고 사이드바를 다시 켜 주세요" });
+  else if (d.screenRec === 'granted') sys.push({ level: 'ok', title: '화면 기록 권한', detail: '허용됨 · 확대·캡처 핀을 쓸 수 있습니다' });
   if (d.freeBytes != null) sys.push(d.freeBytes < 1024 ** 3
     ? { level: 'warn', title: '저장 공간', detail: `남은 공간 ${fmtBytes(d.freeBytes)} · 녹화나 자료 추가에 모자랄 수 있습니다` }
     : { level: 'ok', title: '저장 공간', detail: `남은 공간 ${fmtBytes(d.freeBytes)}` });

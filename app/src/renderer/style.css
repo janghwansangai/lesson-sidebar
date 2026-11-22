@@ -102,5 +102,71 @@ body.collapsed{background:transparent}
 .fb{flex:1;border:1px solid var(--sb-line);background:var(--sb-bg-2);font-size:11.5px;padding:6px 6px;border-radius:7px;cursor:pointer;white-space:nowrap}
 .fb:hover{border-color:var(--chalk)}
 .fb.quiet{background:transparent;color:var(--sb-muted)}
+.fb.arm{border-color:var(--chalk);color:var(--chalk)}
+.pref-row .pref-note{color:var(--chalk)}
 
 @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
+
+/* 손쉬운 사용 권한이 꺼졌을 때 위쪽 안내 (꺼져 있는 동안 계속) */
+.trustbar{margin:8px 10px 0;padding:9px 10px;border-radius:8px;background:#5a2320;color:#ffe3de;display:flex;flex-direction:column;gap:6px;font-size:11.5px;line-height:1.4}
+.trustbar b{font-size:12.5px}
+
+/* 나란히 보기 배치 고르기 */
+.lays{display:flex;flex-wrap:wrap;gap:5px}
+.seg-b{flex:1 1 30%;border:1px solid var(--sb-line);background:var(--sb-bg-3, #2f4b44);color:var(--sb-fg);font-size:11.5px;padding:6px 4px;border-radius:7px;cursor:pointer;white-space:nowrap}
+.seg-b:hover{border-color:var(--chalk)}
+.seg-b[aria-pressed="true"]{border-color:var(--chalk);color:var(--chalk)}
+.saved{display:flex;gap:4px;align-items:center}
+.saved .dbtn{flex:1;text-align:left;white-space:normal;line-height:1.35}
+.fb.tool[aria-pressed="true"]{border-color:var(--chalk);color:var(--chalk);background:rgba(242,205,92,.12)}
+/* 학생 화면: 정지·가리기·미리보기 */
+.stu{display:flex;gap:5px;margin-top:6px}
+.stu-b{flex:1;border:1px solid var(--sb-line);background:var(--sb-bg-2);color:var(--sb-fg);font-size:11.5px;padding:5px 4px;border-radius:7px;cursor:pointer}
+.stu-b:hover{border-color:var(--chalk)}
+.stu-b[aria-pressed="true"]{border-color:var(--chalk);color:var(--chalk);background:rgba(242,205,92,.12)}
+.preview{position:relative;margin:8px 0 0;border-radius:8px;overflow:hidden;border:1px solid var(--sb-line);background:#000}
+.preview img,.preview canvas{display:block;width:100%;height:auto;min-height:40px}
+.ptag{position:absolute;left:6px;bottom:6px;padding:2px 7px;border-radius:999px;background:rgba(20,30,27,.85);color:#f2cd5c;font-size:10.5px}
+/* 녹화 중 표시 (REC) */
+.recbar{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:8px 10px 0;padding:7px 10px;border-radius:8px;background:#5a1f1c;color:#ffe3de;font-size:12px}
+.recbar b{color:#ff8b80}
+.recbar #rec-time{font-variant-numeric:tabular-nums;font-weight:700}
+.recbar .rw{opacity:.8;font-size:11px}
+.dotrec{width:9px;height:9px;border-radius:50%;background:#ff5a4f;animation:recblink 1.2s ease-in-out infinite}
+@keyframes recblink{50%{opacity:.25}}
+.rbtn{margin-left:auto;border:1px solid rgba(255,227,222,.4);background:transparent;color:#ffe3de;font-size:11px;padding:3px 8px;border-radius:6px;cursor:pointer}
+.fb.rec{color:#ff8b80}
+.fb.rec[aria-pressed="true"]{border-color:#ff8b80;background:rgba(255,90,79,.12)}
+@media (prefers-reduced-motion: reduce){.dotrec{animation:none}}
+
+/* 휴대폰 리모컨: QR (흰 바탕이라야 카메라가 잘 읽는다) */
+.remote{border:1px solid var(--sb-line);border-radius:8px;padding:8px;display:flex;flex-direction:column;gap:6px}
+.rm-h{display:flex;justify-content:space-between;align-items:baseline;font-size:12px}
+.rm-ph{color:var(--live);font-size:11px}
+.rm-qr{background:#fff;border-radius:6px;padding:4px;width:176px;align-self:center}
+.rm-qr svg{display:block;width:100%;height:auto}
+.rm-url{margin:0;font-size:10.5px;color:var(--sb-muted);word-break:break-all;text-align:center}
+
+/* 새 버전 알림 */
+.updbar{margin:8px 12px 0;padding:8px 10px;border-radius:8px;background:var(--live-soft);border:1px solid var(--live);display:flex;flex-direction:column;gap:6px;font-size:12px}
+
+/* 아래 도구: 아이콘 묶음 (발표 도구 | 수업 진행) — 이름·설명은 마우스를 올리면 (#tip) */
+.dock2{display:flex;gap:6px}
+.grp{display:flex;gap:2px;padding:3px;border-radius:9px;background:var(--sb-bg-2);border:1px solid var(--sb-line)}
+.grp.wide{gap:3px}
+.grp.wide .fb{background:transparent;border-color:transparent;padding:5px 2px;font-size:11px}
+.grp.wide .fb:hover{background:var(--sb-bg-3);border-color:transparent}
+.grp.wide .fb.arm{border-color:var(--chalk)}
+.dock2 .grp:last-child{margin-left:auto}
+.ic{width:31px;height:30px;border:1px solid transparent;border-radius:7px;background:transparent;color:var(--sb-fg);display:grid;place-items:center;cursor:pointer;padding:0}
+.ic svg{width:18px;height:18px}
+.ic:hover{background:var(--sb-bg-3)}
+.ic[aria-pressed="true"]{background:var(--chalk-soft);border-color:var(--chalk);color:var(--chalk)}
+.ic.quiet{color:var(--sb-muted)}
+.ic.rec{color:#ff8b80}
+.ic.rec[aria-pressed="true"]{background:rgba(255,90,79,.16);border-color:#ff8b80;color:#ff8b80}
+.ic.rec[aria-pressed="true"] .dot{display:none}
+.ic.rec[aria-pressed="true"] svg circle:first-child{fill:currentColor;fill-opacity:.25}
+.tip{position:fixed;z-index:50;max-width:236px;padding:7px 9px;border-radius:8px;background:#0f1c19;border:1px solid var(--sb-line);box-shadow:0 6px 18px rgba(0,0,0,.35);font-size:11px;line-height:1.4;pointer-events:none;display:flex;flex-direction:column;gap:2px}
+.tip b{font-size:12px;color:var(--chalk)}
+.tip span:empty{display:none}

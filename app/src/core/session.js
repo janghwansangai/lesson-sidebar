@@ -8,6 +8,13 @@ import { planAside } from './aside.js';
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const OPEN_TIMEOUT = 30000;
+// 나란히 보기 배치 (창 수별). key·c는 poc/lib/match.js tileRects
+const LAYOUTS = {
+  2: { half: { key: 'half', c: [0.5], label: '반반' }, '7:3': { key: 'half', c: [0.7], label: '7:3' }, '3:7': { key: 'half', c: [0.3], label: '3:7' } },
+  3: { thirds: { key: 'thirds', c: [1 / 3, 2 / 3], label: '3분할' }, main2: { key: 'main2', c: [0.6], r: [0.5], label: '큰 화면 + 작은 2개' } },
+  4: { grid: { key: 'grid', c: [0.5], r: [0.5], label: '4분할' } },
+};
+export const TILE_LAYOUTS = Object.fromEntries(Object.entries(LAYOUTS).map(([n, L]) => [n, Object.entries(L).map(([id, v]) => ({ id, label: v.label }))]));
 const ALIVE_GRACE = 4000;   // 막 연결한 창은 잠시 "사라짐" 판단에서 뺀다 (목록이 늦게 도착할 수 있어서)
 // 닫기 요청 뒤 저장 여부를 묻는 창이 뜰 때까지 기다리는 시간. 윈도우 엑셀은 2.5초 넘게 걸렸다 (docs/poc/windows.md 12)
 const CLOSE_WAIT = 6000;
@@ -38,6 +45,9 @@ export class Session extends EventEmitter {
     this.tile = null;
     this.msg = '';
     this.offer = null;      // 안내 옆 단추 { act, id, wid, label } (메모장 탭 닫기)
+    this.trusted = null;        // 손쉬운 사용 권한 (main.js가 5초마다 알려 줌). false면 창을 찾거나 옮길 수 없다
+    this.asideTries = new Map();   // 계속 비키기: 창마다 최근 옮긴 시각 (1분에 3번까지)
+    this.extras = new Map();   // 열 때 함께 생겼지만 자료와 짝짓지 않은 창 (브라우저가 지난 창을 되살린 경우 등) wid → 프로그램 — '모두 닫기' 때 같이 닫는다
     this.aside = null;      // 사이드바를 고정할 때 옆으로 옮긴 창들 [{ wid, from, to, maximized }]
     this.asideQueue = Promise.resolve();
     this.browser = launcher.pickBrowser();
@@ -163,8 +173,24 @@ export class Session extends EventEmitter {
       const before = await this.list(app.match);
       const page = key === 'browser' && it.type === 'pdf' && parseInt(it.start, 10) > 0 ? `#page=${parseInt(it.start, 10)}` : '';
       const target = it.url ?? (it.abs ? (key === 'browser' ? this.files.url(it.file) + page : it.abs) : null);
-      if (key === 'browser') await this.launcher.openInBrowser(app, target);
+      let opened = null;
+      if (key === 'browser') opened = await this.launcher.openInBrowser(app, target);
       else await this.launcher.openWithApp(app, target);
+      if (this.trusted === false){
+        // 권한이 없으면 창 목록을 읽을 수 없어 30초를 기다려도 못 찾는다 → 바로 알린다 (자료는 열렸다)
+        st.status = 'closed'; st.note = '손쉬운 사용 권한 없음';
+        return this.say(`'${it.title}'을(를) 열었지만, 손쉬운 사용 권한이 꺼져 있어 사이드바가 그 창을 찾거나 옮길 수 없습니다. 사이드바 위쪽 안내를 봐 주세요`);
+      }
+      if (opened?.tab){
+        // 새 창을 띄우면 같은 프로필을 두 브라우저가 열게 되는 상태: 하나 더 띄우지 않고 켜진 브라우저에 탭으로 열었다 (launcher.openInBrowser)
+        const b = app.label;
+        if (opened.reason === 'two'){
+          st.status = 'closed'; st.note = `${b}이(가) 두 개 켜져 있음`;
+          return this.say(`'${it.title}'을(를) 지금 ${b} 창에 탭으로 열었습니다. ${b}이(가) 두 개 켜져 있어(하나는 창 없이 남은 것일 수 있음) 새 창을 만들지 않았습니다 — 같은 프로필을 둘이 쓰면 로그인이 풀릴 수 있습니다. ${b}을(를) 모두 끈 뒤 다시 켜 주세요 (Dock 아이콘 오른쪽 클릭 → 종료, 그래도 남으면 '활성 상태 보기'에서 ${app.app}을(를) 골라 종료)`);
+        }
+        st.status = 'closed'; st.note = `${b} 다시 시작 필요`;
+        return this.say(`'${it.title}'을(를) 지금 ${b} 창에 탭으로 열었습니다. ${b}이(가) 업데이트를 받고 다시 시작을 기다리고 있어서 하나 더 띄우지 않았습니다 (프로필 문제·로그인 풀림 예방). ${b}을(를) 완전히 껐다 켜면 다시 새 창으로 엽니다`);
+      }
 
       const stem = key !== 'browser' && it.abs ? M.stem(it.abs) : null;
       const taken = new Set([...this.state.values()].map(s => s.wid).filter(Boolean));
@@ -180,9 +206,11 @@ export class Session extends EventEmitter {
           await sleep(500);   // 이전 창 복원 등으로 여러 개가 생길 수 있어 잠깐 더 본다
           const again = M.newWindows(before, (await this.list(app.match)).filter(x => !taken.has(x.wid)));
           w = M.pickNewWindow(again.length ? again : fresh);
+          // 함께 생긴 다른 창(지난 창 되살리기 등)은 사이드바가 연 창으로 기억해 '모두 닫기' 때 같이 닫는다
+          for (const x of again.length ? again : fresh) if (x.wid !== w?.wid) this.extras.set(x.wid, app.match);
         }
       }
-      if (!w) throw new Error('창을 찾지 못했습니다 (30초)');
+      if (!w) throw new Error('창을 찾지 못했습니다 (30초) · 그 프로그램에 확인·오류 창이 떠 있는지 봐 주세요');
 
       st.wid = w.wid; st.status = 'open'; st.home = this.home(it); st.linkedAt = Date.now();
       // 열기 전부터 있던 창이면 (이미 열려 있던 문서, 또는 윈도우 메모장이 기존 창에 탭으로 연 경우) 기억해 둔다 → close()
@@ -253,6 +281,25 @@ export class Session extends EventEmitter {
     if (this.highlight === id) this.highlight = null;
     if (this.tile?.ids.includes(id)) this.tile = null;
     this.sel = this.sel.filter(x => x !== id);
+  }
+
+  /** 사이드바가 연 창을 모두 닫는다 (정상 닫기 요청만 — 저장할지 묻는 창은 "답 기다림"으로 남긴다). 선생님이 원래 열어 둔 창은 그대로. */
+  async closeAll(){
+    const ids = [...this.state].filter(([, st]) => st.wid && (st.status === 'open' || st.status === 'blocked')).map(([id]) => id);
+    for (const id of ids){ try { await this.close(id); } catch { /* 다음 창 */ } }
+    let extra = 0;
+    if (this.extras.size){
+      let alive = new Set();
+      try { alive = new Set((await this.list()).map(w => w.wid)); } catch { /* 모름 */ }
+      for (const wid of [...this.extras.keys()]){
+        this.extras.delete(wid);
+        if (!alive.has(wid)) continue;
+        try { await this.helper.call('close', wid); extra++; } catch { /* 다음 창 */ }
+      }
+    }
+    const left = ids.filter(id => this.state.get(id)?.status === 'blocked').length;
+    const n = ids.length - left + extra;
+    this.say(n || left ? `사이드바가 연 창 ${n}개를 닫았습니다${left ? ` · ${left}개는 저장할지 묻고 있어 답을 기다립니다` : ''}` : '사이드바가 연 창이 없습니다');
   }
 
   async close(id){
@@ -384,14 +431,22 @@ export class Session extends EventEmitter {
   toggleSel(id){
     if (!this.state.has(id)) return;
     if (this.sel.includes(id)) this.sel = this.sel.filter(x => x !== id);
-    else if (this.sel.length >= 2) return this.say('체험판에서는 두 개까지 나란히 놓을 수 있습니다');
+    else if (this.sel.length >= 4) return this.say('네 개까지 나란히 놓을 수 있습니다');
     else this.sel = [...this.sel, id];
     this.changed();
   }
 
-  async split(){
-    const ids = this.sel.slice(0, 2);
-    if (ids.length < 2) return this.say('나란히 놓을 자료 두 개를 고르세요');
+  /**
+   * 고른 창 2~4개를 한 화면(듀얼이면 학생 화면)에 나란히 놓는다.
+   * layout: 2개 'half'(반반)·'7:3'·'3:7', 3개 'thirds'(3분할)·'main2'(큰 화면+작은 2개), 4개 'grid'(4분할)
+   * 첫 번째 세로 경계 비율(c[0])은 조절 바로 바꿀 수 있다 (setTileRatio).
+   */
+  async split(layout, ratios = {}){
+    const ids = this.sel.slice(0, 4);
+    const n = ids.length;
+    if (n < 2) return this.say('나란히 놓을 자료를 두 개 이상 고르세요');
+    const L = LAYOUTS[n];
+    if (!L[layout]) layout = Object.keys(L)[0];
     for (const id of ids){
       if (this.state.get(id).status !== 'open') await this.open(id, { raise: false, quiet: true });
     }
@@ -399,26 +454,85 @@ export class Session extends EventEmitter {
     if (wids.some(w => !w)) return this.say('나란히 놓을 창을 열지 못했습니다');
     const where = this.dual ? 'student' : 'teacher';
     const area = this.area(where);
-    let [ra, rb] = M.tileRects(area, 'half');
-    let a = await this.moveWid(wids[0], ra), b = await this.moveWid(wids[1], rb);
-    let note = '';
-    if (!(M.rectClose(a, ra, 24) && M.rectClose(b, rb, 24))){
-      // 프로그램 최소 폭보다 좁게는 안 줄어든다 → 그 폭에서 멈추게 비율 조정
-      const minA = a.width > ra.width + 24 ? a.width : 0, minB = b.width > rb.width + 24 ? b.width : 0;
-      const f = M.fitRatio(area.width, 0.5, minA, minB);
-      if (f !== null){
-        [ra, rb] = M.tileRects(area, 'half', [f]);
-        await this.moveWid(wids[0], ra); await this.moveWid(wids[1], rb);
-        note = ' (프로그램 최소 폭 때문에 비율을 조정)';
-      }
-    }
+    const { key, c, r = [] } = L[layout];
+    const pick = (saved, def) => (Array.isArray(saved) && saved.length === def.length ? saved : def);
+    this.tile = { ids, wids, where, layout, key, c: [...pick(ratios.c, c)], r: [...pick(ratios.r, r)], area };
+    const note = await this.applyTile(true);
     for (const id of ids){ const st = this.state.get(id); st.disp = where; st.home = where; }
-    await this.raiseWid(wids[1]);
-    await this.raiseWid(wids[0]);
-    this.tile = { ids, where };
+    for (const w of [...wids].reverse()) await this.raiseWid(w);
     this.sel = [];
     this.highlight = ids[0];
-    this.say(`두 창을 ${this.dual ? '학생 화면에 ' : ''}나란히 놓았습니다${note}`);
+    this.say(`${n}개 창을 ${this.dual ? '학생 화면에 ' : ''}${L[layout].label} 배치로 놓았습니다${note} · 창 사이 막대를 끌면 폭을 바꿀 수 있습니다`);
+  }
+
+  /** 나란히 보는 중에 배치만 바꾼다 (같은 창들로) */
+  async relayout(layout){
+    if (!this.tile) return;
+    this.sel = [...this.tile.ids];
+    return this.split(layout);
+  }
+
+  /** this.tile대로 창을 옮긴다. fit이면 프로그램 최소 폭 때문에 안 맞을 때 첫 경계 비율을 조정한다 (2개 배치). */
+  async applyTile(fit = false){
+    const t = this.tile; if (!t) return '';
+    let rects = M.tileRects(t.area, t.key, t.c, t.r.length ? t.r : undefined);
+    const got = [];
+    for (let i = 0; i < t.wids.length; i++) got.push(await this.moveWid(t.wids[i], rects[i]).catch(() => null));
+    if (!fit || t.wids.length !== 2 || got.every((g, i) => !g || M.rectClose(g, rects[i], 24))) return '';
+    // 프로그램 최소 폭보다 좁게는 안 줄어든다 → 그 폭에서 멈추게 비율 조정
+    const minA = got[0] && got[0].width > rects[0].width + 24 ? got[0].width : 0;
+    const minB = got[1] && got[1].width > rects[1].width + 24 ? got[1].width : 0;
+    const f = M.fitRatio(t.area.width, t.c[0], minA, minB);
+    if (f === null) return '';
+    t.c[0] = f; t.minA = minA; t.minB = minB;
+    rects = M.tileRects(t.area, t.key, t.c, t.r.length ? t.r : undefined);
+    for (let i = 0; i < 2; i++) await this.moveWid(t.wids[i], rects[i]).catch(() => null);
+    return ' (프로그램 최소 폭 때문에 비율을 조정)';
+  }
+
+  /** 조절 바로 경계를 옮긴다. dir 'v'(세로 경계, 왼쪽부터 비율) 또는 'h'(가로 경계, 위부터 비율). 실제로 쓴 비율을 돌려준다. */
+  async setTileRatio(ratio, dir = 'v'){
+    const t = this.tile; if (!t) return null;
+    if (dir === 'h'){
+      if (!t.r.length) return null;
+      t.r[0] = Math.min(0.85, Math.max(0.15, ratio));
+      await this.applyTile();
+      return t.r[0];
+    }
+    let r = Math.min(0.85, Math.max(0.15, ratio));
+    if (t.key === 'thirds') r = Math.min(r, t.c[1] - 0.1);
+    if (t.wids.length === 2) r = M.fitRatio(t.area.width, r, t.minA ?? 0, t.minB ?? 0) ?? r;
+    t.c[0] = r;
+    await this.applyTile();
+    return r;
+  }
+
+  /** 조절 바를 놓을 곳: 첫 세로 경계 (도우미 좌표). 나란히 보는 중이 아니면 null */
+  tileDivider(){
+    const t = this.tile; if (!t) return null;
+    return { dir: 'v', x: Math.round(t.area.x + t.area.width * t.c[0]), y: t.area.y, height: t.area.height, area: t.area };
+  }
+
+  /** 조절 바들: 세로 경계 하나 + (큰 화면+2, 4분할이면) 가로 경계 하나. 가로는 { dir:'h', x, y, width } */
+  tileDividers(){
+    const t = this.tile; if (!t) return [];
+    const out = [this.tileDivider()];
+    if (t.r.length){
+      const a = t.area, y = Math.round(a.y + a.height * t.r[0]);
+      const x0 = t.key === 'main2' ? Math.round(a.x + a.width * t.c[0]) : a.x;
+      out.push({ dir: 'h', x: x0, y, width: a.x + a.width - x0, area: a });
+    }
+    return out;
+  }
+
+  /** 수업에 저장해 둔 배치로 다시 놓는다 (lesson.json layouts) */
+  async applyLayout(id){
+    const saved = this.lesson?.layouts?.find(l => l.id === id);
+    if (!saved) return this.say('저장한 배치를 찾지 못했습니다');
+    this.tile = null;
+    this.sel = saved.items.filter(x => this.state.has(x));
+    if (this.sel.length < 2) return this.say('그 배치의 자료가 두 개 이상 남아 있지 않습니다');
+    return this.split(saved.layout, { c: saved.c, r: saved.r });
   }
 
   async untile(){
@@ -449,12 +563,22 @@ export class Session extends EventEmitter {
     this.say(`자료 ${ok}/${items.length}개를 ${Math.round((Date.now() - t0) / 1000)}초 만에 미리 열었습니다 · 목록을 누르면 바로 앞으로 옵니다`);
   }
 
-  async next(){
+  /** 다음 자료. skipMemo: 휴대폰 리모컨·발표자 화면은 진행 메모(교사 화면용)를 건너뛴다 */
+  async next({ skipMemo = false } = {}){
     const items = this.lesson.items;
     const i = items.findIndex(it => it.id === this.highlight);
-    const nx = items[i + 1];
+    const nx = items.slice(i + 1).find(it => !skipMemo || it.type !== 'memo');
     if (nx) return this.activate(nx.id);
     this.say('마지막 자료입니다');
+  }
+
+  /** 앞 자료 (휴대폰 리모컨·발표자 화면의 "이전"). 메모는 건너뛴다 */
+  async prev(){
+    const items = this.lesson.items;
+    const i = items.findIndex(it => it.id === this.highlight);
+    const pv = i > 0 ? items.slice(0, i).reverse().find(it => it.type !== 'memo') : null;
+    if (pv) return this.activate(pv.id);
+    this.say('첫 자료입니다');
   }
 
   /** 학생 화면(모니터 한 대면 그 화면)에서 지금 보는 자료만 남기고 최소화. 교사 화면의 메모 등은 그대로. */
@@ -515,6 +639,40 @@ export class Session extends EventEmitter {
       }
       this.aside = moved;
       return moved.length;
+    });
+  }
+
+  /**
+   * 고정해 둔 동안 계속 비키기 (맥, 2026-11-22 선생님 요청 — "고정 순간에만"으로는 새로 열거나 옮긴 창이 가려졌다).
+   * main.js가 2초마다 부른다. 사이드바 아래로 들어온 창을 옮기고 돌려놓을 기록(this.aside)에 더한다.
+   * 어떤 프로그램이 스스로 제자리로 돌아가도 서로 밀고 당기지 않게, 한 창은 1분에 3번까지만 옮긴다.
+   * @returns 이번에 옮긴 창 수
+   */
+  keepAside(){
+    return this.aside_(async () => {
+      if (!this.teacher || this.trusted === false) return 0;
+      const span = Math.round(this.sidebarWidth * (this.physicalPixels ? (this.teacher.scale ?? 1) : 1));
+      let wins;
+      try { wins = await this.list(); } catch { return 0; }
+      const plan = planAside(wins, this.teacher, span, { ownPid: this.ownPid, displays: this.displays });
+      if (!plan.length) return 0;
+      const now = Date.now();
+      const moved = this.aside ?? [];
+      let n = 0;
+      for (const p of plan){
+        const tries = (this.asideTries.get(p.wid) ?? []).filter(t => now - t < 60000);
+        if (tries.length >= 3) continue;
+        tries.push(now); this.asideTries.set(p.wid, tries);
+        try {
+          const to = (await this.moveWid(p.wid, p.to)) ?? p.to;
+          const prev = moved.find(m => m.wid === p.wid);
+          if (prev) prev.to = to;            // 또 옮긴 창: 돌려놓을 곳은 처음 자리 그대로
+          else moved.push({ ...p, to });
+          n++;
+        } catch { /* 옮길 수 없는 창은 그대로 */ }
+      }
+      this.aside = moved;
+      return n;
     });
   }
 
@@ -605,7 +763,8 @@ export class Session extends EventEmitter {
           items: s.items.map(it => ({ id: it.id, title: it.title, type: it.type, start: it.start, app: this.appLabel(it), home: this.home(it), problem: it.problem })) })),
       } : null,
       state: Object.fromEntries([...this.state].map(([id, st]) => [id, { status: st.status, disp: st.disp, note: st.note }])),
-      highlight: this.highlight, sel: this.sel, tile: this.tile ? { ids: this.tile.ids } : null,
+      highlight: this.highlight, sel: this.sel, tile: this.tile ? { ids: this.tile.ids, layout: this.tile.layout } : null, layouts: TILE_LAYOUTS,
+      saved: (this.lesson?.layouts ?? []).map(l => ({ id: l.id, name: l.name })),
       dual: this.dual, studentName: this.student?.name ?? null, teacherName: this.teacher?.name ?? null,
       openTo: this.openTo, autoHide: this.autoHide, msg: this.msg,
       offer: this.offer ? { act: this.offer.act, id: this.offer.id, label: this.offer.label } : null,

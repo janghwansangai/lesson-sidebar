@@ -68,11 +68,12 @@ test('읽을 수 없는 파일, 오래 걸린 내려받기, 브라우저 없음'
 });
 
 test('PC 점검: 모니터 1개·권한 없음·공간 부족·다른 PC·클라우드 폴더', async () => {
-  const r = await precheck({ items: [] }, deps({ screens: { count: 1, student: null }, trusted: false, freeBytes: 500 * 1024 ** 2, lockedBy: '교실 윈도우 PC', cloud: '구글 드라이브' }));
+  const r = await precheck({ items: [] }, deps({ screens: { count: 1, student: null }, trusted: false, freeBytes: 500 * 1024 ** 2, lockedBy: '교실 윈도우 PC', cloud: '구글 드라이브', screenRec: 'denied' }));
   const by = Object.fromEntries(r.rows.map(x => [x.title, x]));
   assert.equal(by['모니터'].level, 'warn');
   assert.match(by['모니터'].detail, /자동 숨김/);
   assert.equal(by['창 제어 권한'].level, 'bad');
+  assert.match(by['화면 기록 권한'].detail, /확대·캡처 핀에 필요/);
   assert.equal(by['저장 공간'].level, 'warn');
   assert.match(by['다른 PC'].detail, /교실 윈도우 PC/);
   assert.match(by['클라우드 폴더'].detail, /오프라인 사용/);

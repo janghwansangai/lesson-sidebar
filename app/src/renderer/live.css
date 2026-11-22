@@ -1,0 +1,76 @@
+/* 발표자 화면·휴대폰 리모컨 — 사이드바와 같은 칠판색 */
+:root{
+  --bg:#1b2f2a; --bg-2:#26403a; --bg-3:#2f4b44; --fg:#edf3ee; --muted:#a0b5ad; --line:rgba(237,243,238,.12);
+  --chalk:#f2cd5c; --chalk-soft:rgba(242,205,92,.16); --live:#6fd39b; --live-soft:rgba(111,211,155,.18);
+  --warn:#f0a35c; --danger:#e0574e; --danger-soft:rgba(224,87,78,.2);
+  --font:"Apple SD Gothic Neo","Malgun Gothic","Noto Sans KR",system-ui,sans-serif;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0;min-height:100%}
+body{background:var(--bg);color:var(--fg);font-family:var(--font);font-size:15px;line-height:1.45;-webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent}
+button{font-family:inherit;color:inherit;font-size:inherit;cursor:pointer}
+:focus-visible{outline:2px solid var(--chalk);outline-offset:2px}
+h2{font-size:13px;font-weight:600;color:var(--muted);margin:0 0 8px}
+
+.app{max-width:1200px;margin:0 auto;padding:14px 16px calc(24px + env(safe-area-inset-bottom));display:grid;gap:12px;grid-template-columns:minmax(0,1fr)}
+.col{display:grid;gap:12px;align-content:start;min-width:0}
+.top{display:grid;gap:8px}
+.t-row{display:flex;align-items:center;gap:8px;min-width:0}
+.title{font-size:17px;margin:0;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rec{color:#fff;background:var(--danger);border-radius:6px;padding:1px 7px;font-size:12px;font-weight:700}
+.conn{font-size:12px;color:var(--muted)}
+.conn.bad{color:var(--warn)}
+.clocks{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.clk{background:var(--bg-2);border-radius:10px;padding:8px 12px;display:flex;align-items:baseline;gap:8px;min-width:0;flex-wrap:wrap}
+.clk b{font-size:26px;font-variant-numeric:tabular-nums;letter-spacing:.5px}
+.k{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.sub{font-size:12px;color:var(--muted)}
+.clk.over{background:var(--danger-soft)}
+.clk.over b{color:#ffb3ad}
+.bar{height:4px;background:var(--bg-3);border-radius:2px;overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--live);transition:width .5s}
+.bar i.over{background:var(--danger)}
+
+.now{display:grid;gap:8px;grid-template-columns:1fr 1fr}
+.card{background:var(--bg-2);border-radius:10px;padding:10px 12px;display:grid;gap:2px;align-content:start;min-width:0}
+.card b{font-size:17px;overflow-wrap:anywhere}
+.cur{box-shadow:inset 3px 0 0 var(--live)}
+.thumb{width:100%;border-radius:6px;margin-top:6px;background:#000;aspect-ratio:16/10;object-fit:contain}
+
+.go{display:grid;grid-template-columns:1fr 2fr;gap:8px}
+.big{min-height:64px;border:0;border-radius:12px;background:var(--bg-3);font-size:19px;font-weight:700;touch-action:manipulation}
+.big.primary{background:var(--chalk);color:#1b2f2a}
+.big:disabled{opacity:.4;cursor:default}
+.big:active:not(:disabled){transform:scale(.98)}
+.tools{display:flex;flex-wrap:wrap;gap:6px}
+.tb{flex:1 1 auto;min-height:44px;border:1px solid var(--line);border-radius:10px;background:transparent;padding:0 12px;touch-action:manipulation}
+.tb[aria-pressed="true"]{background:var(--chalk-soft);border-color:var(--chalk);color:var(--chalk)}
+.tb.quiet{color:var(--muted)}
+.msg{margin:0;min-height:1.4em;font-size:13px;color:var(--muted)}
+
+.memo{background:var(--bg-2);border-radius:10px;padding:12px 14px}
+.memo-t{white-space:pre-wrap;overflow-wrap:anywhere;font-size:16px;line-height:1.6;max-height:45vh;overflow:auto}
+.memo-one + .memo-one{border-top:1px solid var(--line);margin-top:10px;padding-top:10px}
+
+.list .sec{margin-bottom:10px}
+.list .sec-h{display:flex;justify-content:space-between;font-size:13px;color:var(--muted);padding:4px 2px}
+.list .sec-h.here{color:var(--chalk)}
+.item{display:flex;align-items:center;gap:8px;width:100%;text-align:left;border:0;border-radius:8px;background:transparent;padding:10px;min-height:44px}
+.item:hover{background:var(--bg-2)}
+.item.on{background:var(--live-soft);box-shadow:inset 3px 0 0 var(--live)}
+.item .ty{font-size:11px;color:var(--muted);margin-left:auto;white-space:nowrap}
+.item.memo-i{color:var(--muted)}
+
+.gone{position:fixed;inset:0;display:grid;place-content:center;gap:8px;padding:24px;text-align:center;background:var(--bg);z-index:9}
+.gone b{font-size:20px}
+.gone p{color:var(--muted);margin:0}
+
+/* 넓은 화면(발표자 화면): 왼쪽은 시계·지금·다음·단추, 오른쪽은 메모·흐름 */
+@media (min-width: 860px){
+  .app{grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);align-items:start;column-gap:18px}
+  .clk b{font-size:34px}
+  .card b{font-size:20px}
+  .memo-t{font-size:18px;max-height:60vh}
+}
