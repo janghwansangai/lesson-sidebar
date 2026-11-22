@@ -76,6 +76,26 @@ export function fitRatio(total, ratio, minA = 0, minB = 0){
   return Math.min(hi, Math.max(lo, ratio));
 }
 
+/**
+ * 칸이 여러 개일 때(3분할 등) 각 칸이 최소 크기(비율)보다 좁아지지 않게 경계들을 옮긴다.
+ * cuts: 0과 1 사이 경계 비율(오름차순), mins: 칸마다 최소 비율 (cuts.length + 1개). 다 들어갈 수 없으면 null.
+ * 앞에서부터 한 번(앞 칸 최소), 뒤에서부터 한 번(뒤 칸 최소) 밀면 된다 — 최소 합이 1 이하면 둘 다 지켜진다.
+ */
+export function fitCuts(cuts, mins){
+  const m = mins.map(v => Math.max(0, v || 0));
+  if (m.reduce((a, b) => a + b, 0) > 1 + 1e-9) return null;
+  const p = [0, ...cuts, 1];
+  for (let i = 1; i < p.length - 1; i++) p[i] = Math.max(p[i], p[i - 1] + m[i - 1]);
+  for (let i = p.length - 2; i >= 1; i--) p[i] = Math.min(p[i], p[i + 1] - m[i]);
+  return p.slice(1, -1);
+}
+
+/** 배치마다 세로 칸(columns)·가로 칸(rows)에 든 창 번호 — 최소 폭·높이를 칸 단위로 모을 때 쓴다 */
+export const TILE_CELLS = {
+  half: { cols: [[0], [1]] }, seventy: { cols: [[0], [1]] }, thirds: { cols: [[0], [1], [2]] },
+  main2: { cols: [[0], [1, 2]], rows: [[1], [2]] }, grid: { cols: [[0, 2], [1, 3]], rows: [[0, 1], [2, 3]] },
+};
+
 /** 요청한 위치·크기와 실제 값이 허용 오차 안인지. */
 export function rectClose(a, b, tol = 16){
   return ['x', 'y', 'width', 'height'].every(k => Math.abs((a?.[k] ?? NaN) - (b?.[k] ?? NaN)) <= tol);

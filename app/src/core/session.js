@@ -472,39 +472,62 @@ export class Session extends EventEmitter {
     return this.split(layout);
   }
 
-  /** this.tile대로 창을 옮긴다. fit이면 프로그램 최소 폭 때문에 안 맞을 때 첫 경계 비율을 조정한다 (2개 배치). */
+  /**
+   * this.tile대로 창을 옮긴다. fit이면 프로그램 최소 폭·높이 때문에 요청보다 크게 놓인 창을 보고,
+   * 그 창이 든 칸이 그 크기를 갖도록 경계들을 옮겨 다시 놓는다 (2~4개 모든 배치). 알게 된 최소 크기는 기억해 조절 바에도 쓴다.
+   */
   async applyTile(fit = false){
     const t = this.tile; if (!t) return '';
     let rects = M.tileRects(t.area, t.key, t.c, t.r.length ? t.r : undefined);
     const got = [];
     for (let i = 0; i < t.wids.length; i++) got.push(await this.moveWid(t.wids[i], rects[i]).catch(() => null));
-    if (!fit || t.wids.length !== 2 || got.every((g, i) => !g || M.rectClose(g, rects[i], 24))) return '';
-    // 프로그램 최소 폭보다 좁게는 안 줄어든다 → 그 폭에서 멈추게 비율 조정
-    const minA = got[0] && got[0].width > rects[0].width + 24 ? got[0].width : 0;
-    const minB = got[1] && got[1].width > rects[1].width + 24 ? got[1].width : 0;
-    const f = M.fitRatio(t.area.width, t.c[0], minA, minB);
-    if (f === null) return '';
-    t.c[0] = f; t.minA = minA; t.minB = minB;
+    if (!fit || got.every((g, i) => !g || M.rectClose(g, rects[i], 24))) return '';
+    t.minW = got.map((g, i) => (g && g.width > rects[i].width + 24 ? g.width : 0));
+    t.minH = got.map((g, i) => (g && g.height > rects[i].height + 24 ? g.height : 0));
+    if (!this.fitTile()) return '';
     rects = M.tileRects(t.area, t.key, t.c, t.r.length ? t.r : undefined);
-    for (let i = 0; i < 2; i++) await this.moveWid(t.wids[i], rects[i]).catch(() => null);
-    return ' (프로그램 최소 폭 때문에 비율을 조정)';
+    for (let i = 0; i < t.wids.length; i++) await this.moveWid(t.wids[i], rects[i]).catch(() => null);
+    return ' (프로그램 최소 크기 때문에 비율을 조정)';
+  }
+
+  /** 기억한 최소 폭·높이에 맞게 경계(c·r)를 옮긴다. 바뀌었으면 true */
+  fitTile(){
+    const t = this.tile, cells = M.TILE_CELLS[t.key]; if (!cells) return false;
+    const before = JSON.stringify([t.c, t.r]);
+    const need = (groups, mins, total) => groups.map(g => Math.max(0, ...g.map(i => mins?.[i] ?? 0)) / total);
+    const c = M.fitCuts(t.c, need(cells.cols, t.minW, t.area.width));
+    if (c) t.c = c;
+    if (cells.rows && t.r.length){
+      const r = M.fitCuts(t.r, need(cells.rows, t.minH, t.area.height));
+      if (r) t.r = r;
+    }
+    return JSON.stringify([t.c, t.r]) !== before;
   }
 
   /** 조절 바로 경계를 옮긴다. dir 'v'(세로 경계, 왼쪽부터 비율) 또는 'h'(가로 경계, 위부터 비율). 실제로 쓴 비율을 돌려준다. */
   async setTileRatio(ratio, dir = 'v'){
     const t = this.tile; if (!t) return null;
+    const clamp = v => Math.min(0.85, Math.max(0.15, v));
     if (dir === 'h'){
       if (!t.r.length) return null;
-      t.r[0] = Math.min(0.85, Math.max(0.15, ratio));
+      t.r[0] = clamp(ratio);
+      this.fitTile();
       await this.applyTile();
       return t.r[0];
     }
-    let r = Math.min(0.85, Math.max(0.15, ratio));
+    if (dir === 'v2'){                        // 3분할의 두 번째 세로 경계
+      if (t.c.length < 2) return null;
+      t.c[1] = Math.max(clamp(ratio), t.c[0] + 0.1);
+      this.fitTile();
+      await this.applyTile();
+      return t.c[1];
+    }
+    let r = clamp(ratio);
     if (t.key === 'thirds') r = Math.min(r, t.c[1] - 0.1);
-    if (t.wids.length === 2) r = M.fitRatio(t.area.width, r, t.minA ?? 0, t.minB ?? 0) ?? r;
     t.c[0] = r;
+    this.fitTile();
     await this.applyTile();
-    return r;
+    return t.c[0];
   }
 
   /** 조절 바를 놓을 곳: 첫 세로 경계 (도우미 좌표). 나란히 보는 중이 아니면 null */
@@ -513,10 +536,11 @@ export class Session extends EventEmitter {
     return { dir: 'v', x: Math.round(t.area.x + t.area.width * t.c[0]), y: t.area.y, height: t.area.height, area: t.area };
   }
 
-  /** 조절 바들: 세로 경계 하나 + (큰 화면+2, 4분할이면) 가로 경계 하나. 가로는 { dir:'h', x, y, width } */
+  /** 조절 바들: 세로 경계 하나 (+ 3분할이면 두 번째 세로 'v2') + (큰 화면+2, 4분할이면) 가로 경계 하나. 가로는 { dir:'h', x, y, width } */
   tileDividers(){
     const t = this.tile; if (!t) return [];
     const out = [this.tileDivider()];
+    if (t.key === 'thirds' && t.c.length > 1) out.push({ dir: 'v2', x: Math.round(t.area.x + t.area.width * t.c[1]), y: t.area.y, height: t.area.height, area: t.area });
     if (t.r.length){
       const a = t.area, y = Math.round(a.y + a.height * t.r[0]);
       const x0 = t.key === 'main2' ? Math.round(a.x + a.width * t.c[0]) : a.x;
@@ -763,7 +787,7 @@ export class Session extends EventEmitter {
       lesson: Ls ? {
         title: Ls.title, date: Ls.date, folder: Ls.root,
         sections: Ls.sections.map(s => ({ id: s.id, title: s.title, minutes: s.minutes,
-          items: s.items.map(it => ({ id: it.id, title: it.title, type: it.type, start: it.start, app: this.appLabel(it), home: this.home(it), problem: it.problem })) })),
+          items: s.items.map(it => ({ id: it.id, title: it.title, type: it.type, start: it.start, app: this.appLabel(it), home: this.home(it), problem: it.problem, link: !!(it.url && /^https?:\/\//i.test(it.url)) })) })),
       } : null,
       state: Object.fromEntries([...this.state].map(([id, st]) => [id, { status: st.status, disp: st.disp, note: st.note }])),
       highlight: this.highlight, sel: this.sel, tile: this.tile ? { ids: this.tile.ids, layout: this.tile.layout } : null, layouts: TILE_LAYOUTS,

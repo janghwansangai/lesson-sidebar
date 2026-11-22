@@ -110,8 +110,9 @@ export class LessonDoc {
   nextNumber(){ return this.allItems().length + 1; }
 
   // ---------- 수업 정보 ----------
-  setInfo({ title, date } = {}){
+  setInfo({ title, date, review } = {}){
     if (title !== undefined) this.data.title = String(title).normalize('NFC').slice(0, 120);
+    if (review !== undefined) this.data.review = String(review).normalize('NFC').slice(0, 4000);   // 수업 후 돌아보기 (교사용)
     if (date !== undefined && /^\d{4}-\d{2}-\d{2}$/.test(String(date))) this.data.date = String(date);
   }
 
@@ -268,7 +269,7 @@ export class LessonDoc {
   snapshot(){
     const d = this.data;
     return {
-      root: this.root, title: d.title, date: d.date, updatedAt: d.updatedAt ?? null, device: d.device ?? null,
+      root: this.root, title: d.title, date: d.date, review: d.review ?? '', updatedAt: d.updatedAt ?? null, device: d.device ?? null,
       sections: d.sections.map(s => ({ id: s.id, title: s.title, minutes: s.minutes ?? 0,
         items: s.items.map(it => ({ id: it.id, type: it.type, title: it.title, start: it.start ?? '', screen: it.screen ?? null,
           file: it.file ?? null, url: it.url ?? null,

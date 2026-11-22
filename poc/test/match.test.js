@@ -73,3 +73,14 @@ test('창 가운데로 모니터를 찾는다 (외부 모니터가 음수 좌표
   assert.equal(M.displayOf({ x: 100, y: 100, width: 800, height: 600 }, ds), 0);
   assert.equal(M.displayOf({ x: 5000, y: 100, width: 10, height: 10 }, ds), -1);
 });
+
+test('fitCuts: 여러 칸의 최소 크기에 맞게 경계를 민다', () => {
+  const near = (a, b) => a.every((v, i) => Math.abs(v - b[i]) < 1e-9);
+  assert.ok(near(M.fitCuts([1/3, 2/3], [0, 0.5, 0]), [1/3, 5/6]));        // 가운데 칸이 절반 이상
+  assert.ok(near(M.fitCuts([1/3, 2/3], [0.5, 0, 0]), [0.5, 2/3]));        // 첫 칸
+  assert.ok(near(M.fitCuts([1/3, 2/3], [0, 0, 0.6]), [1/3, 0.4]));        // 마지막 칸
+  assert.ok(near(M.fitCuts([1/3, 2/3], [0.4, 0.4, 0]), [0.4, 0.8]));
+  assert.ok(near(M.fitCuts([0.7], [0, 0.5]), [0.5]));
+  assert.equal(M.fitCuts([0.5], [0.6, 0.6]), null);                       // 다 못 들어감
+  assert.ok(near(M.fitCuts([0.6], [0, 0]), [0.6]));                        // 그대로
+});
