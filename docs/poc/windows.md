@@ -352,3 +352,8 @@
 4. **화면 프로세스가 죽었을 때**: 시험 앱의 화면 프로세스 3개를 강제로 끝냄 → 사이드바 다시 불러옴, 발표 도구는 꺼지고 다시 켜짐, `logs/main.log`에 기록. 미리보기가 빈 그림으로 남는 것을 찾아 #45에서 고침 (위 6).
 5. **설치판 보안 설정(fuse)**: 윈도우 설치판에서 RunAsNode 켜짐 → 도우미(`displays`·`serve`) 그대로 됨, NODE_OPTIONS·`--inspect` 꺼짐 (`@electron/fuses`로 읽음). 선생님용 설치판(`SIDEBAR_SMOKE_BUILD` 없이)에 `test-mode` 없음. 켜 보기 검사는 선생님 사이드바가 켜져 있어 이 PC에서는 못 하고(한 번에 하나만 켜짐), GitHub 윈도우 검사(#46)가 시험용 설치판으로 설치·켜기·지우기를 통과.
 6. **윈도우 설치판 0.3.3**: `lesson-sidebar-0.3.3-win-setup.exe`(118MB), `…-win-portable.exe`(107MB). 선생님 확인 뒤 **Release v0.3.3에 더함** (GitHub SHA-256 지문 = 이 PC에서 잰 값). 새 버전 확인(`checkUpdate('0.3.1', win32)`)이 설치판은 setup.exe, 설치 없이 켜는 판은 portable.exe와 지문을 고름.
+
+## 0.3.4 함께 올리기 (2026-11-22)
+선생님 요청 "0.3.4로 맥·윈도우 함께 올리자". #45를 합치기 전에 main의 #44·#46·#47을 모두 반영하고 충돌을 풀었다 (#47 업데이트 다시 받기 + SHA-256 지문: 지문이 다르면 다시 받고, 그래도 다르면 깔지 않음). 두 검사 통과 뒤 합침(main `fdf53af`).
+- 윈도우 0.3.4 설치판: 합친 main과 같은 파일로 만듦 — setup 118MB, portable 107MB. 앱 안 도우미(`serve`) 됨, fuse RunAsNode 켜짐·NODE_OPTIONS·inspect 꺼짐, test-mode 없음.
+- **Release v0.3.4를 초안으로** 만들고 윈도우 파일을 올림 (GitHub 지문 = 이 PC에서 잰 값). 맥 설치판은 맥 인증서로 맥에서 만들어야 해서(업데이트가 같은 인증서를 봄) 맥 Claude가 더한 뒤 두 OS를 한 번에 공개한다 (HANDOFF "넘길 일" 맨 위).
