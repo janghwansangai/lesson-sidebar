@@ -30,3 +30,6 @@ _캡처/
 
 # Electron 내려받기 캐시
 .cache/
+
+# Cloudflare 도구(wrangler) 캐시 — 계정 정보가 들어갈 수 있어 올리지 않는다
+.wrangler/
