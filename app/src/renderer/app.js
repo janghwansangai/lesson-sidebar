@@ -52,6 +52,9 @@ function render(){
   if (S.rec){ $('#rec-where').textContent = `${S.rec.where}${S.rec.mic ? ' + 마이크' : ''}`; $('#rec-stop').disabled = !!S.rec.stopping; }
   $('#rec-mic').checked = S.prefs?.recMic !== false;
   $('#rec-sys').checked = S.prefs?.recSys !== false;
+  $('#keys-on').checked = S.prefs?.shortcuts !== false;
+  $('#keys').hidden = S.prefs?.shortcuts === false;
+  $('#keys').innerHTML = (S.prefs?.keys ?? []).map(k => `<li><kbd>${esc(k.key)}</kbd><span>${esc(k.label)}</span></li>`).join('');
   for (const b of document.querySelectorAll('#rec-screen [data-rs]')) b.setAttribute('aria-pressed', String(b.dataset.rs === (S.prefs?.recScreen ?? 'student')));
   $('#rec-light').checked = !!S.prefs?.recLight;
 
@@ -204,6 +207,7 @@ $('#record').addEventListener('click', () => api.act('record'));
 $('#rec-stop').addEventListener('click', () => api.act('record'));
 $('#rec-mic').addEventListener('change', e => api.act('recMic', e.target.checked));
 $('#rec-sys').addEventListener('change', e => api.act('recSys', e.target.checked));
+$('#keys-on').addEventListener('change', e => api.act('shortcuts', e.target.checked));
 $('#rec-screen').addEventListener('click', e => { const b = e.target.closest('[data-rs]'); if (b) api.act('recScreen', b.dataset.rs); });
 $('#rec-light').addEventListener('change', e => api.act('recLight', e.target.checked));
 setInterval(() => {

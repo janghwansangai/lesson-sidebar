@@ -8,6 +8,7 @@ import http from 'node:http';
 import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { Helper } from './core/helper.js';
+import { SHORTCUTS, accelerator, keyLabel } from './core/shortcuts.js';
 import { loadLesson } from './core/lesson.js';
 import { startFileServer } from './core/fileserver.js';
 import { Session, TILE_LAYOUTS } from './core/session.js';
@@ -176,7 +177,7 @@ function createSidebar(){
   win.on('closed', () => { win = null; });
 }
 
-const fullState = () => ({ ...session.snapshot(), collapsed, trusted: session.trusted !== false, tools: { pointer: tools.pointer, spot: tools.spot, pen: tools.pen, grab: grab?.mode ?? null, pins: pins.size }, cover: cover.mode, preview: previewOn && screenAccess() === 'granted', rec: rec ? { since: rec.startedAt, mic: !!rec.mic, sys: !!rec.sys, stopping: !!rec.stopping, where: rec.where } : null, prefs: { ...prefs, steps: OPACITY_STEPS, asideAvailable: ASIDE_OK }, update: update && !update.dismissed ? { version: update.version, notes: update.notes, size: update.size } : null, version: app.getVersion(), presenter: !!presWin, remote: remote ? { url: remote.url, qr: remote.qr, showQr: remote.showQr, phones: liveSrv.clients('lan') } : null });
+const fullState = () => ({ ...session.snapshot(), collapsed, trusted: session.trusted !== false, tools: { pointer: tools.pointer, spot: tools.spot, pen: tools.pen, grab: grab?.mode ?? null, pins: pins.size }, cover: cover.mode, preview: previewOn && screenAccess() === 'granted', rec: rec ? { since: rec.startedAt, mic: !!rec.mic, sys: !!rec.sys, stopping: !!rec.stopping, where: rec.where } : null, prefs: { ...prefs, steps: OPACITY_STEPS, asideAvailable: ASIDE_OK, keys: SHORTCUTS.map(s => ({ key: keyLabel(s), label: s.label })) }, update: update && !update.dismissed ? { version: update.version, notes: update.notes, size: update.size } : null, version: app.getVersion(), presenter: !!presWin, remote: remote ? { url: remote.url, qr: remote.qr, showQr: remote.showQr, phones: liveSrv.clients('lan') } : null });
 function push(){ noteChapter(); syncInk(); win?.webContents.send('state', fullState()); syncDivider(); syncPreview(); syncLive(); }
 
 // ---------- 나란히 보기 조절 바 ----------
@@ -1254,7 +1255,27 @@ const ACTIONS = {
   closePins: () => { for (const p of [...pins]) p.close(); },
   screenSettings: () => shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture'),
   quit: () => app.quit(),
+  shortcuts: v => { prefs.shortcuts = v === true || v === 'true'; saveSettings({ shortcuts: prefs.shortcuts }); syncShortcuts(true); push(); },
 };
+
+// ---------- 단축키 (core/shortcuts.js) ----------
+// 켜 두면 어느 프로그램이 앞에 있어도 Ctrl+Alt(맥 ⌃⌥)+글자로 사이드바 기능을 부른다. 다른 프로그램이 이미 쓰는 조합은 건너뛰고 알린다
+let shortcutsOn = false;
+function syncShortcuts(announce = false){
+  for (const s of SHORTCUTS) globalShortcut.unregister(accelerator(s));
+  shortcutsOn = false;
+  if (prefs.shortcuts === false){ if (announce) session.say('단축키를 껐습니다'); return; }
+  const taken = [];
+  for (const s of SHORTCUTS){
+    const fn = s.act === 'pen' || s.act === 'pointer' || s.act === 'spot' ? () => setTool(s.act, !tools[s.act]) : () => act(s.act);
+    let ok = false;
+    try { ok = globalShortcut.register(accelerator(s), () => { Promise.resolve(fn()).catch(e => session.say(e.message)); }); } catch { ok = false; }
+    if (!ok) taken.push(keyLabel(s));
+  }
+  shortcutsOn = true;
+  if (taken.length) session.say(`단축키 ${taken.join(', ')}는 다른 프로그램이 쓰고 있어 건너뛰었습니다`);
+  else if (announce) session.say(`단축키를 켰습니다 · ${keyLabel(SHORTCUTS[0])} 다음 자료, ${keyLabel(SHORTCUTS[1])} 이전 자료 (목록은 ⚙)`);
+}
 
 async function act(action, arg){
   const fn = Object.hasOwn(ACTIONS, action) ? ACTIONS[action] : null;
@@ -1350,7 +1371,7 @@ app.whenReady().then(async () => {
   await session.refreshDisplays();
 
   const settings = readSettings();
-  prefs = { opacity: OPACITY_STEPS.includes(settings.opacity) ? settings.opacity : 100, aside: ASIDE_OK && !!settings.aside, recMic: settings.recMic !== false, recSys: settings.recSys !== false, recScreen: settings.recScreen === 'teacher' ? 'teacher' : 'student', recLight: !!settings.recLight, updateCheck: settings.updateCheck !== false };
+  prefs = { opacity: OPACITY_STEPS.includes(settings.opacity) ? settings.opacity : 100, aside: ASIDE_OK && !!settings.aside, recMic: settings.recMic !== false, recSys: settings.recSys !== false, recScreen: settings.recScreen === 'teacher' ? 'teacher' : 'student', recLight: !!settings.recLight, updateCheck: settings.updateCheck !== false, shortcuts: settings.shortcuts !== false };
   createSidebar();
   if (!(settings.lastFolder && existsSync(settings.lastFolder) && runLesson(settings.lastFolder))) runLesson(sampleLesson());
   if (settings.lastPrepFolder && existsSync(path.join(settings.lastPrepFolder, 'lesson.json'))){
@@ -1365,6 +1386,7 @@ app.whenReady().then(async () => {
   session.trusted = trusted;
   watchTrust();
   helper.startWatch();
+  syncShortcuts();
   // 고정한 채로 켜면 가려지는 창을 옆으로 (설정을 켰을 때만)
   if (trusted && prefs.aside && !session.autoHide){
     const n = await session.stepAside();
