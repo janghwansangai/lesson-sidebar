@@ -25,7 +25,6 @@ function renderPrefs(){
   $('#aside-row').hidden = !P.asideAvailable;
   $('#aside').checked = !!P.aside;
   $('#trustbar').hidden = S.trusted !== false;
-  $('#aside-note').hidden = !(P.aside && S.autoHide);   // 자동 숨김 중에는 비키기가 쉰다 (고정할 때만 동작)
 }
 
 function render(){

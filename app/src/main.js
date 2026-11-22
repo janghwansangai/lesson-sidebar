@@ -175,6 +175,11 @@ function push(){ win?.webContents.send('state', fullState()); }
 async function setAutoHide(v){
   session.autoHide = !!v;
   saveSettings({ autoHide: session.autoHide });
+  // 자동 숨김과 "가려지는 창 비키기"는 함께 쓸 수 없다 → 자동 숨김을 켜면 비키기를 끈다 (선생님 요청, 2026-11-22).
+  // 계속 비키기 타이머도 먼저 멈춰서, 돌려놓는 동안 창을 다시 옮기지 않게 한다
+  const asideOff = session.autoHide && prefs.aside;
+  if (asideOff){ prefs.aside = false; saveSettings({ aside: false }); }
+  syncAsideWatch();
   clearInterval(cursorTimer);
   collapsed = session.autoHide;
   placeSidebar();
@@ -182,7 +187,7 @@ async function setAutoHide(v){
   if (session.autoHide){
     // 고정을 풀면 옆으로 옮겼던 창을 돌려놓는다 (자동 숨김 중에는 펼칠 때마다 창이 들썩이지 않게 옮기지 않음)
     const n = await session.restoreAside();
-    session.say(`자동 숨김: 화면 왼쪽 끝에 마우스를 대면 나타납니다 (왼쪽 가운데 노란 막대)${n ? ` · 옮겼던 창 ${n}개를 돌려놓았습니다` : ''}`);
+    session.say(`자동 숨김: 화면 왼쪽 끝에 마우스를 대면 나타납니다 (왼쪽 가운데 노란 막대)${asideOff ? " · '가려지는 창 비키기'를 껐습니다" : ''}${n ? ` · 옮겼던 창 ${n}개를 돌려놓았습니다` : ''}`);
   } else {
     const n = prefs.aside ? await session.stepAside() : 0;
     session.say(`사이드바를 화면 왼쪽에 고정했습니다${n ? ` · 가려지던 창 ${n}개를 오른쪽으로 옮겼습니다` : ''}`);
@@ -207,7 +212,11 @@ async function setAside(v){
     const n = await session.restoreAside();
     return session.say(`고정해 두어도 다른 창을 옮기지 않습니다${n ? ` · 옮겼던 창 ${n}개를 돌려놓았습니다` : ''}`);
   }
-  if (session.autoHide) return session.say('사이드바를 고정하면(자동 숨김 끄기) 가려지는 창을 오른쪽으로 옮깁니다');
+  if (session.autoHide){
+    // 비키기는 고정해 둘 때만 동작하므로, 자동 숨김 중에 켜면 사이드바를 고정한다 (자동 숨김을 켜면 비키기가 꺼지는 것과 짝)
+    await setAutoHide(false);
+    return session.say("'가려지는 창 비키기'를 켜서 사이드바를 고정했습니다 (자동 숨김 끔) · 가려지는 창을 오른쪽으로 옮깁니다");
+  }
   const n = await session.stepAside();
   const later = ASIDE_KEEP ? '고정해 둔 동안 새로 가려지는 창도 옮깁니다' : '고정해 둔 동안 새로 연 창은 옮기지 않습니다';
   session.say(n ? `가려지던 창 ${n}개를 사이드바 오른쪽으로 옮겼습니다 · 고정을 풀거나 이 설정을 끄면 돌려놓습니다` : `사이드바에 가려진 창이 없습니다 · ${later}`);
