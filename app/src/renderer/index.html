@@ -14,6 +14,8 @@
       <span>그래서 자료 창을 찾거나 옮기지 못합니다. 시스템 설정 → 개인정보 보호 및 보안 → 손쉬운 사용에서 '수업 사이드바'를 켜 주세요. 이미 켜져 있으면 −로 지운 뒤 사이드바를 다시 켜서 새로 허용해 주세요.</span>
       <button id="ax-open" class="dbtn" type="button">손쉬운 사용 설정 열기</button>
     </div>
+    <div id="recbar" class="recbar" hidden><span class="dotrec" aria-hidden="true"></span><b>녹화 중</b><span id="rec-time">00:00</span><span id="rec-where" class="rw"></span>
+      <button id="rec-stop" class="rbtn" type="button">녹화 끝내기</button></div>
     <header class="head">
       <div class="top">
         <span class="brand">수업 사이드바 <em>체험판</em></span>
@@ -27,6 +29,9 @@
       <div id="prefs" class="prefs" hidden>
         <div class="pref-h">펼친 사이드바 투명도 <span class="pref-sub">(배경만 비침)</span></div>
         <div id="opacity" class="seg" role="group" aria-label="펼친 사이드바 투명도"></div>
+        <div class="pref-h">녹화</div>
+        <label class="pref-row"><input id="rec-mic" type="checkbox"><span>마이크 소리도 녹화<small>선생님 목소리를 함께 남깁니다. 학생 목소리도 들어갈 수 있습니다.</small></span></label>
+        <label class="pref-row"><input id="rec-light" type="checkbox"><span>가볍게 녹화 (720p · 15장/초)<small>느린 PC에서 수업이 버벅이면 켜 주세요. 용량도 절반쯤입니다.</small></span></label>
         <label id="aside-row" class="pref-row" hidden>
           <input id="aside" type="checkbox">
           <span>고정해 둘 때 가려지는 창을 옆으로 비키기<small>교사 화면에서 사이드바에 가려지는 창(선생님 창 포함)을 오른쪽으로 옮깁니다. 맥은 고정해 둔 동안 새로 가려지는 창도 옮깁니다. 자동 숨김을 켜면 이 설정은 꺼지고, 끄거나 끝내면 창을 돌려놓습니다.</small></span>
@@ -60,6 +65,7 @@
         <button id="closeall" class="fb" title="사이드바가 연 자료 창을 모두 닫습니다 (선생님이 원래 열어 둔 창은 그대로, 저장할지 묻는 창은 답을 기다림)">사이드바가 연 창 모두 닫기</button>
       </div>
       <div class="row">
+        <button id="record" class="fb rec" title="학생 화면(모니터 한 대면 이 화면)을 녹화합니다. 자료를 바꿀 때마다 목차를 남깁니다">● 녹화</button>
         <button id="folder" class="fb">수업 준비</button>
         <button id="quit" class="fb quiet">끝내기</button>
       </div>

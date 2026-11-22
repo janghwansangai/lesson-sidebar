@@ -127,3 +127,14 @@ body.collapsed{background:transparent}
 .preview{position:relative;margin:8px 0 0;border-radius:8px;overflow:hidden;border:1px solid var(--sb-line);background:#000}
 .preview img,.preview canvas{display:block;width:100%;height:auto;min-height:40px}
 .ptag{position:absolute;left:6px;bottom:6px;padding:2px 7px;border-radius:999px;background:rgba(20,30,27,.85);color:#f2cd5c;font-size:10.5px}
+/* 녹화 중 표시 (REC) */
+.recbar{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:8px 10px 0;padding:7px 10px;border-radius:8px;background:#5a1f1c;color:#ffe3de;font-size:12px}
+.recbar b{color:#ff8b80}
+.recbar #rec-time{font-variant-numeric:tabular-nums;font-weight:700}
+.recbar .rw{opacity:.8;font-size:11px}
+.dotrec{width:9px;height:9px;border-radius:50%;background:#ff5a4f;animation:recblink 1.2s ease-in-out infinite}
+@keyframes recblink{50%{opacity:.25}}
+.rbtn{margin-left:auto;border:1px solid rgba(255,227,222,.4);background:transparent;color:#ffe3de;font-size:11px;padding:3px 8px;border-radius:6px;cursor:pointer}
+.fb.rec{color:#ff8b80}
+.fb.rec[aria-pressed="true"]{border-color:#ff8b80;background:rgba(255,90,79,.12)}
+@media (prefers-reduced-motion: reduce){.dotrec{animation:none}}

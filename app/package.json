@@ -69,7 +69,8 @@
       "extendInfo": {
         "LSUIElement": true,
         "CFBundleDisplayName": "LessonSidebar",
-        "LSHasLocalizedDisplayName": true
+        "LSHasLocalizedDisplayName": true,
+        "NSMicrophoneUsageDescription": "수업을 녹화할 때 선생님 목소리를 함께 남기려고 마이크를 씁니다."
       },
       "extraResources": [
         {

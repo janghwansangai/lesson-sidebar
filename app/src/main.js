@@ -1,7 +1,7 @@
 // 수업 사이드바 체험판 — Electron 시작점 (맥·윈도우)
 // 사이드바 창(교사 화면 왼쪽)과 수업 준비 창을 띄우고, 수업 진행 로직(Session)·수업 편집(LessonDoc)과 잇는다.
 import { app, BrowserWindow, ipcMain, screen, dialog, shell, net, globalShortcut, desktopCapturer, systemPreferences } from 'electron';
-import { readFileSync, writeFileSync, mkdirSync, existsSync, statSync, cpSync, createReadStream, statfsSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, statSync, cpSync, createReadStream, statfsSync, openSync, writeSync, closeSync, renameSync, copyFileSync, unlinkSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import http from 'node:http';
 import { randomBytes } from 'node:crypto';
@@ -15,6 +15,8 @@ import { listLessons, suggestRoots, LIB_NAME } from './core/library.js';
 import { writeLock, clearLock, otherLock, deviceName } from './core/lock.js';
 import { exportBundle, inspectBundle, importBundle, findExisting, fmtBytes } from './core/bundle.js';
 import { precheck, checkLink, cloudOf } from './core/precheck.js';
+import { Chapters, clock } from './core/chapters.js';
+import { safeName } from './core/types.js';
 import * as L from './core/launcher.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -168,8 +170,8 @@ function createSidebar(){
   win.on('closed', () => { win = null; });
 }
 
-const fullState = () => ({ ...session.snapshot(), collapsed, trusted: session.trusted !== false, tools: { pointer: tools.pointer, spot: tools.spot, grab: grab?.mode ?? null, pins: pins.size }, cover: cover.mode, preview: previewOn && screenAccess() === 'granted', prefs: { ...prefs, steps: OPACITY_STEPS, asideAvailable: ASIDE_OK } });
-function push(){ win?.webContents.send('state', fullState()); syncDivider(); syncPreview(); }
+const fullState = () => ({ ...session.snapshot(), collapsed, trusted: session.trusted !== false, tools: { pointer: tools.pointer, spot: tools.spot, grab: grab?.mode ?? null, pins: pins.size }, cover: cover.mode, preview: previewOn && screenAccess() === 'granted', rec: rec ? { since: rec.startedAt, mic: !!rec.mic, stopping: !!rec.stopping, where: rec.where } : null, prefs: { ...prefs, steps: OPACITY_STEPS, asideAvailable: ASIDE_OK } });
+function push(){ noteChapter(); win?.webContents.send('state', fullState()); syncDivider(); syncPreview(); }
 
 // ---------- 나란히 보기 조절 바 ----------
 // 나란히 놓은 창의 경계에 가는 막대 창을 띄운다: 세로 경계(v) 하나 + 큰 화면+2·4분할이면 가로 경계(h) 하나.
@@ -476,6 +478,115 @@ function syncPreview(){
     } catch { /* 다음에 다시 */ } finally { busy = false; }
   }, 500);
 }
+
+// ---------- 화면 녹화 + 목차 (docs/PLAN.md 8) ----------
+// 녹화 창(보이지 않음)이 학생 화면(없으면 이 화면)을 MP4로 2초마다 조각내 보내고, 메인이 이 PC 임시 폴더에 바로 이어 쓴다.
+// 끝내면 수업 폴더 _녹화/로 옮기고 목차(.txt)를 함께 둔다. 앱이 갑자기 꺼지면 다음에 켤 때 임시 파일을 _녹화/로 옮긴다(복구).
+// 앞에 띄운 자료가 바뀔 때마다 목차에 남긴다. 남은 공간이 2GB 아래면 시작하지 않고, 녹화 중 1GB 아래로 내려가면 멈춘다.
+let rec = null;   // { fd, file, meta, recWin, startedAt, chapters, lastHi, spaceTimer, stopping }
+const recDir = () => path.join(app.getPath('userData'), 'recording');
+const freeAt = p => { try { const f = statfsSync(p); return f.bavail * f.bsize; } catch { return null; } };
+const stamp = (d = new Date()) => { const p2 = n => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}_${p2(d.getHours())}${p2(d.getMinutes())}`; };
+function recordTarget(){
+  const root = session.lesson?.root ?? null;
+  return { root, title: session.lesson?.title ?? '녹화' };
+}
+async function startRecording(){
+  if (rec) return stopRecording();
+  if (screenAccess() !== 'granted') return session.say(SCREEN_PERM, { act: 'screenSettings', label: '화면 기록 설정 열기' });
+  const { root, title } = recordTarget();
+  const free = freeAt(root ?? app.getPath('userData'));
+  if (free != null && free < 2 * 1024 ** 3) return session.say(`남은 공간이 ${fmtBytes(free)}뿐이라 녹화를 시작하지 않았습니다 (2GB 이상 필요 · 1시간에 약 1.5GB)`);
+  const d = studentElectronDisplay() ?? screen.getPrimaryDisplay();
+  const src = (await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 1, height: 1 } })).find(x => String(x.display_id) === String(d.id));
+  if (!src) return session.say('녹화할 화면을 찾지 못했습니다');
+  mkdirSync(recDir(), { recursive: true });
+  const name = `${stamp()}_${safeName(title, 40)}`;
+  const file = path.join(recDir(), `${name}.mp4`);
+  const meta = path.join(recDir(), `${name}.json`);
+  const startedAt = Date.now();
+  rec = { fd: openSync(file, 'w'), file, meta, name, root, title, startedAt, chapters: new Chapters(startedAt), lastHi: null, where: session.dual ? '학생 화면' : '이 화면' };
+  writeFileSync(meta, JSON.stringify({ root, title, name, chapters: rec.chapters }));
+  noteChapter();
+  rec.recWin = new BrowserWindow({ show: false, webPreferences: SECURE('recorder-preload.cjs') });
+  lockDown(rec.recWin);
+  await rec.recWin.loadFile(path.join(HERE, 'renderer', 'recorder.html'));
+  rec.recWin.webContents.send('rec:start', { sourceId: src.id, mic: prefs.recMic !== false, light: !!prefs.recLight });
+  rec.spaceTimer = setInterval(() => {
+    const f = freeAt(recDir());
+    if (f != null && f < 1024 ** 3){ session.say(`남은 공간이 ${fmtBytes(f)}라 녹화를 멈춥니다`); stopRecording(); }
+  }, 60000);
+  push();
+}
+/** 앞에 띄운 자료가 바뀌면 목차에 남긴다 (session 'change'마다 불림) */
+function noteChapter(){
+  if (!rec) return;
+  const id = session.highlight;
+  if (!id || id === rec.lastHi) return;
+  rec.lastHi = id;
+  rec.chapters.add(session.item(id)?.title, Date.now());
+  try { writeFileSync(rec.meta, JSON.stringify({ root: rec.root, title: rec.title, name: rec.name, chapters: rec.chapters })); } catch { /* 다음에 */ }
+}
+function stopRecording(){
+  if (!rec || rec.stopping) return;
+  rec.stopping = true;
+  clearInterval(rec.spaceTimer);
+  session.say('녹화를 마무리하는 중…');
+  rec.recWin?.webContents.send('rec:stop');
+  setTimeout(() => { if (rec?.stopping) finishRecording(); }, 8000);   // 녹화 창이 답하지 않아도 마무리
+}
+/** 임시 파일을 수업 폴더 _녹화/로 옮기고 목차를 쓴다. 복구할 때도 쓴다 */
+function moveRecording(file, meta, recovered = false){
+  let m = {};
+  try { m = JSON.parse(readFileSync(meta, 'utf8')); } catch { /* 목차 없이 */ }
+  const root = m.root && existsSync(m.root) ? m.root : app.getPath('desktop');
+  const dir = path.join(root, '_녹화');
+  mkdirSync(dir, { recursive: true });
+  const base = `${m.name ?? path.basename(file, '.mp4')}${recovered ? '_복구' : ''}`;
+  let dest = path.join(dir, `${base}.mp4`);
+  for (let i = 2; existsSync(dest); i++) dest = path.join(dir, `${base}_${i}.mp4`);
+  try { renameSync(file, dest); } catch { copyFileSync(file, dest); unlinkSync(file); }
+  const ch = Chapters.from(m.chapters);
+  if (ch.list.length) writeFileSync(dest.replace(/\.mp4$/, '_목차.txt'), ch.text(`${m.title ?? ''} 녹화 목차`));
+  try { unlinkSync(meta); } catch { /* 없음 */ }
+  return dest;
+}
+function finishRecording(){
+  if (!rec) return;
+  const r = rec; rec = null;
+  try { closeSync(r.fd); } catch { /* 이미 닫힘 */ }
+  r.recWin?.destroy();
+  let dest = null;
+  try { dest = statSync(r.file).size > 0 ? moveRecording(r.file, r.meta) : null; } catch (e){ session.say(`녹화 파일을 옮기지 못했습니다 (${e.message}) · ${r.file}`); }
+  if (!dest){ try { unlinkSync(r.file); unlinkSync(r.meta); } catch { /* 없음 */ } }
+  const len = clock(Date.now() - r.startedAt);
+  if (dest) session.say(`녹화를 저장했습니다 (${len} · ${fmtBytes(statSync(dest).size)}) · ${r.root ? '수업 폴더' : '바탕화면'} _녹화/${path.basename(dest)}${r.chapters.list.length ? ' · 목차 함께' : ''}`, { act: 'revealRec', id: dest, label: '녹화 폴더 열기' });
+  else session.say('녹화된 내용이 없어 저장하지 않았습니다');
+  push();
+}
+/** 앱이 갑자기 꺼져 남은 녹화를 다음에 켤 때 _녹화/로 옮긴다 */
+function recoverRecordings(){
+  let names = [];
+  try { names = readdirSync(recDir()).filter(n => n.endsWith('.mp4')); } catch { return; }
+  for (const n of names){
+    const file = path.join(recDir(), n), meta = file.replace(/\.mp4$/, '.json');
+    try {
+      if (statSync(file).size === 0){ unlinkSync(file); try { unlinkSync(meta); } catch {} continue; }
+      const dest = moveRecording(file, meta, true);
+      session.say(`지난번에 끝내지 못한 녹화를 복구했습니다 · _녹화/${path.basename(dest)}`);
+    } catch { /* 다음에 다시 */ }
+  }
+}
+const fromRec = e => rec?.recWin && !rec.recWin.isDestroyed() && e.sender === rec.recWin.webContents;
+ipcMain.on('rec:chunk', (e, buf) => { if (fromRec(e)) try { writeSync(rec.fd, Buffer.from(buf)); } catch { /* 디스크 문제 */ } });
+ipcMain.on('rec:started', (e, info) => {
+  if (!fromRec(e)) return;
+  rec.mic = !!info?.mic;
+  session.say(`녹화를 시작했습니다 · ${rec.where}${rec.mic ? ' + 마이크' : ''} · 학생 얼굴·목소리·이름이 담길 수 있으니 공유하기 전에 확인하세요`);
+  push();
+});
+ipcMain.on('rec:stopped', e => { if (fromRec(e)) finishRecording(); });
+ipcMain.on('rec:error', (e, msg) => { if (!fromRec(e)) return; session.say(`녹화하지 못했습니다: ${msg}`); if (rec){ rec.stopping = true; finishRecording(); } });
 
 const fromOverlay = e => [...overlays.values()].some(w => !w.isDestroyed() && w.webContents === e.sender);
 ipcMain.on('overlay:wheel', (e, dy) => {
@@ -876,6 +987,10 @@ const ACTIONS = {
   axSettings: () => shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility'),
   closeAll: () => session.closeAll(),
   openTo: v => session.setOpenTo(v),
+  record: () => startRecording(),
+  recMic: v => { prefs.recMic = v === true || v === 'true'; saveSettings({ recMic: prefs.recMic }); push(); },
+  recLight: v => { prefs.recLight = v === true || v === 'true'; saveSettings({ recLight: prefs.recLight }); push(); },
+  revealRec: v => { if (typeof v === 'string' && /_녹화[\\/]/.test(v) && existsSync(v)) shell.showItemInFolder(v); },
   freeze: () => setCover('freeze'),
   blank: () => setCover('blank'),
   preview: v => { previewOn = v === true || v === 'true'; syncPreview(); push(); },
@@ -986,7 +1101,7 @@ app.whenReady().then(async () => {
   await session.refreshDisplays();
 
   const settings = readSettings();
-  prefs = { opacity: OPACITY_STEPS.includes(settings.opacity) ? settings.opacity : 100, aside: ASIDE_OK && !!settings.aside };
+  prefs = { opacity: OPACITY_STEPS.includes(settings.opacity) ? settings.opacity : 100, aside: ASIDE_OK && !!settings.aside, recMic: settings.recMic !== false, recLight: !!settings.recLight };
   createSidebar();
   if (!(settings.lastFolder && existsSync(settings.lastFolder) && runLesson(settings.lastFolder))) runLesson(sampleLesson());
   if (settings.lastPrepFolder && existsSync(path.join(settings.lastPrepFolder, 'lesson.json'))){
@@ -1014,6 +1129,7 @@ app.whenReady().then(async () => {
   screen.on('display-removed', onDisplays);
   screen.on('display-metrics-changed', onDisplays);
 
+  recoverRecordings();
   setInterval(watchOutside, 3000);
   setInterval(heartbeat, 30000);
 
@@ -1025,6 +1141,7 @@ let restoringOnQuit = false;
 app.on('will-quit', () => globalShortcut.unregisterAll());
 app.on('before-quit', e => {
   clearInterval(asideTimer);
+  if (rec) finishRecording();   // 끝낼 때 녹화 중이면 그때까지 저장 (마지막 2초 조각은 빠질 수 있음)
   // 끝낼 때 옆으로 옮겼던 창을 먼저 돌려놓는다 (오래 걸려도 5초까지만 기다림)
   if (session?.aside?.length && !restoringOnQuit){
     e.preventDefault();
