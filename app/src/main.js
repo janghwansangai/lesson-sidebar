@@ -97,7 +97,8 @@ function makeHelper(){
     const dir = app.isPackaged ? path.join(process.resourcesPath, 'win-helper') : path.join(REPO, 'poc', 'win-helper');
     const script = path.join(dir, 'winctl.js');
     return {
-      helper: new Helper(process.execPath, { pre: [script], env: { ELECTRON_RUN_AS_NODE: '1' }, needs: [script, path.join(dir, 'node_modules', 'koffi')] }),
+      // 켜 둔 채로 명령을 받는다 ('serve' — 명령마다 node+koffi를 띄우면 70ms, 켜 두면 1ms 미만, docs/poc/windows.md)
+      helper: new Helper(process.execPath, { pre: [script], env: { ELECTRON_RUN_AS_NODE: '1' }, needs: [script, path.join(dir, 'node_modules', 'koffi')], serve: true }),
       where: script, fix: 'poc\\win-helper 폴더에서 npm install',
     };
   }

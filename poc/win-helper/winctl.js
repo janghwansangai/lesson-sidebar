@@ -7,6 +7,7 @@
 //   node winctl.js maximize <wid> | closetab <wid> <파일 이름> | findtab <wid> <파일 이름>   (윈도우에만 있는 추가 명령)
 //   node winctl.js watch          (계속 실행하며 바뀐 것만 한 줄씩 알림)
 //   node winctl.js clicks         (계속 실행하며 마우스를 누를 때마다 한 줄 — 포인터 강조의 클릭 물결)
+//   node winctl.js serve          (켜 둔 채로 표준 입력에서 ["raise","123"] 같은 줄을 받아 답을 한 줄씩)
 //
 // 출력: 표준 출력 마지막 줄에 JSON 하나. 실패하면 {"ok":false,"error":"…"} + 종료 코드 1.
 // 좌표: 물리 픽셀, 주 모니터 왼쪽 위가 (0, 0). 이 프로세스를 Per-Monitor DPI Aware V2로 설정해
@@ -540,62 +541,63 @@ async function clicks(){
   }
 }
 
-const args = process.argv.slice(2);
-const cmd = args[0];
-try {
-  switch (cmd){
-    case 'trusted':
-      emit({ ok: true, trusted: true });   // 윈도우는 창을 다루는 데 따로 권한이 필요 없다
-      break;
-    case 'displays':
-      emit({ ok: true, displays: displayList() });
-      break;
+/** 명령 하나를 실행해 답(JSON 객체)을 돌려준다. 실패는 Fail을 던진다 (한 번 실행·serve 둘 다 이것을 쓴다) */
+function runOnce(args){
+  switch (args[0]){
+    case 'trusted': return { ok: true, trusted: true };   // 윈도우는 창을 다루는 데 따로 권한이 필요 없다
+    case 'displays': return { ok: true, displays: displayList() };
     case 'list': {
       const i = args.indexOf('--app');
       const filter = i >= 0 ? args[i + 1] : undefined;
       const ds = displayList();
-      emit({ ok: true, windows: allWindows(filter).map(h => winJSON(h, ds)) });
-      break;
+      return { ok: true, windows: allWindows(filter).map(h => winJSON(h, ds)) };
     }
-    case 'front':
-      emit({ ok: true, front: frontInfo() });
-      break;
-    case 'raise':
-      emit(raise(findWin(args[1])));
-      break;
+    case 'front': return { ok: true, front: frontInfo() };
+    case 'raise': return raise(findWin(args[1]));
     case 'move': {
       const [x, y, w, h] = args.slice(2, 6).map(Number);
       if (args.length < 6 || [x, y, w, h].some(v => !Number.isFinite(v))) fail('사용법: winctl move <wid> <x> <y> <width> <height>');
-      emit(move(findWin(args[1]), { x: Math.round(x), y: Math.round(y), width: Math.round(w), height: Math.round(h) }));
-      break;
+      return move(findWin(args[1]), { x: Math.round(x), y: Math.round(y), width: Math.round(w), height: Math.round(h) });
     }
-    case 'minimize':
-      emit(minimize(findWin(args[1])));
-      break;
-    case 'close':
-      emit(close(findWin(args[1])));
-      break;
-    case 'maximize':
-      emit(maximize(findWin(args[1])));
-      break;
+    case 'minimize': return minimize(findWin(args[1]));
+    case 'close': return close(findWin(args[1]));
+    case 'maximize': return maximize(findWin(args[1]));
     case 'closetab':
       if (!args[2]) fail('사용법: winctl closetab <wid> <파일 이름>');
-      emit(closeTab(findWin(args[1]), args[2]));
-      break;
+      return closeTab(findWin(args[1]), args[2]);
     case 'findtab':
       if (!args[2]) fail('사용법: winctl findtab <wid> <파일 이름>');
-      emit(findTab(findWin(args[1]), args[2]));
-      break;
-    case 'watch':
-      await watch();
-      break;
-    case 'clicks':
-      await clicks();
-      break;
+      return findTab(findWin(args[1]), args[2]);
     default:
-      fail(cmd ? `모르는 명령: ${cmd}` : '사용법: winctl <trusted|displays|list|front|raise|move|minimize|close|maximize|closetab|findtab|watch|clicks> ...');
+      fail(args[0] ? `모르는 명령: ${args[0]}` : '사용법: winctl <trusted|displays|list|front|raise|move|minimize|close|maximize|closetab|findtab|watch|clicks|serve> ...');
   }
+}
+const errJSON = e => ({ ok: false, error: e instanceof Fail ? e.message : `도우미 내부 오류: ${e.message}` });
+
+async function serve(){
+  // 켜 둔 채로 명령을 한 줄씩 받는다 (규격 'serve'): 줄마다 인자 배열 JSON → 답 JSON 한 줄. 입력이 끝나면(앱이 꺼지면) 끝난다.
+  // 명령마다 node + koffi를 새로 띄우지 않아 빠르다. 계속 실행하는 명령(watch·clicks·serve)은 받지 않는다
+  const { createInterface } = await import('node:readline');
+  emit({ ok: true, serve: 1 });
+  let cacheAt = Date.now();
+  for await (const line of createInterface({ input: process.stdin })){
+    if (!line.trim()) continue;
+    let a;
+    try { a = JSON.parse(line); } catch { emit({ ok: false, error: '명령 줄을 읽지 못했습니다 (인자 배열 JSON이어야 함)' }); continue; }
+    if (!Array.isArray(a) || !a.length || ['watch', 'clicks', 'serve'].includes(a[0])){ emit({ ok: false, error: 'serve로 받을 수 없는 명령입니다' }); continue; }
+    // 프로세스 번호는 다시 쓰이므로, 오래 켜 두는 동안 실행 파일 기억을 1분마다 비운다
+    if (Date.now() - cacheAt > 60000){ exeCache.clear(); cacheAt = Date.now(); }
+    try { emit(runOnce(a.map(String))); } catch (e){ emit(errJSON(e)); }
+  }
+}
+
+const args = process.argv.slice(2);
+try {
+  if (args[0] === 'watch') await watch();
+  else if (args[0] === 'clicks') await clicks();
+  else if (args[0] === 'serve') await serve();
+  else emit(runOnce(args));
 } catch (e){
-  emit({ ok: false, error: e instanceof Fail ? e.message : `도우미 내부 오류: ${e.message}` });
+  emit(errJSON(e));
   process.exitCode = 1;
 }
