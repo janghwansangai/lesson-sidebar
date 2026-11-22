@@ -14,9 +14,11 @@
 ## 역할 나누기
 | | 맥의 Claude | 윈도우의 Claude |
 |---|---|---|
-| 맡는 코드 | 공통 코드, `poc/mac-helper/`, 맥 설치 파일 | `poc/win-helper/`, 윈도우 설치 파일, 윈도우 전용 수정 |
+| 맡는 코드 | 공통 코드, `poc/mac-helper/`, 맥 설치 파일 | `poc/win-helper/`, 윈도우 전용 수정 |
 | 직접 테스트 | 맥 + 외부 모니터 | 윈도우 + 프로젝터/외부 모니터 |
 | 기록 | `docs/poc/mac.md` | `docs/poc/windows.md` |
+
+윈도우 설치 파일은 GitHub의 윈도우 기계가 만든다 (Actions "윈도우 설치판 만들기" `release-win.yml` — 맥·윈도우 Claude 누구나 돌림, 선생님 결정 2026-11-23). 윈도우에서 직접 써 보는 확인은 계속 윈도우 Claude가 맡는다.
 
 공통 코드(`poc/lib/`, `poc/runner/` 등)에서 상대 OS 문제를 찾으면: 작은 수정은 자기 브랜치에서 고쳐 PR로 올리고, 큰 수정은 `HANDOFF.md`의 "넘길 일"에 적는다.
 
