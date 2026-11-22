@@ -1,8 +1,10 @@
 // 수업 진행 상태: 자료 ↔ 창 짝짓기, 열기·앞으로·학생 화면으로 보내기·나란히·닫기, 모니터 변화 처리.
 // 화면(Electron)과 떨어져 있어 가짜 도우미로 시험할 수 있다 (app/test/session.test.js).
 import { EventEmitter } from 'node:events';
+import path from 'node:path';
 import * as M from '../../../poc/lib/match.js';
 import * as L from './launcher.js';
+import { planAside } from './aside.js';
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const OPEN_TIMEOUT = 30000;
@@ -35,13 +37,17 @@ export class Session extends EventEmitter {
     this.sel = [];
     this.tile = null;
     this.msg = '';
+    this.offer = null;      // 안내 옆 단추 { act, id, wid, label } (메모장 탭 닫기)
+    this.aside = null;      // 사이드바를 고정할 때 옆으로 옮긴 창들 [{ wid, from, to, maximized }]
+    this.asideQueue = Promise.resolve();
     this.browser = launcher.pickBrowser();
     helper.on('front', f => this.onFront(f));
     helper.on('alive', s => this.onAlive(s));
   }
 
   // ---------- 상태 알리기 ----------
-  say(msg){ this.msg = msg; this.changed(); }
+  /** 안내 한 줄. offer를 주면 안내 옆에 단추가 붙는다 (다음 안내가 오면 사라짐). */
+  say(msg, offer = null){ this.msg = msg; this.offer = offer; this.changed(); }
   changed(){ this.emit('change', this.snapshot()); }
 
   load(lesson){
@@ -224,18 +230,100 @@ export class Session extends EventEmitter {
   async close(id){
     const it = this.item(id), st = this.state.get(id);
     if (!st?.wid) return;
-    const wid = st.wid, app = this.appFor(it), match = app?.match;
-    let w = await this.findWid(wid, match);
-    if (!w){ this.unlink(id); return this.say(`'${it.title}'을(를) 닫았습니다`); }
-    if (app?.tabbed && it.abs && (st.adopted || !M.titleMatches(w.title, M.stem(it.abs)))){
-      // 윈도우 11 메모장은 한 창에 여러 파일을 탭으로 연다. 창을 닫으면 다른 탭(선생님 파일)까지 닫히므로,
-      // 사이드바가 만든 창이고 지금 보이는 탭이 이 메모일 때만 닫는다 (docs/poc/windows.md 체험판 8)
-      this.unlink(id);
-      return this.say(`'${it.title}'은(는) 다른 파일과 같은 ${app.label} 창에 탭으로 열려 있어, 다른 탭까지 닫히지 않도록 창을 닫지 않았습니다. ${app.label}에서 이 탭만 닫아 주세요`);
+    const app = this.launcher.APPS[this.launcher.appKeyFor(it)];
+    if (app?.tabbed && it.abs){
+      // 윈도우 11 메모장은 한 창에 여러 파일을 탭으로 연다 (켤 때 지난번 탭도 되살린다). 창을 닫으면 다른 탭(선생님 파일)까지
+      // 닫히므로 창은 닫지 않고 이 메모 탭만 닫는다 (도우미 closetab, docs/poc/windows.md 체험판 8·14·15).
+      // 사이드바가 연 창이면 바로 닫고, 열기 전부터 있던 창(선생님 메모장)이나 다시 켰을 때 연결한 창이면
+      // 같은 이름의 다른 파일일 수도 있으므로 안내와 함께 단추를 보여 선생님이 누를 때 닫는다.
+      const cur = (await this.list()).find(w => w.wid === st.wid);
+      if (cur){
+        if (!st.adopted) return this.closeTab(id);
+        const wid = st.wid;
+        this.unlink(id);
+        return this.say(`'${it.title}'은(는) 다른 파일과 같은 ${app.label} 창에 탭으로 열려 있어 창을 닫지 않았습니다. 이 탭만 닫으려면 아래 단추를 누르세요`,
+          { act: 'closeTab', id, wid, label: '사이드바에서 이 탭만 닫기' });
+      }
     }
+    return this.closeWindow(id);
+  }
+
+  /**
+   * 탭을 쓰는 메모장에서 이 메모 탭만 닫는다 (윈도우 도우미 closetab — 다른 탭은 건드리지 않음).
+   * 연결된 창이 없으면 close()가 보여 준 안내 단추(offer)의 창 번호를 쓴다.
+   */
+  async closeTab(id){
+    const it = this.item(id), st = this.state.get(id);
+    const app = it && this.launcher.APPS[this.launcher.appKeyFor(it)];
+    if (!st || !it?.abs || !app?.tabbed) return;
+    const offered = this.offer?.act === 'closeTab' && this.offer.id === id ? this.offer.wid : null;
+    const wid = st.wid ?? offered;
+    if (!wid) return;
+    const name = path.basename(it.abs), label = app.label;
+    const again = { act: 'closeTab', id, wid, label: '사이드바에서 이 탭만 닫기' };
+    const drop = () => { if (st.wid === wid) this.unlink(id); };
+    this.offer = null;
+    let r;
+    try { r = await this.helper.call('closetab', wid, name); }
+    catch (e){ drop(); return this.say(`'${it.title}' 탭을 닫지 못했습니다 (${e.message}). ${label}에서 직접 닫아 주세요`); }
+    if (r.tabs === false){
+      // 탭이 없는 메모장(윈도우 10 등): 창 하나에 파일 하나이므로, 창 제목이 이 메모면 창을 닫는다
+      if (!r.found){ drop(); return this.say(`${label} 창에 '${it.title}'이(가) 보이지 않아 닫지 않았습니다`); }
+      Object.assign(st, { wid, status: 'open', linkedAt: Date.now(), adopted: false });
+      return this.closeWindow(id);
+    }
+    if (r.closed){
+      drop();
+      return this.say(`'${it.title}' 탭을 닫았습니다${r.windowClosed ? '' : ` (${label}의 다른 탭은 그대로)`}`);
+    }
+    if (r.found && r.waiting){
+      // 저장하지 않은 글이 있어 메모장이 저장할지 묻는다 → "답 기다림"
+      Object.assign(st, { wid, status: 'blocked', linkedAt: Date.now(), adopted: true });
+      this.highlight = id;
+      this.say(`'${it.title}' 탭을 닫기 전에 ${label}이(가) 저장할지 묻고 있습니다. ${label}에서 답해 주세요`);
+      this.followTab(id, wid, name);
+      return;
+    }
+    if (r.waiting){ drop(); return this.say(`${label}이(가) 다른 확인 창을 띄우고 있어 아무 탭도 닫지 않았습니다. 그 창에서 답한 뒤 다시 눌러 주세요`, again); }
+    drop();
+    if (r.count > 1) return this.say(`${label}에 '${name}' 탭이 ${r.count}개 있어 어느 것인지 알 수 없어 닫지 않았습니다. ${label}에서 직접 닫아 주세요`);
+    if (!r.found) return this.say(`${label}에서 '${it.title}' 탭을 찾지 못했습니다 (이미 닫혔을 수 있습니다)`);
+    return this.say(`'${it.title}' 탭을 닫지 못했습니다 (${label}이(가) 맨 앞에 오지 않았을 수 있습니다). 다시 누르거나 ${label}에서 직접 닫아 주세요`, again);
+  }
+
+  /**
+   * 저장 여부에 답할 때까지 지켜본다 (최대 약 1분 반, 1.5초마다 창 목록만 — 계속 도는 감시는 아님).
+   * 보이는 탭이 바뀌거나 창이 닫히면 한 번만 탭이 남았는지 확인한다.
+   */
+  async followTab(id, wid, name){
+    const it = this.item(id), st = this.state.get(id);
+    const still = () => this.state.get(id) === st && st.wid === wid && st.status === 'blocked';
+    const shows = t => { const s = String(t ?? '').replace(/^[*•●]\s*/, ''); return s === name || s.startsWith(`${name} - `); };
+    for (let i = 0; i < 60; i++){
+      await sleep(1500);
+      if (!still()) return;
+      let w;
+      try { w = (await this.list()).find(x => x.wid === wid); } catch { continue; }
+      if (w && shows(w.title)) continue;   // 아직 묻는 중이거나, 취소하고 그 탭을 보고 있음
+      let r = null;
+      if (w){ try { r = await this.helper.call('findtab', wid, name); } catch { /* 아래 */ } }
+      if (!still()) return;
+      if (r?.dialog) continue;
+      this.unlink(id);
+      if (!w || r?.count === 0) return this.say(`'${it.title}' 탭을 닫았습니다`);
+      return this.say(`'${it.title}' 탭은 닫지 않고 그대로 두었습니다 (취소). 닫으려면 아래 단추를 누르세요`, { act: 'closeTab', id, wid, label: '사이드바에서 이 탭만 닫기' });
+    }
+  }
+
+  /** 창 닫기 (정상 종료 요청). 저장 여부 등을 물으면 "답 기다림". */
+  async closeWindow(id){
+    const it = this.item(id), st = this.state.get(id);
+    if (!st?.wid) return;
+    const wid = st.wid, match = this.appFor(it)?.match;
+    let w = await this.findWid(wid, match);
     // 이미 답을 기다리는 창(저장 여부·로그인 등)이 있으면 닫기 요청을 또 보내지 않는다.
-    // 맥 한글은 저장 창이 하나 더 생기고, 그 창은 문서가 닫힌 뒤에도 남아 다른 한글 창까지 막는다 (docs/poc/mac.md 25)
-    if (!w.waiting){
+    // 맥 한글은 저장 창이 하나 더 생기고, 그 창은 문서가 닫힌 뒤에도 남아 다른 한글 창까지 막는다 (docs/poc/mac.md 29)
+    if (w && !w.waiting){
       try { await this.helper.call('close', wid); } catch { /* 아래에서 남았는지 본다 */ }
       // 도우미가 창마다 waiting을 알려 주면 뜨는 즉시 알리고, 그때까지 closeWait만큼 기다린다 (저장 창은 2.5초 넘게 걸려 뜨기도 한다).
       // waiting을 모르는 도우미면 예전처럼 2.4초 뒤 판단한다
@@ -381,6 +469,49 @@ export class Session extends EventEmitter {
     return n;
   }
 
+  // ---------- 사이드바를 고정할 때 가려지는 창 비키기 (설정, 윈도우) ----------
+  // 고정으로 펼치는 순간 한 번 옮기고, 고정을 풀거나(자동 숨김) 설정을 끄거나 끝낼 때 한 번 돌려놓는다. 계속 지켜보지 않는다.
+  // 선생님이 원래 열어 둔 창도 옮긴다 (선생님 결정, 2026-11-22). 순서가 섞이지 않게 하나씩 한다.
+  aside_(fn){ const p = this.asideQueue.then(fn, fn); this.asideQueue = p.catch(() => {}); return p; }
+
+  /** 교사 화면에서 사이드바에 가려지는 창을 사이드바 오른쪽으로 옮긴다. 옮긴 창 수. */
+  stepAside(){
+    return this.aside_(async () => {
+      if (this.aside || !this.teacher) return 0;
+      const span = Math.round(this.sidebarWidth * (this.physicalPixels ? (this.teacher.scale ?? 1) : 1));
+      const plan = planAside(await this.list(), this.teacher, span, { ownPid: this.ownPid, displays: this.displays });
+      const moved = [];
+      for (const p of plan){
+        try { moved.push({ ...p, to: (await this.moveWid(p.wid, p.to)) ?? p.to }); }
+        catch { /* 옮길 수 없는 창(관리자 권한 등)은 그대로 */ }
+      }
+      this.aside = moved;
+      return moved.length;
+    });
+  }
+
+  /** stepAside로 옮긴 창을 원래 자리·크기로 (최대화였으면 다시 최대화). 그사이 선생님이 옮기거나 최소화한 창은 그대로 둔다. */
+  restoreAside(){
+    return this.aside_(async () => {
+      const moved = this.aside ?? [];
+      this.aside = null;
+      if (!moved.length) return 0;
+      let wins;
+      try { wins = await this.list(); } catch { return 0; }
+      let n = 0;
+      for (const m of moved){
+        const w = wins.find(x => x.wid === m.wid);
+        if (!w || w.minimized || w.maximized || !M.rectClose(w, m.to, 24)) continue;
+        try {
+          if (m.maximized) await this.helper.call('maximize', m.wid);
+          else await this.moveWid(m.wid, m.from);
+          n++;
+        } catch { /* 계속 */ }
+      }
+      return n;
+    });
+  }
+
   setOpenTo(v){
     this.openTo = v === 'teacher' ? 'teacher' : 'student';
     this.say(this.openTo === 'teacher' ? '새로 여는 자료를 교사 화면에서 먼저 엽니다 · 확인한 뒤 ⇄로 학생 화면에 보내세요' : '새로 여는 자료를 학생 화면에 바로 띄웁니다');
@@ -449,6 +580,7 @@ export class Session extends EventEmitter {
       highlight: this.highlight, sel: this.sel, tile: this.tile ? { ids: this.tile.ids } : null,
       dual: this.dual, studentName: this.student?.name ?? null, teacherName: this.teacher?.name ?? null,
       openTo: this.openTo, autoHide: this.autoHide, msg: this.msg,
+      offer: this.offer ? { act: this.offer.act, id: this.offer.id, label: this.offer.label } : null,
     };
   }
 }

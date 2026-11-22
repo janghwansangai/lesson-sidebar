@@ -206,7 +206,13 @@ func winJSON(_ w: Win, _ displays: [[String: Any]]) -> [String: Any] {
     d["bundle"] = w.bundle
     d["title"] = str(w.el, kAXTitleAttribute) ?? ""
     d["minimized"] = bool(w.el, kAXMinimizedAttribute) ?? false
-    d["fullscreen"] = bool(w.el, "AXFullScreen") ?? false
+    // 맥 전체 화면(초록 단추)뿐 아니라, 파워포인트 슬라이드 쇼처럼 메뉴 막대까지 화면 전체를 덮는 창도 전체 화면으로 본다
+    // (윈도우 도우미와 같은 기준. 사이드바의 "창 비키기"가 슬라이드 쇼를 옮기지 않게)
+    let coversDisplay = displays.contains { d in
+        let x = d["x"] as! Double, y = d["y"] as! Double, dw = d["width"] as! Double, dh = d["height"] as! Double
+        return Double(f.minX) <= x + 1 && Double(f.minY) <= y + 1 && Double(f.maxX) >= x + dw - 1 && Double(f.maxY) >= y + dh - 1
+    }
+    d["fullscreen"] = (bool(w.el, "AXFullScreen") ?? false) || coversDisplay
     d["display"] = displayIndex(of: f, in: displays)
     d["waiting"] = waitingFor(w)
     return d
