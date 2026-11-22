@@ -58,6 +58,8 @@ function renderDoc(d){
   $('#lockbar').hidden = !d.lockedBy;
   if (d.lockedBy) $('#lockbar').innerHTML = `<b>${esc(d.lockedBy)}</b>에서도 이 수업을 열고 있습니다. 동시에 고치면 내용이 부딪힐 수 있으니 한쪽에서만 고쳐 주세요.`;
 
+  renderChecks(S.check);
+
   if (!d.sections.some(s => s.id === addSec)) addSec = d.sections[1]?.id ?? d.sections[0]?.id ?? null;
   $('#add-sec').innerHTML = d.sections.map(s => `<option value="${esc(s.id)}"${s.id === addSec ? ' selected' : ''}>${esc(s.title)}</option>`).join('');
 
@@ -70,6 +72,18 @@ function renderDoc(d){
       <span class="cnt">${s.items.length}개</span>
       ${s.items.length ? '' : '<button class="x" data-do="del-sec" title="구간 지우기" aria-label="구간 지우기" type="button">✕</button>'}</div>
     ${s.items.map(it => row(it, open.has(it.id))).join('') || '<div class="empty-sec">자료를 여기로 끌어다 놓으세요</div>'}</div>`).join('');
+}
+
+const CK = { ok: '정상', warn: '주의', bad: '문제' };
+function renderChecks(c){
+  $('#checks').hidden = !c;
+  if (!c) return;
+  const t = new Date(c.at).toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' });
+  $('#ck-sum').textContent = `${c.summary} · ${t}`;
+  // 문제 → 주의 → 정상 순서로 (같은 단계 안에서는 수업 순서)
+  const order = { bad: 0, warn: 1, ok: 2 };
+  const rows = c.rows.map((r, i) => ({ ...r, i })).sort((a, b) => order[a.level] - order[b.level] || a.i - b.i);
+  $('#ck-list').innerHTML = rows.map(r => `<li class="ck ${r.level}"><span class="st">${CK[r.level]}</span><span class="ck-t"><b>${esc(r.title)}</b><span>${esc(r.detail)}</span></span></li>`).join('');
 }
 
 function row(it, isOpen){
@@ -161,6 +175,9 @@ $('#run').addEventListener('click', () => api.act('run'));
 $('#tidy').addEventListener('click', () => api.act('tidy'));
 $('#reveal').addEventListener('click', () => api.act('reveal'));
 $('#export').addEventListener('click', () => api.act('exportBundle'));
+$('#check').addEventListener('click', () => api.act('precheck'));
+$('#ck-again').addEventListener('click', () => api.act('precheck'));
+$('#ck-close').addEventListener('click', () => api.act('closeCheck'));
 $('#import').addEventListener('click', () => api.act('importBundle'));
 
 // ---------- 자료 넣기 ----------

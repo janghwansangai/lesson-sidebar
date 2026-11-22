@@ -73,6 +73,7 @@ npm start
 | 다른 PC와 함께 | 다른 PC에서 고친 내용은 3초 안에 불러옴, 다른 PC가 열고 있으면 경고 |
 | 꾸러미로 내보내기 | 위쪽 버튼 → 먼저 정리하기 → `날짜_제목.zip` 하나로 저장 (USB·메일·동료에게). 잠금·백업·임시 파일·실행 파일은 빼고, 파일 확인값(`.sidebar/manifest.json`)을 넣음. 구글 문서·캔바 링크는 받는 분 권한이 필요하다고 알려 줌 |
 | 꾸러미 가져오기 | 왼쪽 아래 버튼 → zip 고르기 → 보관함에 풀고 바로 열림. 같은 수업이 있으면 사본 / 덮어쓰기(예전 것은 보관함의 `.sidebar/덮어쓰기 전`) / 취소. 위험한 경로·너무 큰 zip은 거절, 실행 파일은 빼고, 손상된 파일은 알려 줌. 드라이브 웹·윈도우 탐색기로 묶은 zip도 됨 |
+| 사전 점검 | 위쪽 "사전 점검" → 자료마다 파일(클라우드면 이때 이 PC로 받아 둠)·여는 프로그램·링크(로그인 없이 열리는지, 유튜브 공개 여부), 이 PC의 인터넷·브라우저·모니터·창 제어 권한·저장 공간·다른 PC를 확인. 문제 → 주의 → 정상 순서로 보여 줌. 꾸러미를 가져오면 자동으로 한 번 |
 | 저장 | 저장 버튼 없음. 바꿀 때마다 바로 저장. 글자 칸은 치다 1.2초 멈추면 · Enter나 다른 곳을 누르면 · 다른 창으로 가면 · 창을 닫거나 끝내면 저장. 백업(`.sidebar/backup`)은 1분에 하나, 최근 10개 (다른 PC에서 바뀐 파일을 덮을 때는 먼저 백업) |
 
 ## 할 수 있는 것 (사이드바)
@@ -98,6 +99,7 @@ src/preload.cjs        화면에 열어 주는 기능 (state, act, onState)
 src/core/session.js    수업 진행 로직 — 화면 없이 시험 가능 (test/session.test.js)
 src/core/aside.js      사이드바 고정 시 옆으로 비킬 창 계산 (test/aside.test.js)
 src/core/bundle.js     수업 꾸러미(.zip) 내보내기·가져오기, 경로·크기·손상 검사 (test/bundle.test.js)
+src/core/precheck.js   사전 점검: 자료·프로그램·링크·PC 상태 판단 (test/precheck.test.js)
 src/core/editor.js     수업 편집 (자료 복사·순서·정리하기·저장/백업) (test/editor.test.js)
 src/core/library.js    수업 보관함 목록, 보관함 위치 추천
 src/core/lock.js       PC마다 잠금 파일 (.sidebar/locks/)

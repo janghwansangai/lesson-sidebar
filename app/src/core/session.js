@@ -9,14 +9,17 @@ import { planAside } from './aside.js';
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const OPEN_TIMEOUT = 30000;
 const ALIVE_GRACE = 4000;   // 막 연결한 창은 잠시 "사라짐" 판단에서 뺀다 (목록이 늦게 도착할 수 있어서)
+// 닫기 요청 뒤 저장 여부를 묻는 창이 뜰 때까지 기다리는 시간. 윈도우 엑셀은 2.5초 넘게 걸렸다 (docs/poc/windows.md 12)
+const CLOSE_WAIT = 6000;
 
 export class Session extends EventEmitter {
   /**
    * sidebarWidth는 Electron 화면 단위(맥 포인트, 윈도우 DIP). physicalPixels: 도우미가 물리 픽셀을 쓰면 true (윈도우) —
    * 사이드바 폭에 교사 화면 배율을 곱해 도우미 단위로 바꾼다.
    */
-  constructor({ helper, files, ownPid, launcher = L, sidebarWidth = 280, physicalPixels = false }){
+  constructor({ helper, files, ownPid, launcher = L, sidebarWidth = 280, physicalPixels = false, closeWait = CLOSE_WAIT }){
     super();
+    this.closeWait = closeWait;
     this.helper = helper;
     this.files = files;
     this.ownPid = ownPid;
@@ -68,6 +71,11 @@ export class Session extends EventEmitter {
     this.changed();
   }
   item(id){ return this.lesson?.items.find(i => i.id === id) ?? null; }
+  /** 자료를 여는 프로그램 (브라우저면 고른 브라우저). */
+  appFor(it){
+    const key = this.launcher.appKeyFor(it);
+    return key === 'browser' ? this.browser : this.launcher.APPS[key];
+  }
 
   // ---------- 화면 ----------
   async refreshDisplays(){
@@ -105,11 +113,17 @@ export class Session extends EventEmitter {
     const res = await this.helper.call('move', wid, ...[r.x, r.y, r.width, r.height].map(v => Math.round(v)));
     return res.actual;
   }
-  /** 'ok' | 'notfront'(창은 있는데 맨 앞이 안 됨) | 'gone'(창이 없음) */
-  async raiseWid(wid){
-    try { return (await this.helper.call('raise', wid)).ok ? 'ok' : 'notfront'; }
-    catch { return 'gone'; }
+  /**
+   * state: 'ok' | 'notfront'(창은 있는데 맨 앞이 안 됨) | 'gone'(창이 없음)
+   * waiting: 답을 기다리는 창 {wid, title} 또는 null. 도우미가 알려 주지 않으면 undefined.
+   */
+  async raiseInfo(wid){
+    try { const r = await this.helper.call('raise', wid); return { state: r.ok ? 'ok' : 'notfront', waiting: r.detail?.waiting }; }
+    catch { return { state: 'gone' }; }
   }
+  async raiseWid(wid){ return (await this.raiseInfo(wid)).state; }
+  /** 목록에서 창 하나 (없으면 null). 규격의 waiting(답을 기다리는 창)을 함께 본다. */
+  async findWid(wid, match){ return (await this.list(match)).find(w => w.wid === wid) ?? null; }
   async place(id, where){
     const st = this.state.get(id);
     if (!st?.wid) return;
@@ -130,7 +144,7 @@ export class Session extends EventEmitter {
     if (!it || !st) return;
     if (it.problem) return this.say(`'${it.title}': ${it.problem}`);
     const key = this.launcher.appKeyFor(it);
-    const app = key === 'browser' ? this.browser : this.launcher.APPS[key];
+    const app = this.appFor(it);
     if (!app) return this.say('자료를 열 브라우저가 없습니다 (크롬·엣지·웨일 중 하나가 필요합니다)');
 
     st.status = 'opening'; st.note = ''; this.changed();
@@ -177,13 +191,16 @@ export class Session extends EventEmitter {
 
   async raise(id){
     const it = this.item(id), st = this.state.get(id);
-    const r = await this.raiseWid(st.wid);
+    const { state: r, waiting } = await this.raiseInfo(st.wid);
     if (r === 'gone'){
       st.status = 'closed'; st.wid = null; st.disp = null;
       this.say(`'${it.title}' 창이 닫혀 있어 다시 엽니다`);
       return this.open(id);
     }
     this.highlight = id;
+    // 도우미가 답을 기다리는 창을 알려 주면 그대로 따른다 (선생님이 "취소"로 답했으면 다시 열림으로)
+    if (waiting) st.status = 'blocked';
+    else if (waiting === null && st.status === 'blocked') st.status = 'open';
     if (st.status === 'blocked') this.say(`'${it.title}': 프로그램이 답을 기다리는 창을 띄웠습니다. 그 창에서 답해 주세요`);
     else if (r === 'notfront') this.say(`'${it.title}'을(를) 맨 앞으로 가져오지 못했습니다 (프로그램이 다른 창을 띄웠을 수 있음)`);
     else this.say(`'${it.title}'을(를) 앞으로 가져왔습니다`);
@@ -302,30 +319,36 @@ export class Session extends EventEmitter {
   async closeWindow(id){
     const it = this.item(id), st = this.state.get(id);
     if (!st?.wid) return;
-    try { await this.helper.call('close', st.wid); } catch { /* 아래에서 남았는지 본다 */ }
-    // 윈도우 도우미는 창마다 waiting(답을 기다리는 저장·확인 창)을 알려 준다 → 뜨는 즉시 알리고, 그동안은 조금 더 기다린다
-    // (저장 창은 2.5초 넘게 걸려 뜨기도 한다). 맥 도우미는 이 정보가 없어 전처럼 2.4초 뒤 판단한다
-    let waiting = null, knows = false;
-    for (let i = 0; i < 16; i++){
-      await sleep(300);
-      const me = (await this.list()).find(w => w.wid === st.wid);
-      if (!me){
-        this.unlink(id);
-        return this.say(`'${it.title}'을(를) 닫았습니다`);
-      }
-      if ('waiting' in me) knows = true;
-      if (me.waiting){ waiting = me.waiting; break; }
-      if (!knows && i >= 7) break;
-      // 윈도우 엑셀은 뒤에 있는 동안 저장 창을 띄우지 않는다 (8초 넘게 기다려도 안 뜸, 앞으로 가져오면 0.2초).
-      // 1초쯤 지나도 창이 남아 있으면 앞으로 가져와 프로그램이 묻게 한다
-      if (knows && i === 2) await this.raiseWid(st.wid);
+    const wid = st.wid, match = this.appFor(it)?.match;
+    let w = await this.findWid(wid, match);
+    // 이미 답을 기다리는 창(저장 여부·로그인 등)이 있으면 닫기 요청을 또 보내지 않는다.
+    // 맥 한글은 저장 창이 하나 더 생기고, 그 창은 문서가 닫힌 뒤에도 남아 다른 한글 창까지 막는다 (docs/poc/mac.md 29)
+    if (w && !w.waiting){
+      try { await this.helper.call('close', wid); } catch { /* 아래에서 남았는지 본다 */ }
+      // 도우미가 창마다 waiting을 알려 주면 뜨는 즉시 알리고, 그때까지 closeWait만큼 기다린다 (저장 창은 2.5초 넘게 걸려 뜨기도 한다).
+      // waiting을 모르는 도우미면 예전처럼 2.4초 뒤 판단한다
+      const knows = 'waiting' in w;
+      const limit = knows ? this.closeWait : 2400;
+      const t0 = Date.now();
+      let raised = false, told = false;
+      do {
+        await sleep(300);
+        w = await this.findWid(wid, match);
+        if (!w || w.waiting) break;
+        // 윈도우 엑셀은 뒤에 있는 동안 저장 창을 띄우지 않는다 (8초 넘게 기다려도 안 뜸, 앞으로 가져오면 0.2초, docs/poc/windows.md).
+        // 1초쯤 지나도 창이 남아 있으면 앞으로 가져와 프로그램이 묻게 한다
+        if (knows && !raised && Date.now() - t0 > 900){ raised = true; await this.raiseWid(wid); }
+        if (!told && Date.now() - t0 > 1500){ told = true; this.say(`'${it.title}'을(를) 닫는 중입니다…`); }
+      } while (Date.now() - t0 < limit);
     }
-    // 저장 여부·로그인 같은 확인 창이 떠 있으면 닫기 요청이 무시된다 → 그 창을 보여 주고 선생님이 답하게
+    if (!w){ this.unlink(id); return this.say(`'${it.title}'을(를) 닫았습니다`); }
+    // 저장 여부·로그인 같은 확인 창이 떠 있으면 닫기 요청이 무시된다 → 그 창을 앞으로 가져와 선생님이 답하게.
+    // 바탕 창을 앞으로 가져오면 도우미가 그 창(시트·대화상자)도 함께 앞으로 가져온다 (윈도우·맥 모두 확인)
     st.status = 'blocked';
-    await this.raiseWid(st.wid);
+    await this.raiseWid(wid);
     this.highlight = id;
-    this.say(waiting
-      ? `'${it.title}'이(가) 닫기 전에 답을 기다립니다 (저장 여부 등). 앞으로 가져온 창에서 답해 주세요`
+    this.say(w.waiting
+      ? `'${it.title}': 프로그램이 답을 기다리는 창(저장 여부 등)을 띄웠습니다. 그 창에서 답해 주세요`
       : `'${it.title}'이(가) 닫히지 않았습니다. 프로그램이 답을 기다리는 창(저장 여부 등)을 띄웠는지 확인해 주세요`);
   }
 
@@ -507,15 +530,18 @@ export class Session extends EventEmitter {
 
   onAlive(alive){
     let changed = false;
+    const answered = [];   // 답을 기다리던 창에서 선생님이 답해 닫힌 자료
     const now = Date.now();
     for (const [id, st] of this.state){
       if (st.wid && st.status !== 'opening' && now - st.linkedAt > ALIVE_GRACE && !alive.has(st.wid)){
+        if (st.status === 'blocked') answered.push(this.item(id)?.title);
         st.status = 'closed'; st.wid = null; st.disp = null; changed = true;
         if (this.highlight === id) this.highlight = null;
         if (this.tile?.ids.includes(id)) this.tile = null;
       }
     }
-    if (changed) this.changed();
+    if (answered.length) this.say(`${answered.map(t => `'${t}'`).join(', ')}을(를) 닫았습니다`);
+    else if (changed) this.changed();
   }
 
   /** 모니터를 꽂거나 뺐을 때. */

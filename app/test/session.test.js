@@ -13,11 +13,17 @@ const STUDENT = { index: 1, primary: false, builtin: false, x: -1280, y: 182, wi
 
 /**
  * 창 목록을 흉내 내는 도우미. 프로그램을 "열면" 창 하나가 생긴다.
+ * 저장 안 된 문서(ask): 닫기 요청을 받으면 목록을 n번 더 읽은 뒤에야 저장 창(waiting)이 뜬다 — 저장 창이 늦게 뜨는 것을 흉내.
+ * 저장 창이 떠 있는 동안 닫기 요청을 또 받으면 저장 창이 하나 더 생긴다 (맥 한글처럼).
  * 탭 메모장 흉내: 창에 tabs(파일 이름들)가 있으면 제목은 보이는 탭(tabs[0])이고, closetab이 그 이름의 탭만 뺀다.
  * dirty에 든 탭은 닫을 때 저장 여부를 묻는다(waiting). notepadTabs=false면 탭 없는 메모장(윈도우 10).
  */
 class FakeHelper extends EventEmitter {
-  constructor(displays){ super(); this.displays = displays; this.wins = []; this.next = 100; this.minW = {}; this.stuck = new Set(); this.dirty = new Set(); this.notepadTabs = true; this.calls = []; }
+  constructor(displays){
+    super(); this.displays = displays; this.wins = []; this.next = 100; this.minW = {}; this.stuck = new Set();
+    this.ask = new Map(); this.pending = new Map(); this.waiting = new Map(); this.dialogs = 0; this.lists = 0; this.closes = []; this.raises = [];
+    this.dirty = new Set(); this.notepadTabs = true; this.calls = [];
+  }
   spawn(app, title){ const w = { wid: this.next++, app, title, x: 100, y: 100, width: 800, height: 600 }; this.wins.push(w); return w; }
   tabsOf(w){ return w.tabs ?? [w.title.replace(/ - 메모장$/, '')]; }
   closeTab(w, name){
@@ -41,15 +47,30 @@ class FakeHelper extends EventEmitter {
       }
       case 'maximize': { const w = this.wins.find(x => x.wid === Number(a[0])); w.maximized = true; return { ok: true }; }
       case 'displays': return { ok: true, displays: this.displays };
-      case 'list': { const i = a.indexOf('--app'); const f = i >= 0 ? a[i + 1] : null; return { ok: true, windows: this.wins.filter(w => !f || w.app.includes(f)) }; }
-      case 'raise': { const w = this.wins.find(x => x.wid === Number(a[0])); if (!w) throw new Error('없음'); return { ok: true }; }
+      case 'list': {
+        this.lists++;
+        for (const [wid, at] of this.pending) if (this.lists >= at){ this.pending.delete(wid); this.waiting.set(wid, { wid: 900 + this.dialogs++, title: '저장' }); }
+        const i = a.indexOf('--app'); const f = i >= 0 ? a[i + 1] : null;
+        return { ok: true, windows: this.wins.filter(w => !f || w.app.includes(f)).map(w => ({ ...w, waiting: this.waiting.get(w.wid) ?? w.waiting ?? null })) };
+      }
+      case 'raise': {
+        const w = this.wins.find(x => x.wid === Number(a[0])); if (!w) throw new Error('없음');
+        this.raises.push(w.wid);
+        return { ok: true, detail: { waiting: this.waiting.get(w.wid) ?? w.waiting ?? null } };
+      }
       case 'move': {
         const w = this.wins.find(x => x.wid === Number(a[0])); const [x, y, width, height] = a.slice(1).map(Number);
         Object.assign(w, { x, y, width: Math.max(width, this.minW[w.app] ?? 0), height, maximized: false });
         return { ok: true, actual: { x: w.x, y: w.y, width: w.width, height: w.height } };
       }
       case 'minimize': return { ok: true };
-      case 'close': { const id = Number(a[0]); if (!this.stuck.has(id)) this.wins = this.wins.filter(x => x.wid !== id); return { ok: true }; }
+      case 'close': {
+        const id = Number(a[0]); this.closes.push(id);
+        if (this.waiting.has(id)){ this.dialogs++; return { ok: true }; }   // 저장 창이 하나 더 생김
+        if (this.ask.has(id)){ this.pending.set(id, this.lists + this.ask.get(id)); this.ask.delete(id); return { ok: true }; }
+        if (!this.stuck.has(id)) this.wins = this.wins.filter(x => x.wid !== id);
+        return { ok: true };
+      }
     }
     throw new Error(cmd);
   }
@@ -72,7 +93,8 @@ function makeLesson(){
   return loadLesson(dir);
 }
 
-function makeSession(displays = [TEACHER, STUDENT], opts = {}){
+/** realCloseWait: 닫기 뒤 저장 창을 기다리는 시간을 실제 값(6초)으로. 아니면 시험이 빨리 끝나게 1.2초. */
+function makeSession(displays = [TEACHER, STUDENT], { realCloseWait = false, ...opts } = {}){
   const helper = new FakeHelper(displays);
   const launcher = {
     APPS: { powerpoint: { app: 'PP', match: 'PowerPoint', label: '파워포인트' }, text: { app: 'TE', match: 'TextEdit', label: '텍스트 편집기' }, excel: {}, hwp: {} },
@@ -81,7 +103,7 @@ function makeSession(displays = [TEACHER, STUDENT], opts = {}){
     openInBrowser: async () => { helper.spawn('Chrome', '참고 - Chrome'); },
     openWithApp: async (app, file) => { helper.spawn(app.app === 'PP' ? 'PowerPoint' : 'TextEdit', path.basename(file).replace(/\.pptx$/, '')); },
   };
-  const s = new Session({ helper, files: { url: f => `http://127.0.0.1/t/${f}` }, ownPid: 1, launcher, ...opts });
+  const s = new Session({ helper, files: { url: f => `http://127.0.0.1/t/${f}` }, ownPid: 1, launcher, closeWait: realCloseWait ? undefined : 1200, ...opts });
   return { s, helper };
 }
 
@@ -162,6 +184,67 @@ test('닫기가 무시되면 "답을 기다리는 창"으로 표시한다', asyn
   assert.equal(s.state.get('ppt').status, 'closed');
 });
 
+test('닫기 뒤 저장 창이 2.5초 넘게 늦게 떠도 "답을 기다리는 창"으로 표시하고 그 창을 앞으로 가져온다', async () => {
+  const { s, helper } = makeSession(undefined, { realCloseWait: true });
+  await s.refreshDisplays(); s.load(makeLesson());
+  await s.open('ppt');
+  const wid = s.state.get('ppt').wid;
+  helper.ask.set(wid, 10);           // 닫기 요청 뒤 목록을 10번 읽은 뒤(약 3초 뒤)에 저장 창이 뜬다
+  helper.raises = [];
+  const t0 = Date.now();
+  await s.close('ppt');
+  assert.ok(Date.now() - t0 > 2500, '저장 창이 뜰 때까지 기다렸어야 한다');
+  assert.equal(s.state.get('ppt').status, 'blocked');
+  assert.match(s.msg, /답을 기다리는 창\(저장 여부 등\)을 띄웠습니다/);
+  assert.equal(helper.raises.at(-1), wid);   // 그 창을 앞으로 가져왔다 (1초쯤 뒤에도 한 번: 윈도우 엑셀은 뒤에 있으면 저장 창을 안 띄움)
+  assert.equal(s.highlight, 'ppt');
+});
+
+test('답을 기다리는 창이 이미 있으면 닫기 요청을 또 보내지 않고 바로 그 창을 보여 준다 (맥 한글: 저장 창이 하나 더 생김)', async () => {
+  const { s, helper } = makeSession();
+  await s.refreshDisplays(); s.load(makeLesson());
+  await s.open('ppt');
+  const wid = s.state.get('ppt').wid;
+  helper.waiting.set(wid, { wid: 800, title: '로그인' });   // 프로그램이 이미 확인 창을 띄워 둠
+  const t0 = Date.now();
+  await s.close('ppt');
+  assert.ok(Date.now() - t0 < 1000, '기다리지 않고 바로');
+  assert.deepEqual(helper.closes, []);
+  assert.equal(helper.dialogs, 0);
+  assert.equal(s.state.get('ppt').status, 'blocked');
+  assert.ok(helper.raises.includes(wid));
+});
+
+test('선생님이 저장 창에서 "취소"로 답하면, 목록을 눌렀을 때 다시 "열림"으로 돌아온다', async () => {
+  const { s, helper } = makeSession();
+  await s.refreshDisplays(); s.load(makeLesson());
+  await s.open('ppt');
+  const wid = s.state.get('ppt').wid;
+  helper.ask.set(wid, 1);
+  await s.close('ppt');
+  assert.equal(s.state.get('ppt').status, 'blocked');
+  await s.activate('ppt');           // 저장 창이 아직 있으면 그대로
+  assert.equal(s.state.get('ppt').status, 'blocked');
+  helper.waiting.delete(wid);        // "취소"
+  await s.activate('ppt');
+  assert.equal(s.state.get('ppt').status, 'open');
+  assert.match(s.msg, /앞으로 가져왔습니다/);
+});
+
+test('선생님이 저장 창에서 답해 창이 닫히면 "닫았습니다"로 알린다', async () => {
+  const { s, helper } = makeSession();
+  await s.refreshDisplays(); s.load(makeLesson());
+  await s.open('ppt');
+  const wid = s.state.get('ppt').wid;
+  helper.ask.set(wid, 1);
+  await s.close('ppt');
+  assert.equal(s.state.get('ppt').status, 'blocked');
+  s.state.get('ppt').linkedAt = Date.now() - 10000;
+  s.onAlive(new Set());              // "저장 안 함"으로 답해 창이 닫힘
+  assert.equal(s.state.get('ppt').status, 'closed');
+  assert.match(s.msg, /'발표 자료'을\(를\) 닫았습니다/);
+});
+
 test('윈도우: 도우미가 waiting(저장 창)을 알려 주면 기다리지 않고 바로 "답 기다림"으로 표시한다', async () => {
   const { s, helper } = makeSession();
   await s.refreshDisplays(); s.load(makeLesson());
@@ -173,7 +256,7 @@ test('윈도우: 도우미가 waiting(저장 창)을 알려 주면 기다리지 
   await s.close('ppt');
   assert.equal(s.state.get('ppt').status, 'blocked');
   assert.ok(Date.now() - t0 < 1500, `너무 오래 기다림: ${Date.now() - t0}ms`);
-  assert.match(s.msg, /답을 기다립니다/);
+  assert.match(s.msg, /답을 기다리는 창/);
 });
 
 test('윈도우 메모장(탭): 열기 전부터 있던 창(선생님 메모장)이면 창을 닫지 않고, 안내 단추를 누르면 이 탭만 닫는다', async () => {
