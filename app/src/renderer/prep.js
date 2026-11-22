@@ -114,7 +114,7 @@ function row(it, isOpen){
       <option value=""${!it.screen ? ' selected' : ''}>자동 (${it.type === 'memo' ? '교사' : '학생'} 화면)</option>
       <option value="student"${it.screen === 'student' ? ' selected' : ''}>학생 화면</option>
       <option value="teacher"${it.screen === 'teacher' ? ' selected' : ''}>교사 화면</option></select>
-    <span class="extra">${it.type === 'memo' ? '<button class="btn sm" data-do="edit-memo" type="button">편집</button>' : ''}${isOpen ? ' <small title="사이드바에서 열려 있음">열림</small>' : ''}</span>
+    <span class="extra">${it.type === 'memo' ? '<button class="btn sm" data-do="edit-memo" type="button">편집</button>' : ''}${it.type === 'web' ? '<button class="btn sm" data-do="snapshot" type="button" title="이 페이지를 PDF로 찍어 바로 아래에 넣습니다 (인터넷이 끊겼을 때 대비)">PDF 저장본</button>' : ''}${isOpen ? ' <small title="사이드바에서 열려 있음">열림</small>' : ''}</span>
     <button class="x" data-do="del" title="흐름에서 빼기 (파일은 휴지통 폴더로)" aria-label="${esc(it.title)} 빼기" type="button">✕</button></div>`;
 }
 
@@ -246,6 +246,7 @@ flow.addEventListener('click', e => {
   if (b.dataset.do === 'del') api.act('removeItem', { id: itEl.dataset.id });
   else if (b.dataset.do === 'del-sec') api.act('removeSection', { id: secEl.dataset.sec });
   else if (b.dataset.do === 'edit-memo') api.act('editMemo', { id: itEl.dataset.id });
+  else if (b.dataset.do === 'snapshot') api.act('snapshot', { id: itEl.dataset.id });
 });
 
 // 순서 바꾸기 (⋮⋮ 끌기)

@@ -1,7 +1,7 @@
 // 수업 사이드바 체험판 — Electron 시작점 (맥·윈도우)
 // 사이드바 창(교사 화면 왼쪽)과 수업 준비 창을 띄우고, 수업 진행 로직(Session)·수업 편집(LessonDoc)과 잇는다.
-import { app, BrowserWindow, ipcMain, screen, dialog, shell, net, globalShortcut, desktopCapturer, systemPreferences } from 'electron';
-import { readFileSync, writeFileSync, mkdirSync, existsSync, statSync, cpSync, createReadStream, statfsSync, openSync, writeSync, closeSync, renameSync, copyFileSync, unlinkSync, readdirSync } from 'node:fs';
+import { app, BrowserWindow, ipcMain, screen, dialog, shell, net, globalShortcut, desktopCapturer, systemPreferences, session as eSession } from 'electron';
+import { mkdtempSync, rmSync, readFileSync, writeFileSync, mkdirSync, existsSync, statSync, cpSync, createReadStream, statfsSync, openSync, writeSync, closeSync, renameSync, copyFileSync, unlinkSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import http from 'node:http';
@@ -995,6 +995,33 @@ function openDoc(folder){
              : `'${doc.data.title}' 수업을 열었습니다`);
 }
 
+// ---------- 웹 자료 저장본 (docs/PLAN.md 15 "웹 자료 스냅샷") ----------
+// 준비할 때 웹 페이지를 PDF로 찍어 둔다 → 수업 중 인터넷이 끊겨도 저장본을 띄울 수 있다.
+// 따로 떨어진 메모리 세션(쿠키·로그인 없음)의 보이지 않는 창에서 열고, 내려받기·새 창·권한 요청은 모두 막는다
+let snapSession = null;
+function snapshotSession(){
+  if (snapSession) return snapSession;
+  snapSession = eSession.fromPartition('snapshot');   // persist: 없음 → 메모리에만
+  snapSession.setPermissionRequestHandler((_w, _p, cb) => cb(false));
+  snapSession.on('will-download', e => e.preventDefault());
+  return snapSession;
+}
+async function snapshotPdf(url){
+  const w = new BrowserWindow({ show: false, width: 1280, height: 900, webPreferences: { session: snapshotSession(), sandbox: true, contextIsolation: true, nodeIntegration: false } });
+  w.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  w.webContents.setAudioMuted(true);
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  try {
+    await Promise.race([w.loadURL(url), wait(30000).then(() => { throw new Error('30초 안에 열리지 않았습니다'); })]);
+    await wait(1500);
+    // 아래로 내려 가며 늦게 뜨는 그림을 불러온 뒤 맨 위로 (최대 30000px)
+    await Promise.race([w.webContents.executeJavaScript(`new Promise(r => { let y = 0; const t = setInterval(() => { scrollBy(0, 900); y += 900;
+      if (y > document.documentElement.scrollHeight || y > 30000){ clearInterval(t); scrollTo(0, 0); r(); } }, 120); })`), wait(8000)]).catch(() => {});
+    await wait(800);
+    return await w.webContents.printToPDF({ printBackground: true, pageSize: 'A4' });
+  } finally { w.destroy(); }
+}
+
 function needDoc(){ if (!doc) throw new Error('먼저 왼쪽에서 수업을 고르거나 새로 만드세요'); return doc; }
 function afterEdit(msg){
   doc.save();
@@ -1110,6 +1137,26 @@ const PREP_ACTIONS = {
     const r = await dialog.showOpenDialog(prepWin, { title: '넣을 자료 고르기', properties: ['openFile', 'multiSelections'] });
     if (r.canceled || !r.filePaths.length) return;
     await PREP_ACTIONS.addFiles({ paths: r.filePaths, sec: p.sec });
+  },
+  async snapshot(p){
+    const d = needDoc(), loc = d.locate(str(p.id, 60));
+    if (!loc || loc.item.type !== 'web' || !/^https?:\/\//i.test(loc.item.url ?? '')) throw new Error('웹사이트 링크만 PDF 저장본을 만들 수 있습니다');
+    const after = loc.sec.items[loc.index + 1]?.id ?? null;
+    note(`'${loc.item.title}' 페이지를 PDF로 저장하는 중… (최대 30초)`);
+    let pdf;
+    try { pdf = await snapshotPdf(loc.item.url); }
+    catch (e){ throw new Error(`저장본을 만들지 못했습니다: ${e.message}`); }
+    const tmp = mkdtempSync(path.join(os.tmpdir(), 'lesson-snap-'));
+    try {
+      const f = path.join(tmp, `${safeName(loc.item.title, 40)} (저장본).pdf`);
+      writeFileSync(f, pdf);
+      const r = await d.addFiles([f], loc.sec.id);
+      const it = r.added[0]; if (!it) throw new Error(r.skipped[0]?.reason ?? '저장본을 넣지 못했습니다');
+      d.moveItem(it.id, loc.sec.id, after);   // 원래 링크 바로 아래에
+      d.updateItem(it.id, { title: `${loc.item.title} (저장본)`.slice(0, 80) });   // 파일 이름은 띄어쓰기를 줄이지만 보이는 이름은 그대로
+      it.title = `${loc.item.title} (저장본)`.slice(0, 80);
+      afterEdit(`'${it.title}'을(를) 링크 아래에 넣었습니다 · 인터넷이 안 될 때 이걸 띄우세요 (${fmtBytes(pdf.length)})`);
+    } finally { rmSync(tmp, { recursive: true, force: true }); }
   },
   addLink(p){ const it = needDoc().addLink(str(p.url, 2000), str(p.sec, 60), str(p.title, 80)); afterEdit(`'${it.title}' 링크를 넣었습니다`); },
   addMemo(p){ const it = needDoc().addMemo(str(p.sec, 60)); afterEdit(`'${it.title}'를 만들었습니다 · "편집"을 누르면 메모를 고칠 수 있습니다`); },
