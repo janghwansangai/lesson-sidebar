@@ -570,3 +570,19 @@ test('계속 비키기(맥): 고정해 둔 동안 새로 가려진 창도 옮기
   assert.deepEqual([helper.wins[0].x, helper.wins[0].width], [0, 900]);
   assert.deepEqual([helper.wins[1].x, helper.wins[1].width], [40, 600]);
 });
+
+test('손쉬운 사용 권한이 없으면 30초 기다리지 않고 바로 알리고, 창 비키기도 하지 않는다', async () => {
+  const { s, helper } = makeSession([TEACHER]);
+  await s.refreshDisplays(); s.load(makeLesson());
+  s.trusted = false;
+  const t0 = Date.now();
+  await s.open('ppt');
+  assert.ok(Date.now() - t0 < 1000);
+  assert.equal(s.state.get('ppt').status, 'closed');
+  assert.match(s.msg, /손쉬운 사용 권한이 꺼져 있어/);
+  helper.spawn('Finder', '선생님 창'); Object.assign(helper.wins.at(-1), { x: 0, width: 900 });
+  assert.equal(await s.keepAside(), 0);
+  s.trusted = true;
+  assert.ok(await s.keepAside() >= 1);            // 권한이 켜지면 바로 비킨다 (앞에서 연 PPT 창도 사이드바 아래라 함께)
+  assert.equal(helper.wins.find(w => w.app === 'Finder').x, 280);
+});

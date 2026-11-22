@@ -38,6 +38,7 @@ export class Session extends EventEmitter {
     this.tile = null;
     this.msg = '';
     this.offer = null;      // 안내 옆 단추 { act, id, wid, label } (메모장 탭 닫기)
+    this.trusted = null;        // 손쉬운 사용 권한 (main.js가 5초마다 알려 줌). false면 창을 찾거나 옮길 수 없다
     this.asideTries = new Map();   // 계속 비키기: 창마다 최근 옮긴 시각 (1분에 3번까지)
     this.extras = new Map();   // 열 때 함께 생겼지만 자료와 짝짓지 않은 창 (브라우저가 지난 창을 되살린 경우 등) wid → 프로그램 — '모두 닫기' 때 같이 닫는다
     this.aside = null;      // 사이드바를 고정할 때 옆으로 옮긴 창들 [{ wid, from, to, maximized }]
@@ -168,6 +169,11 @@ export class Session extends EventEmitter {
       let opened = null;
       if (key === 'browser') opened = await this.launcher.openInBrowser(app, target);
       else await this.launcher.openWithApp(app, target);
+      if (this.trusted === false){
+        // 권한이 없으면 창 목록을 읽을 수 없어 30초를 기다려도 못 찾는다 → 바로 알린다 (자료는 열렸다)
+        st.status = 'closed'; st.note = '손쉬운 사용 권한 없음';
+        return this.say(`'${it.title}'을(를) 열었지만, 손쉬운 사용 권한이 꺼져 있어 사이드바가 그 창을 찾거나 옮길 수 없습니다. 사이드바 위쪽 안내를 봐 주세요`);
+      }
       if (opened?.tab){
         // 새 창을 띄우면 같은 프로필을 두 브라우저가 열게 되는 상태: 하나 더 띄우지 않고 켜진 브라우저에 탭으로 열었다 (launcher.openInBrowser)
         const b = app.label;
@@ -560,7 +566,7 @@ export class Session extends EventEmitter {
    */
   keepAside(){
     return this.aside_(async () => {
-      if (!this.teacher) return 0;
+      if (!this.teacher || this.trusted === false) return 0;
       const span = Math.round(this.sidebarWidth * (this.physicalPixels ? (this.teacher.scale ?? 1) : 1));
       let wins;
       try { wins = await this.list(); } catch { return 0; }

@@ -24,6 +24,7 @@ function renderPrefs(){
   $('#opacity').innerHTML = P.steps.map(v => `<button data-op="${v}" aria-pressed="${P.opacity === v}">${v === 100 ? '불투명' : v + '%'}</button>`).join('');
   $('#aside-row').hidden = !P.asideAvailable;
   $('#aside').checked = !!P.aside;
+  $('#trustbar').hidden = S.trusted !== false;
   $('#aside-note').hidden = !(P.aside && S.autoHide);   // 자동 숨김 중에는 비키기가 쉰다 (고정할 때만 동작)
 }
 
@@ -126,6 +127,7 @@ $('#aside').addEventListener('change', e => api.act('aside', e.target.checked));
 $('#offer').addEventListener('click', () => { if (S.offer) api.act(S.offer.act, S.offer.id); });
 $('#openall').addEventListener('click', () => api.act('openAll'));
 $('#hideothers').addEventListener('click', () => api.act('hideOthers'));
+$('#ax-open').addEventListener('click', () => api.act('axSettings'));
 // 모두 닫기는 한 번 더 눌러야 한다 (실수로 수업 중 창을 다 닫지 않게)
 let closeArm = 0;
 $('#closeall').addEventListener('click', e => {

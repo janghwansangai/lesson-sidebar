@@ -44,7 +44,7 @@ if (!app.isPackaged){
 const firstInstance = app.requestSingleInstanceLock();
 if (!firstInstance) app.quit();
 
-const NO_TRUST = "손쉬운 사용 권한이 없어 다른 프로그램 창을 옮길 수 없습니다. 시스템 설정 → 개인정보 보호 및 보안 → 손쉬운 사용에서 '수업 사이드바'를 켜 주세요";
+const NO_TRUST = "손쉬운 사용 권한이 없어 자료 창을 찾거나 옮길 수 없습니다. 시스템 설정 → 개인정보 보호 및 보안 → 손쉬운 사용에서 '수업 사이드바'를 켜 주세요. 이미 켜져 있으면 −로 지운 뒤 사이드바를 다시 켜서 새로 허용해 주세요 (새로 설치하면 다시 해야 합니다)";
 
 /** 예시 수업 폴더. 설치판은 앱 안(바꾸면 안 되는 곳)에 들어 있으므로 설정 폴더로 한 번 복사해서 쓴다. */
 function sampleLesson(){
@@ -54,18 +54,27 @@ function sampleLesson(){
   return dst;
 }
 
-/** 권한이 켜질 때까지 2초마다 확인하고, 켜지면 바로 창 연결을 시작한다 (다시 켤 필요 없음). */
-function waitForTrust(){
-  const t = setInterval(async () => {
-    let ok = false;
+/**
+ * 손쉬운 사용 권한을 5초마다 확인한다. 꺼져 있으면 사이드바 위쪽에 안내를 계속 보이고(상태 trusted:false),
+ * 켜지면 다시 켤 필요 없이 바로 창 연결·비키기를 시작한다.
+ * 맥은 임시 서명 앱을 새로 설치할 때마다 다른 앱으로 보아, 설정에는 켜져 보여도 권한이 풀려 있을 수 있다 (docs/poc/mac.md 33).
+ */
+let trustTimer = null;
+function watchTrust(){
+  clearInterval(trustTimer);
+  trustTimer = setInterval(async () => {
+    let ok = session.trusted;
     try { ok = (await helper.call('trusted')).trusted; } catch { /* 다음에 다시 */ }
-    if (!ok) return;
-    clearInterval(t);
-    helper.restartWatch();
-    await session.relink();
-    syncAsideWatch();
-    session.say('손쉬운 사용 권한이 켜졌습니다. 이제 자료 창을 옮기고 닫을 수 있습니다');
-  }, 2000);
+    if (ok === session.trusted) return;
+    session.trusted = ok;
+    push();
+    if (ok){
+      helper.restartWatch();
+      await session.relink();
+      syncAsideWatch();
+      session.say('손쉬운 사용 권한이 켜졌습니다. 이제 자료 창을 찾고 옮기고 닫을 수 있습니다');
+    } else session.say(NO_TRUST);
+  }, 5000);
 }
 
 const IS_WIN = process.platform === 'win32';
@@ -159,7 +168,7 @@ function createSidebar(){
   win.on('closed', () => { win = null; });
 }
 
-const fullState = () => ({ ...session.snapshot(), collapsed, prefs: { ...prefs, steps: OPACITY_STEPS, asideAvailable: ASIDE_OK } });
+const fullState = () => ({ ...session.snapshot(), collapsed, trusted: session.trusted !== false, prefs: { ...prefs, steps: OPACITY_STEPS, asideAvailable: ASIDE_OK } });
 function push(){ win?.webContents.send('state', fullState()); }
 
 // ---------- 자동 숨김 ----------
@@ -512,6 +521,8 @@ const ACTIONS = {
   openAll: () => session.openAll(),
   next: () => session.next(),
   hideOthers: () => session.hideOthers(),
+  // 손쉬운 사용 설정 화면만 열어 준다 (켜는 것은 선생님이 직접)
+  axSettings: () => shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility'),
   closeAll: () => session.closeAll(),
   openTo: v => session.setOpenTo(v),
   autoHide: v => setAutoHide(v === true || v === 'true'),
@@ -626,7 +637,9 @@ app.whenReady().then(async () => {
   // 설치판은 권한이 없으면 macOS의 권한 요청 창을 띄운다 (켜는 것은 선생님이 직접)
   const trusted = (await helper.call('trusted', ...(app.isPackaged ? ['--prompt'] : []))).trusted;
   if (trusted) await session.relink();
-  else { session.say(NO_TRUST); waitForTrust(); }
+  else session.say(NO_TRUST);
+  session.trusted = trusted;
+  watchTrust();
   helper.startWatch();
   // 고정한 채로 켜면 가려지는 창을 옆으로 (설정을 켰을 때만)
   if (trusted && prefs.aside && !session.autoHide){
