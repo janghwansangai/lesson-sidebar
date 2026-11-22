@@ -13,6 +13,10 @@
     "dist:mac": "npm run electron:get && npm run build:helper && electron-builder --mac --arm64",
     "dist:mac:dir": "npm run electron:get && npm run build:helper && electron-builder --mac --arm64 --dir",
     "smoke:mac": "node scripts/smoke-packaged.mjs",
+    "build:win-helper": "npm --prefix ../poc/win-helper install --no-audit --no-fund",
+    "dist:win": "npm run electron:get && npm run build:win-helper && electron-builder --win --x64 --publish never",
+    "dist:win:dir": "npm run electron:get && npm run build:win-helper && electron-builder --win --x64 --dir --publish never",
+    "smoke:win": "node scripts/smoke-packaged.mjs",
     "electron:get": "node node_modules/electron/install.js"
   },
   "devDependencies": {
@@ -33,10 +37,6 @@
     ],
     "extraResources": [
       {
-        "from": "../poc/mac-helper/.build/release/winctl",
-        "to": "winctl"
-      },
-      {
         "from": "../poc/lib",
         "to": "poc/lib",
         "filter": [
@@ -56,14 +56,6 @@
           "!**/~$*",
           "!**/.DS_Store"
         ]
-      },
-      {
-        "from": "build/ko.lproj",
-        "to": "ko.lproj"
-      },
-      {
-        "from": "build/en.lproj",
-        "to": "en.lproj"
       }
     ],
     "mac": {
@@ -78,10 +70,69 @@
         "LSUIElement": true,
         "CFBundleDisplayName": "LessonSidebar",
         "LSHasLocalizedDisplayName": true
-      }
+      },
+      "extraResources": [
+        {
+          "from": "../poc/mac-helper/.build/release/winctl",
+          "to": "winctl"
+        },
+        {
+          "from": "build/ko.lproj",
+          "to": "ko.lproj"
+        },
+        {
+          "from": "build/en.lproj",
+          "to": "en.lproj"
+        }
+      ]
     },
     "dmg": {
       "title": "수업 사이드바 ${version}"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "lesson-sidebar-${version}-win-${arch}.${ext}",
+      "extraResources": [
+        {
+          "from": "../poc/win-helper",
+          "to": "win-helper",
+          "filter": [
+            "winctl.js",
+            "package.json"
+          ]
+        },
+        {
+          "from": "../poc/win-helper/node_modules",
+          "to": "win-helper/node_modules",
+          "filter": [
+            "koffi/**/*",
+            "@koromix/koffi-win32-x64/**/*"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "shortcutName": "수업 사이드바",
+      "uninstallDisplayName": "수업 사이드바",
+      "artifactName": "lesson-sidebar-${version}-win-setup.${ext}"
+    },
+    "portable": {
+      "artifactName": "lesson-sidebar-${version}-win-portable.${ext}"
     }
   },
   "dependencies": {
