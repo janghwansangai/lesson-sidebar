@@ -6,7 +6,7 @@ name: 자동 검사
 # - 문서만 바꾼 PR은 건너뛴다
 # - 맥 한 개, 윈도우 한 개 작업 (일은 단계로 나눔)
 # - 같은 PR에 새로 올리면 앞의 검사는 멈춘다
-# - 설치판 만들어 켜 보기는 app·맥 도우미·공통 로직·이 설정이 바뀐 PR에서만
+# - 설치판 만들어 켜 보기는 app·도우미·공통 로직·이 설정이 바뀐 PR에서만 (윈도우는 설치 파일로 조용히 설치·켜 보기·지우기까지)
 on:
   pull_request:
     paths-ignore:
@@ -64,9 +64,11 @@ jobs:
   windows:
     name: 윈도우 검사
     runs-on: windows-latest
-    timeout-minutes: 20
+    timeout-minutes: 30   # 설치판을 만드는 PR은 설치 파일 두 개를 압축하느라 몇 분 더 걸린다
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -92,3 +94,44 @@ jobs:
           node winctl.js displays
           node winctl.js list
         working-directory: poc/win-helper
+      - name: 설치판까지 확인할 PR인지 (app·윈도우 도우미·공통 로직·검사 설정이 바뀜)
+        id: changed
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || \
+             git diff --name-only "origin/${{ github.base_ref }}...HEAD" | grep -qE '^(app/|poc/win-helper/|poc/lib/|\.github/)'; then
+            echo "app=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "app=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: 설치판 만드는 도구 설치 (electron·electron-builder)
+        if: steps.changed.outputs.app == 'true'
+        run: npm ci
+        working-directory: app
+      - name: 설치 파일(setup.exe)·설치 없이 켜는 파일(portable.exe) 만들기 (도우미 포함)
+        if: steps.changed.outputs.app == 'true'
+        run: npm run dist:win
+        working-directory: app
+      - name: 앱 폴더를 켜서 도우미·예시 수업·준비 화면이 되는지
+        if: steps.changed.outputs.app == 'true'
+        run: npm run smoke:win
+        working-directory: app
+      - name: 조용히 설치 → 설치된 앱 켜 보기 → 지우기
+        if: steps.changed.outputs.app == 'true'
+        shell: pwsh
+        working-directory: app
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $setup = Get-ChildItem dist -Filter '*-win-setup.exe' | Select-Object -First 1
+          if (-not $setup) { throw '설치 파일이 없습니다' }
+          if (-not (Get-ChildItem dist -Filter '*-win-portable.exe')) { throw '설치 없이 켜는 파일이 없습니다' }
+          Start-Process $setup.FullName -ArgumentList '/S' -Wait
+          $dir = Join-Path $env:LOCALAPPDATA 'Programs\lesson-sidebar'
+          $exe = Join-Path $dir 'LessonSidebar.exe'
+          if (-not (Test-Path $exe)) { throw "설치되지 않았습니다: $exe" }
+          node scripts/smoke-packaged.mjs $exe
+          if ($LASTEXITCODE -ne 0) { throw '설치된 앱 켜 보기 실패' }
+          Start-Process (Join-Path $dir 'Uninstall LessonSidebar.exe') -ArgumentList '/S' -Wait
+          for ($i = 0; $i -lt 60 -and (Test-Path $exe); $i++) { Start-Sleep -Milliseconds 500 }
+          if (Test-Path $exe) { throw '지워지지 않았습니다' }
+          Write-Host '통과: 설치 → 켜기 → 지우기'
