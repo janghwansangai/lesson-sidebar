@@ -119,6 +119,7 @@ body.collapsed{background:transparent}
 .seg-b:hover{border-color:var(--chalk)}
 .seg-b[aria-pressed="true"]{border-color:var(--chalk);color:var(--chalk)}
 .saved{display:flex;gap:4px;align-items:center}
+.saved .act{display:grid;place-items:center}   /* .act는 열린 자료 줄에 마우스를 올려야 보이는데, 저장한 배치의 ✕는 늘 보여야 한다 (안 보여 지울 수 없었다) */
 .saved .dbtn{flex:1;text-align:left;white-space:normal;line-height:1.35}
 .fb.tool[aria-pressed="true"]{border-color:var(--chalk);color:var(--chalk);background:rgba(242,205,92,.12)}
 /* 학생 화면: 정지·가리기·미리보기 */
