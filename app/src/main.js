@@ -497,6 +497,7 @@ const ACTIONS = {
   openAll: () => session.openAll(),
   next: () => session.next(),
   hideOthers: () => session.hideOthers(),
+  closeAll: () => session.closeAll(),
   openTo: v => session.setOpenTo(v),
   autoHide: v => setAutoHide(v === true || v === 'true'),
   opacity: v => setOpacity(v),

@@ -443,3 +443,31 @@ test('사용자가 직접 닫은 창은 목록에서 닫힘으로 바뀐다 (막
   s.onAlive(new Set());
   assert.equal(s.state.get('ppt').status, 'closed');
 });
+
+test('브라우저가 업데이트 뒤 다시 시작을 기다리면 새로 띄우지 않고 탭으로 연 것을 알린다 (기다리지 않음)', async () => {
+  const { s, helper } = makeSession();
+  s.launcher.openInBrowser = async () => ({ tab: true, reason: 'stale' });
+  await s.refreshDisplays(); s.load(makeLesson());
+  const t0 = Date.now();
+  await s.open('web');
+  assert.ok(Date.now() - t0 < 2000);
+  assert.equal(s.state.get('web').status, 'closed');
+  assert.match(s.msg, /탭으로 열었습니다.*다시 시작/);
+  assert.equal(helper.wins.length, 0);
+});
+
+test('열 때 브라우저 창이 여러 개 생기면 하나만 짝짓고 나머지는 기억했다가 "모두 닫기"로 함께 닫는다 (선생님 창은 그대로)', async () => {
+  const { s, helper } = makeSession();
+  helper.spawn('Chrome', '선생님이 원래 쓰던 창');
+  const mine = helper.wins[0].wid;
+  s.launcher.openInBrowser = async () => { for (let i = 0; i < 3; i++) helper.spawn('Chrome', `되살아난 창 ${i}`); };
+  await s.refreshDisplays(); s.load(makeLesson());
+  await s.open('web');
+  await s.open('ppt');
+  assert.equal(s.extras.size, 2);
+  await s.closeAll();
+  assert.deepEqual(helper.wins.map(w => w.wid), [mine]);
+  assert.match(s.msg, /사이드바가 연 창 4개를 닫았습니다/);
+  assert.equal(s.state.get('web').status, 'closed');
+  assert.equal(s.extras.size, 0);
+});
