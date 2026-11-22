@@ -482,8 +482,22 @@ async function composeStudent(bg){
   const byWid = new Map(srcs.map(x => [Number(String(x.id).split(':')[1]), x]));
   return { bg, w: st.width, h: st.height, wins: wins.map(w => ({ x: w.x - st.x, y: w.y - st.y, width: w.width, height: w.height, src: byWid.get(w.wid)?.thumbnail.toDataURL() })).filter(x => x.src) };
 }
+// 윈도우: 0.5초마다 화면을 새로 찍으면(getSources) 찍을 때마다 화면 복제를 새로 시작해 코어 하나의 절반을 쓰고
+// 컴퓨터 전체가 끊겼다 (선생님 확인, docs/poc/windows.md). 그래서 사이드바 화면이 학생 화면을 영상으로 한 번 받아 초당 2장만 그린다
+let previewStream = null;   // 윈도우: 지금 영상으로 받는 학생 화면 display.id
+async function syncPreviewStream(want){
+  const d = want ? studentElectronDisplay() : null;
+  if (!d){ if (previewStream != null){ previewStream = null; win?.webContents.send('preview', null); } return; }
+  if (previewStream === d.id) return;
+  previewStream = d.id;
+  const src = (await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 1, height: 1 } }).catch(() => [])).find(x => String(x.display_id) === String(d.id));
+  if (previewStream !== d.id) return;   // 그사이 꺼짐
+  if (!src){ previewStream = null; return; }
+  win?.webContents.send('preview', { stream: src.id, ratio: d.bounds.height / d.bounds.width });
+}
 function syncPreview(){
   const want = previewOn && session?.dual && screenAccess() === 'granted' && !!win;
+  if (IS_WIN) return syncPreviewStream(want);
   if (!want){ clearInterval(previewTimer); previewTimer = null; win?.webContents.send('preview', null); return; }
   if (previewTimer) return;
   let busy = false;

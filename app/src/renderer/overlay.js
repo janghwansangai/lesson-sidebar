@@ -52,10 +52,11 @@ grabEl.addEventListener('mouseup', () => {
 // 커서 위치: 이 창이 받는 마우스 움직임(포인터는 forward로 넘겨받음)을 바로 쓰고,
 // 메인이 보내는 위치(주기적으로 읽음)는 마우스 움직임이 없을 때와 화면을 벗어났을 때만 쓴다 — 메인을 거치면 한두 장면 늦다
 let localAt = 0;
-const place = (x, y) => { root.setProperty('--x', `${x}px`); root.setProperty('--y', `${y}px`); };
+const place = (x, y) => { $('spot').classList.remove('away'); root.setProperty('--x', `${x}px`); root.setProperty('--y', `${y}px`); };
 addEventListener('mousemove', e => { if (S.pointer || S.spot){ localAt = performance.now(); place(e.clientX, e.clientY); } }, { passive: true });
 window.overlay.onCursor(p => {
-  if (!p.in) return place(-500, -500);   // 이 화면 밖이면 원을 화면 밖으로
+  // 이 화면 밖이면: 포인터 원은 화면 밖으로, 스포트라이트는 화면 전체를 어둡게 (판을 밀어내면 가장자리에 밝은 띠가 남았다)
+  if (!p.in){ root.setProperty('--x', '-500px'); root.setProperty('--y', '-500px'); $('spot').classList.add('away'); return; }
   if (performance.now() - localAt > 150) place(p.x, p.y);
 });
 // 스포트라이트: 휠로 크기, 두 번 누르면 끄기 (이 화면이 마우스를 받을 때만)

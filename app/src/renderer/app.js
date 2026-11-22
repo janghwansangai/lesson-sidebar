@@ -170,9 +170,25 @@ $('#screens').addEventListener('click', e => {
 });
 // 미리보기: 보통은 학생 화면 그림 한 장. 맥에서 정지 중이면 바탕 + 창 그림들을 앞뒤 순서대로 쌓아 그린다
 const loadImg = src => new Promise(r => { const i = new Image(); i.onload = () => r(i); i.onerror = () => r(null); i.src = src; });
+// 윈도우는 학생 화면을 영상으로 받아(초당 2장, 작게) 보인다 — 화면을 계속 새로 찍는 것보다 훨씬 가볍다
+let pvStream = null;
+function stopPreviewStream(){ for (const t of pvStream?.getTracks() ?? []) t.stop(); pvStream = null; $('#preview-vid').srcObject = null; }
+async function startPreviewStream(p){
+  stopPreviewStream();
+  const W = 528;   // 사이드바 폭 264 × 배율 2까지
+  try {
+    const s = await navigator.mediaDevices.getUserMedia({ audio: false, video: { mandatory: {
+      chromeMediaSource: 'desktop', chromeMediaSourceId: p.stream, maxWidth: W, maxHeight: Math.round(W * (p.ratio || 0.5625)), maxFrameRate: 2 } } });
+    pvStream = s;
+    const v = $('#preview-vid'); v.srcObject = s; v.play().catch(() => {});
+    v.hidden = false; $('#preview-img').hidden = true; $('#preview-canvas').hidden = true;
+  } catch { /* 다음 켤 때 다시 */ }
+}
 api.onPreview?.(async p => {
-  if (!p) return;
+  if (!p){ stopPreviewStream(); return; }
+  if (p.stream) return startPreviewStream(p);
   const img = $('#preview-img'), cv = $('#preview-canvas');
+  $('#preview-vid').hidden = true;
   if (typeof p === 'string'){ img.src = p; img.hidden = false; cv.hidden = true; return; }
   const W = 264, k = W / p.w;
   cv.width = W; cv.height = Math.round(p.h * k);
