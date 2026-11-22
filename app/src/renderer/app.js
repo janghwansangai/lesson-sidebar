@@ -85,6 +85,7 @@ function render(){
     $('#rm-qr').hidden = !r.showQr;
     if (r.showQr && $('#rm-qr').dataset.url !== r.url){ $('#rm-qr').innerHTML = r.qr; $('#rm-qr').dataset.url = r.url; }
     $('#rm-url').hidden = !r.showQr;
+    $('#rm-help').hidden = !r.showQr || r.phones > 0;   // 연결되면 감춘다
     $('#rm-url').textContent = r.url.replace(/[0-9a-f]{32}\/$/, '…');
     $('#rm-toggleqr').textContent = r.showQr ? 'QR 닫기' : 'QR 다시 보기';
   }

@@ -148,6 +148,9 @@ body.collapsed{background:transparent}
 .rm-qr{background:#fff;border-radius:6px;padding:4px;width:176px;align-self:center}
 .rm-qr svg{display:block;width:100%;height:auto}
 .rm-url{margin:0;font-size:10.5px;color:var(--sb-muted);word-break:break-all;text-align:center}
+.rm-help{font-size:11px;color:var(--sb-muted)}
+.rm-help summary{cursor:pointer;text-align:center}
+.rm-help ol{margin:6px 0 0;padding-left:18px;display:flex;flex-direction:column;gap:4px;line-height:1.45}
 
 /* 새 버전 알림 */
 .updbar{margin:8px 12px 0;padding:8px 10px;border-radius:8px;background:var(--live-soft);border:1px solid var(--live);display:flex;flex-direction:column;gap:6px;font-size:12px}
