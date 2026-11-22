@@ -351,4 +351,4 @@
 3. **공유 수업의 실행 파일**: `.js`·`.url`을 넣은 시험 수업 → 자료에 "실행 파일·스크립트는 열지 않습니다", 눌러도 열지 않음 (wscript 실행 없음).
 4. **화면 프로세스가 죽었을 때**: 시험 앱의 화면 프로세스 3개를 강제로 끝냄 → 사이드바 다시 불러옴, 발표 도구는 꺼지고 다시 켜짐, `logs/main.log`에 기록. 미리보기가 빈 그림으로 남는 것을 찾아 #45에서 고침 (위 6).
 5. **설치판 보안 설정(fuse)**: 윈도우 설치판에서 RunAsNode 켜짐 → 도우미(`displays`·`serve`) 그대로 됨, NODE_OPTIONS·`--inspect` 꺼짐 (`@electron/fuses`로 읽음). 선생님용 설치판(`SIDEBAR_SMOKE_BUILD` 없이)에 `test-mode` 없음. 켜 보기 검사는 선생님 사이드바가 켜져 있어 이 PC에서는 못 하고(한 번에 하나만 켜짐), GitHub 윈도우 검사(#46)가 시험용 설치판으로 설치·켜기·지우기를 통과.
-6. **윈도우 설치판 0.3.3**: `lesson-sidebar-0.3.3-win-setup.exe`(118MB), `…-win-portable.exe`(107MB).
+6. **윈도우 설치판 0.3.3**: `lesson-sidebar-0.3.3-win-setup.exe`(118MB), `…-win-portable.exe`(107MB). 선생님 확인 뒤 **Release v0.3.3에 더함** (GitHub SHA-256 지문 = 이 PC에서 잰 값). 새 버전 확인(`checkUpdate('0.3.1', win32)`)이 설치판은 setup.exe, 설치 없이 켜는 판은 portable.exe와 지문을 고름.
