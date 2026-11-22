@@ -185,7 +185,7 @@ function push(){ noteChapter(); syncInk(); win?.webContents.send('state', fullSt
 // (PPT·엑셀은 한 번 옮기는 데 0.5초 넘게 걸려, 끄는 동안 계속 옮기면 창이 3초 넘게 늦게 따라왔다 — docs/poc/mac.md 36)
 // 도우미 좌표: 맥은 Electron과 같은 포인트, 윈도우는 물리 픽셀 → DIP로 바꿔서 창을 놓는다.
 const DIV_W = 16;
-const divWins = { v: null, h: null };
+const divWins = { v: null, v2: null, h: null };
 let divDrag = null;   // 끄는 중인 막대 'v' | 'h'
 const toDipRect = r => IS_WIN ? screen.screenToDipRect(null, r) : r;
 const toHelperPt = (x, y) => IS_WIN ? screen.dipToScreenPoint({ x, y }) : { x, y };
@@ -200,12 +200,12 @@ function ensureDivider(dir){
   w.setAlwaysOnTop(true, 'screen-saver');
   w.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   lockDown(w);
-  w.loadFile(path.join(HERE, 'renderer', 'divider.html'), { query: { dir } });
+  w.loadFile(path.join(HERE, 'renderer', 'divider.html'), { query: { dir: dir === 'v2' ? 'v' : dir } });   // v2(3분할 두 번째)도 세로 막대
   w.on('closed', () => { divWins[dir] = null; });
   return (divWins[dir] = w);
 }
 function placeDivider(d){
-  const r = toDipRect(d.dir === 'v'
+  const r = toDipRect(d.dir !== 'h'
     ? { x: d.x - Math.round(DIV_W / 2), y: d.y, width: DIV_W, height: d.height }
     : { x: d.x, y: d.y - Math.round(DIV_W / 2), width: d.width, height: DIV_W });
   const w = ensureDivider(d.dir);
@@ -224,7 +224,7 @@ function placeDivider(d){
 function syncDivider(){
   if (divDrag) return;   // 끄는 동안은 마우스를 따라간다
   const ds = session?.tileDividers() ?? [];
-  for (const dir of ['v', 'h']){
+  for (const dir of ['v', 'v2', 'h']){
     const d = ds.find(x => x.dir === dir);
     if (d) placeDivider(d); else divWins[dir]?.hide();
   }
@@ -234,7 +234,7 @@ async function dragDivider(dir, x, y, final){
   const p = toHelperPt(x, y), a = d.area;
   divDrag = dir;
   let ratio;
-  if (dir === 'v'){
+  if (dir !== 'h'){
     const hx = Math.min(a.x + a.width * 0.85, Math.max(a.x + a.width * 0.15, p.x));
     placeDivider({ ...d, x: hx }); ratio = (hx - a.x) / a.width;
   } else {
@@ -245,7 +245,7 @@ async function dragDivider(dir, x, y, final){
   try { await session.setTileRatio(ratio, dir); }
   finally { divDrag = null; syncDivider(); }
 }
-const divDir = e => (e.sender === divWins.v?.webContents ? 'v' : e.sender === divWins.h?.webContents ? 'h' : null);
+const divDir = e => ['v', 'v2', 'h'].find(k => divWins[k] && !divWins[k].isDestroyed() && e.sender === divWins[k].webContents) ?? null;
 ipcMain.on('divider:move', (e, x, y) => { const dir = divDir(e); if (dir && Number.isFinite(x) && Number.isFinite(y)) dragDivider(dir, x, y, false).catch(() => {}); });
 ipcMain.on('divider:end', (e, x, y) => { const dir = divDir(e); if (dir && Number.isFinite(x) && Number.isFinite(y)) dragDivider(dir, x, y, true).catch(() => { divDrag = null; }); });
 
