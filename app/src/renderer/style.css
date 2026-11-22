@@ -186,3 +186,6 @@ body.collapsed{background:transparent}
 /* 링크 자료의 QR 단추: 열리지 않았어도 마우스를 올리면 보인다 */
 .it:hover .act.qr{display:grid;place-items:center}
 .act.qr{font-size:9.5px;font-weight:700;letter-spacing:-.3px}
+
+/* 설정 아래 단추 줄: 업데이트 확인 · 도움말 · 오류 신고 */
+.pref-btns{display:flex;flex-wrap:wrap;gap:5px;margin:2px 0 4px}

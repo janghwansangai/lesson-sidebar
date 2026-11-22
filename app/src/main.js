@@ -23,7 +23,8 @@ import { Chapters, clock } from './core/chapters.js';
 import { duplicateLesson, guideHtml, findConflicts, resolveConflict } from './core/reuse.js';
 import { Timing, liveView, memoFor, lanAddress } from './core/live.js';
 import { LiveServer } from './core/liveserver.js';
-import { checkUpdate, isReleaseUrl } from './core/update.js';
+import { checkUpdate, isReleaseUrl, REPO as GH_REPO } from './core/update.js';
+import { download, currentMacApp, stageMacUpdate, startMacSwap, startWinInstaller, leftovers, workDirOf } from './core/selfupdate.js';
 import qrcode from 'qrcode-generator';
 import { safeName } from './core/types.js';
 import * as L from './core/launcher.js';
@@ -182,7 +183,7 @@ function createSidebar(){
   win.on('closed', () => { win = null; });
 }
 
-const fullState = () => ({ ...session.snapshot(), collapsed, trusted: session.trusted !== false, tools: { pointer: tools.pointer, spot: tools.spot, pen: tools.pen, grab: grab?.mode ?? null, pins: pins.size }, cover: cover.mode, preview: previewOn && screenAccess() === 'granted', rec: rec ? { since: rec.startedAt, mic: !!rec.mic, sys: !!rec.sys, stopping: !!rec.stopping, where: rec.where } : null, prefs: { ...prefs, steps: OPACITY_STEPS, asideAvailable: ASIDE_OK, keys: SHORTCUTS.map(s => ({ key: keyLabel(s), label: s.label })) }, update: update && !update.dismissed ? { version: update.version, notes: update.notes, size: update.size } : null, version: app.getVersion(), presenter: !!presWin, remote: remote ? { url: remote.url, qr: remote.qr, showQr: remote.showQr, phones: liveSrv.clients('lan') } : null });
+const fullState = () => ({ ...session.snapshot(), collapsed, trusted: session.trusted !== false, tools: { pointer: tools.pointer, spot: tools.spot, pen: tools.pen, grab: grab?.mode ?? null, pins: pins.size }, cover: cover.mode, preview: previewOn && screenAccess() === 'granted', rec: rec ? { since: rec.startedAt, mic: !!rec.mic, sys: !!rec.sys, stopping: !!rec.stopping, where: rec.where } : null, prefs: { ...prefs, steps: OPACITY_STEPS, asideAvailable: ASIDE_OK, keys: SHORTCUTS.map(s => ({ key: keyLabel(s), label: s.label })) }, update: update && !update.dismissed ? { version: update.version, notes: update.notes, size: update.size, phase: update.phase ?? null, pct: update.pct ?? null } : null, version: app.getVersion(), presenter: !!presWin, remote: remote ? { url: remote.url, qr: remote.qr, showQr: remote.showQr, phones: liveSrv.clients('lan') } : null });
 function push(){ noteChapter(); syncInk(); win?.webContents.send('state', fullState()); syncDivider(); syncPreview(); syncLive(); }
 
 // ---------- 나란히 보기 조절 바 ----------
@@ -1018,16 +1019,106 @@ let update = null;   // { version, url, page, notes, size, dismissed }
 async function runUpdateCheck({ manual = false } = {}){
   try {
     const u = process.env.SIDEBAR_DEBUG === '1' && process.env.SIDEBAR_FAKE_UPDATE
-      ? { version: process.env.SIDEBAR_FAKE_UPDATE, url: 'https://github.com/janghwansangai/lesson-sidebar/releases', notes: '시험용 새 버전', size: null }
+      ? { version: process.env.SIDEBAR_FAKE_UPDATE, url: process.env.SIDEBAR_FAKE_UPDATE_URL || 'https://github.com/janghwansangai/lesson-sidebar/releases', page: 'https://github.com/janghwansangai/lesson-sidebar/releases', notes: '시험용 새 버전', size: null }
       : await checkUpdate(app.getVersion(), { fetchFn: net.fetch });
     saveSettings({ lastUpdateCheck: Date.now() });
-    update = u;
-    if (manual) session.say(u ? `새 버전 ${u.version}이 있습니다 · 위쪽 '내려받기'를 눌러 주세요` : `지금 버전(${app.getVersion()})이 가장 새 버전입니다`);
+    if (!updating) update = u;   // 받는 중이면 진행 표시를 지우지 않는다
+    if (manual) session.say(u ? `새 버전 ${u.version}이 있습니다 · 위쪽 '업데이트'를 누르면 받아서 바꿔 깔고 다시 켭니다` : `지금 버전(${app.getVersion()})이 가장 새 버전입니다`);
     push();
+    return true;
   } catch (e){
     if (manual) session.say(`새 버전을 확인하지 못했습니다 (인터넷 연결 확인 · ${e.message})`);
+    return false;
   }
 }
+// ---------- 업데이트 바꿔 깔기 (core/selfupdate.js) ----------
+// 시험(SIDEBAR_DEBUG=1)에서만: SIDEBAR_UPDATE_TEST=<시험용 .app 경로> — 그 앱을 바꾸고 다시 켜지 않는다. SIDEBAR_FAKE_UPDATE_URL은 127.0.0.1만
+const UPDATE_TEST = process.env.SIDEBAR_DEBUG === '1' ? process.env.SIDEBAR_UPDATE_TEST || null : null;
+let updating = false;
+async function installUpdate(){
+  const u = update;
+  if (!u || updating) return;
+  if (rec) return session.say('녹화 중에는 업데이트하지 않습니다 · 녹화를 끝낸 뒤 눌러 주세요');
+  const page = isReleaseUrl(u.page) ? u.page : `https://github.com/${GH_REPO}/releases`;
+  const byHand = why => { if (!UPDATE_TEST) shell.openExternal(isReleaseUrl(u.url) ? u.url : page); session.say(`${why} · 브라우저에서 새 버전을 받아 직접 설치해 주세요 (사이드바를 끝낸 뒤 덮어 설치)`); };
+  const asset = typeof u.url === 'string' && (u.url.startsWith(`https://github.com/${GH_REPO}/releases/download/`) || (UPDATE_TEST && u.url.startsWith('http://127.0.0.1:')));
+  if (!app.isPackaged && !UPDATE_TEST) return byHand('개발용으로 켠 사이드바라 바꿔 깔 수 없습니다');
+  if (!asset || (IS_WIN && process.env.PORTABLE_EXECUTABLE_FILE) || (!IS_WIN && process.platform !== 'darwin')) return byHand('이 PC에 맞는 설치 파일을 찾지 못했습니다');
+  const macApp = process.platform === 'darwin' ? (UPDATE_TEST ?? currentMacApp(app.getPath('exe'))) : null;
+  if (process.platform === 'darwin' && !macApp) return byHand('응용 프로그램 폴더에서 켠 사이드바가 아니라 바꿔 깔 수 없습니다');
+  updating = true;
+  const dir = workDirOf(app.getPath('temp'));
+  try {
+    rmSync(dir, { recursive: true, force: true });
+    const file = path.join(dir, path.basename(new URL(u.url).pathname));
+    u.phase = 'downloading'; u.pct = 0; push();
+    let shown = 0;
+    await download(u.url, file, { fetchFn: net.fetch, expected: u.size, onProgress: pct => { u.pct = pct; if (Date.now() - shown > 400){ shown = Date.now(); push(); } } });
+    u.phase = 'installing'; push();
+    if (process.platform === 'darwin'){
+      const staged = await stageMacUpdate(file, { currentApp: macApp, version: u.version, workDir: dir });
+      rmSync(dir, { recursive: true, force: true });   // 받은 설치판(120MB)은 이제 필요 없음
+      startMacSwap({ pid: process.pid, staged, dest: macApp, relaunch: !UPDATE_TEST });
+      session.say(`새 버전 ${u.version}을 받았습니다 · 사이드바를 껐다가 새 버전으로 다시 켭니다`);
+    } else {
+      startWinInstaller(file);
+      session.say(`새 버전 ${u.version}을 받았습니다 · 사이드바를 끄고 설치합니다 (설치가 끝나면 다시 켜집니다)`);
+    }
+    setTimeout(() => app.quit(), 1500);
+  } catch (e){
+    updating = false; u.phase = null; u.pct = null; push();
+    byHand(`새 버전을 바꿔 깔지 못했습니다 (${e.message})`);
+  }
+}
+/** 맥: 바꿔 깐 뒤 남은 옛 앱(.LessonSidebar.old-….app)은 휴지통으로, 바꾸다 남은 복사본(.updating)은 지운다 */
+async function cleanupOldApps(){
+  if (process.platform !== 'darwin' || !app.isPackaged) return;
+  const me = currentMacApp(app.getPath('exe')); if (!me) return;
+  let names = [];
+  try { names = readdirSync(path.dirname(me)); } catch { return; }
+  for (const p of leftovers(me, names)) await shell.trashItem(p).catch(() => {});
+  rmSync(path.join(path.dirname(me), `.${path.basename(me, '.app')}.updating.app`), { recursive: true, force: true });
+  rmSync(workDirOf(app.getPath('temp')), { recursive: true, force: true });   // 바꾸다 남은 받은 파일
+}
+
+// ---------- 오류 신고 · 도움말 ----------
+// 오류 신고: 기본 브라우저로 다있쌤 오류 취합 센터를 연다 (앱 이름·버전·화면 이름만 보낸다 — 선생님·학생 정보는 넣지 않음)
+const BUG_URL = 'https://script.google.com/macros/s/AKfycbxsRD7vRlEP9oKlvlDDPww8cYaDadTTIp1KrqYWSVU5qE5_gUh3bNUskBhHDlXH6FskvA/exec';
+const bugUrl = (v, where) => `${BUG_URL}?app=lesson-sidebar&v=${encodeURIComponent(v)}&where=${encodeURIComponent(where)}`;
+const OS_NAME = IS_WIN ? '윈도우' : process.platform === 'darwin' ? '맥' : process.platform;
+function reportBug(where){
+  shell.openExternal(bugUrl(app.getVersion(), `${String(where).slice(0, 30)} (${OS_NAME})`));
+  session.say('오류 신고 페이지를 브라우저에서 열었습니다 · 어떤 상황이었는지 적어 보내 주세요');
+}
+// 도움말: 앱 안의 페이지(인터넷 없이 열림). 링크는 다있쌤 툴즈만 기본 브라우저로 연다
+const TOOLS_URL = 'https://hwansang.kr/tools';
+let helpWin = null;
+function openHelp(){
+  if (helpWin && !helpWin.isDestroyed()){ helpWin.show(); helpWin.focus(); return; }
+  const wa = teacherArea();
+  const w = Math.min(860, wa.width - SIDEBAR_W - 40), h = Math.min(820, wa.height - 20);
+  helpWin = new BrowserWindow({
+    x: Math.round(wa.x + SIDEBAR_W + Math.max(20, (wa.width - SIDEBAR_W - w) / 2)), y: Math.round(wa.y + Math.max(10, (wa.height - h) / 2)),
+    width: w, height: h, minWidth: 420, minHeight: 400, title: '도움말 — 수업 사이드바', backgroundColor: '#14241f', show: false,
+    webPreferences: SECURE('help-preload.cjs'),
+  });
+  lockDown(helpWin);
+  helpWin.loadFile(path.join(HERE, 'renderer', 'help.html'));
+  helpWin.once('ready-to-show', () => { helpWin.show(); helpWin.focus(); app.focus({ steal: true }); });
+  helpWin.on('closed', () => { helpWin = null; });
+}
+const fromHelp = e => helpWin && !helpWin.isDestroyed() && e.sender === helpWin.webContents;
+ipcMain.handle('help:info', e => fromHelp(e) ? { version: app.getVersion(), os: IS_WIN ? 'win' : 'mac', keys: SHORTCUTS.map(s => ({ key: keyLabel(s), label: s.label })) } : null);
+ipcMain.on('help:act', async (e, what) => {
+  if (!fromHelp(e)) return;
+  if (what === 'tools') shell.openExternal(TOOLS_URL);
+  else if (what === 'bug') reportBug('도움말');
+  else if (what === 'update'){
+    const ok = await runUpdateCheck({ manual: true });
+    if (!e.sender.isDestroyed()) e.sender.send('help:update', !ok ? { error: true } : update ? { version: update.version } : { latest: app.getVersion() });
+  }
+});
+
 function scheduleUpdateCheck(){
   // 개발 중(npx electron .)에는 확인하지 않는다. 시험할 때는 SIDEBAR_FAKE_UPDATE=0.2.0
   if (!app.isPackaged && !process.env.SIDEBAR_FAKE_UPDATE) return;
@@ -1398,7 +1489,9 @@ const ACTIONS = {
   presenter: v => setPresenter(v === true || v === 'true'),
   remote: v => setRemote(v === true || v === 'true'),
   remoteNew: () => setRemote(true),
-  getUpdate: () => { if (update && isReleaseUrl(update.url)){ shell.openExternal(update.url); session.say(`새 버전 ${update.version}을 내려받습니다 · 다 받으면 열어서 설치해 주세요 (사이드바를 끝낸 뒤 덮어 설치)`); } },
+  getUpdate: () => installUpdate(),
+  help: () => openHelp(),
+  reportBug: where => reportBug(typeof where === 'string' ? where : '사이드바'),
   dismissUpdate: () => { if (update){ update.dismissed = true; push(); } },
   updateCheck: v => { prefs.updateCheck = v === true || v === 'true'; saveSettings({ updateCheck: prefs.updateCheck }); push(); },
   checkUpdateNow: () => runUpdateCheck({ manual: true }),
@@ -1553,6 +1646,7 @@ app.on('second-instance', () => { if (!win) return; collapsed = false; placeSide
 app.whenReady().then(async () => {
   if (!firstInstance) return;
   if (await leaveDmg()) return;
+  cleanupOldApps().catch(() => {});
   if (process.platform === 'darwin') app.dock?.hide();
   const h = makeHelper();
   helper = h.helper;
