@@ -3,8 +3,11 @@ html,body{margin:0;width:100%;height:100%;background:transparent;overflow:hidden
 .ring{position:fixed;left:0;top:0;width:var(--d,64px);height:var(--d,64px);margin:calc(var(--d,64px) / -2) 0 0 calc(var(--d,64px) / -2);
   border-radius:50%;border:4px solid rgba(242,205,92,.95);background:rgba(242,205,92,.22);box-shadow:0 0 0 2px rgba(0,0,0,.25);
   transform:translate(var(--x,-200px),var(--y,-200px));pointer-events:none;will-change:transform}
-.spot{position:fixed;inset:0;pointer-events:auto;
-  background:radial-gradient(circle at var(--x,50%) var(--y,50%), transparent 0 var(--r,150px), rgba(0,0,0,.78) calc(var(--r,150px) + 3px))}
+/* 스포트라이트: 화면 두 배 크기의 판을 한 번만 그리고 커서 따라 옮기기만 한다 (매번 화면 전체를 다시 그리면 윈도우 큰 화면에서 느렸다) */
+.spot{position:fixed;left:-100vw;top:-100vh;width:200vw;height:200vh;pointer-events:auto;
+  background:radial-gradient(circle at 50% 50%, transparent 0 var(--r,150px), rgba(0,0,0,.78) calc(var(--r,150px) + 3px));
+  transform:translate(var(--x,50vw),var(--y,50vh));will-change:transform}
+.spot.away{left:0;top:0;width:100%;height:100%;transform:none;background:rgba(0,0,0,.78)}
 .hint{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);padding:7px 14px;border-radius:999px;background:rgba(20,30,27,.85);color:#f2cd5c;
   font:600 14px -apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;pointer-events:none}
 /* 확대·캡처 핀: 멈춘 화면 그림 */

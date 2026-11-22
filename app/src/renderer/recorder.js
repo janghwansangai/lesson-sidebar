@@ -17,19 +17,28 @@ async function retrying(get){
     }
   }
 }
+// 마이크: 고른 마이크 (빠졌거나 못 쓰면 기본 마이크)
+async function micStream(id){
+  if (id){ try { return await navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: id } }, video: false }); } catch { /* 기본으로 */ } }
+  return navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+}
 window.rec.onStart(async o => {
   try {
     const light = !!o.light;
     const W = light ? 1280 : 1920, H = light ? 720 : 1080, F = light ? 15 : 30;
     const audios = [];
     let video = null, sys = false;
-    // 컴퓨터 소리를 켜면: getDisplayMedia 한 번으로 화면 + 소리를 함께 받는다 (메인이 같은 화면 + 'loopback'으로 답함).
-    // 전에는 화면(getUserMedia)과 소리(getDisplayMedia)를 따로 받아 같은 화면을 두 번 찍었다. 소리 줄이 바로 끝나면 못 받은 것
+    const extra = [];   // 소리만 쓰는 화면 받기 (끝낼 때 함께 멈춤)
+    // 컴퓨터 소리: getDisplayMedia로 같은 화면 + 소리를 받는다 (메인이 'loopback'으로 답함). 소리 줄이 바로 끝나면 못 받은 것.
+    // o.one(맥): 그 화면을 그대로 녹화에 쓴다 — 같은 화면을 두 번 찍지 않게. 아니면(윈도우, 확인된 방식) 작게 받아 소리만 쓰고 화면은 아래에서 따로
     if (o.sys){
       try {
-        const d = await navigator.mediaDevices.getDisplayMedia({ video: { width: { max: W }, height: { max: H }, frameRate: { max: F } }, audio: true });   // 안 되면 한 번에 포기하고 화면만 (기다리지 않음)
-        if (d.getVideoTracks().length) video = d; else for (const t of d.getTracks()) t.stop();
-        const a = video ? d.getAudioTracks().filter(t => t.readyState === 'live') : [];
+        const d = await navigator.mediaDevices.getDisplayMedia(o.one
+          ? { video: { width: { max: W }, height: { max: H }, frameRate: { max: F } }, audio: true }
+          : { video: { width: 320, height: 180, frameRate: 1 }, audio: true });   // 안 되면 한 번에 포기하고 화면만 (기다리지 않음)
+        if (o.one && d.getVideoTracks().length) video = d;
+        else { extra.push(d); for (const t of d.getVideoTracks()) t.stop(); }
+        const a = d.getAudioTracks().filter(t => t.readyState === 'live');
         await sleep(300);
         if (a.length && a[0].readyState === 'live'){ audios.push(new MediaStream(a)); sys = true; }
       } catch { /* 컴퓨터 소리를 못 받으면 화면만 아래에서 */ }
@@ -38,11 +47,11 @@ window.rec.onStart(async o => {
       video = await retrying(() => navigator.mediaDevices.getUserMedia({ audio: false, video: { mandatory: {
         chromeMediaSource: 'desktop', chromeMediaSourceId: o.sourceId, maxWidth: W, maxHeight: H, maxFrameRate: F } } }));
     }
-    streams = [video];
+    streams = [video, ...extra];
     const tracks = [...video.getVideoTracks()];
     let mic = false;
     if (o.mic){
-      try { const a = await navigator.mediaDevices.getUserMedia({ audio: true, video: false }); streams.push(a); audios.push(a); mic = true; }
+      try { const a = await micStream(o.micId); streams.push(a); audios.push(a); mic = true; }
       catch { /* 마이크를 못 쓰면 화면만 */ }
     }
     // 소리가 둘이면 하나로 섞는다 (MP4는 소리 줄 하나만 담는다)
@@ -51,12 +60,13 @@ window.rec.onStart(async o => {
       mixer = new AudioContext();
       const out = mixer.createMediaStreamDestination();
       for (const s of audios) mixer.createMediaStreamSource(s).connect(out);
+      if (mixer.state !== 'running') await mixer.resume().catch(() => {});   // 숨은 창은 소리 장치가 멈춘 채 시작할 수 있다
       tracks.push(...out.stream.getAudioTracks());
     }
     const mimeType = TYPES.find(t => MediaRecorder.isTypeSupported(t));
     recorder = new MediaRecorder(new MediaStream(tracks), { mimeType, videoBitsPerSecond: light ? 1500000 : 3000000 });
     recorder.ondataavailable = async e => { if (e.data.size) window.rec.chunk(await e.data.arrayBuffer()); };
-    recorder.onstop = () => { for (const s of streams) for (const t of s.getTracks()) t.stop(); mixer?.close(); setTimeout(() => window.rec.stopped(), 300); };
+    recorder.onstop = () => { for (const s of streams) for (const t of s.getTracks()) t.stop(); mixer?.close().catch(() => {}); mixer = null; setTimeout(() => window.rec.stopped(), 300); };
     recorder.onerror = e => window.rec.error(e.error?.message ?? 'MediaRecorder 오류');
     recorder.start(2000);
     window.rec.started({ mimeType, mic, sys, ...video.getVideoTracks()[0].getSettings() });

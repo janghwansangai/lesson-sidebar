@@ -40,6 +40,7 @@
         <div id="rec-screen" class="seg" role="group" aria-label="녹화할 화면"><button type="button" data-rs="student">학생 화면</button><button type="button" data-rs="teacher">교사 화면</button></div>
         <label class="pref-row"><input id="rec-sys" type="checkbox"><span>컴퓨터 소리도 녹화<small>수업 중 튼 영상·음악 소리를 함께 남깁니다. 맥에서는 아직 시험 중입니다 (안 되면 화면·마이크만 녹화).</small></span></label>
         <label class="pref-row"><input id="rec-mic" type="checkbox"><span>마이크 소리도 녹화<small>선생님 목소리를 함께 남깁니다. 학생 목소리도 들어갈 수 있습니다.</small></span></label>
+        <select id="rec-mic-dev" class="pref-select" aria-label="녹음할 마이크"><option value="">기본 마이크</option></select>
         <label class="pref-row"><input id="rec-light" type="checkbox"><span>가볍게 녹화 (720p · 15장/초)<small>느린 PC에서 수업이 버벅이면 켜 주세요. 용량도 절반쯤입니다.</small></span></label>
         <div class="pref-h">단축키</div>
         <label class="pref-row"><input id="keys-on" type="checkbox"><span>단축키 쓰기<small>어느 프로그램이 앞에 있어도 됩니다. 클리커(→ ← PageDown)와 겹치지 않습니다.</small></span></label>
@@ -55,7 +56,7 @@
       <h1 id="title" class="title"></h1>
       <p id="meta" class="meta"></p>
       <div id="screens" class="screens"></div>
-      <div id="preview" class="preview" hidden title="학생 화면 · 5초마다 새로 찍습니다 (누르면 지금)"><img id="preview-img" alt="학생 화면 미리보기"><canvas id="preview-canvas" hidden></canvas><span id="preview-tag" class="ptag"></span></div>
+      <div id="preview" class="preview" hidden><img id="preview-img" alt="학생 화면 미리보기"><video id="preview-vid" muted playsinline hidden></video><canvas id="preview-canvas" hidden></canvas><span id="preview-tag" class="ptag"></span></div>
       <button id="next" class="next"></button>
     </header>
     <section id="list" class="list" aria-label="수업 자료"></section>
@@ -67,6 +68,16 @@
         <div class="rm-h"><b>휴대폰 리모컨</b><span id="rm-phones" class="rm-ph"></span></div>
         <div id="rm-qr" class="rm-qr"></div>
         <p id="rm-url" class="rm-url"></p>
+        <!-- 연결이 안 될 때 도움말 (docs/help/troubleshooting.md "휴대폰 리모컨"과 같은 내용) -->
+        <details id="rm-help" class="rm-help">
+          <summary>연결이 안 되나요?</summary>
+          <ol>
+            <li><b>휴대폰 브라우저의 '주변 기기' 권한</b>을 허용해 주세요: 휴대폰 설정 → 애플리케이션 → Chrome(또는 삼성 인터넷) → 권한 → 주변 기기 → 허용</li>
+            <li>휴대폰과 이 PC가 <b>같은 와이파이</b>인지 확인 (휴대폰이 모바일 데이터로 접속 중이면 안 됩니다)</li>
+            <li>휴대폰의 보안 Wi-Fi·VPN은 끄고 해 주세요</li>
+            <li>학교 와이파이는 기기끼리 연결을 막기도 합니다 → 휴대폰 핫스팟에 PC를 연결하고 QR을 다시 찍기</li>
+          </ol>
+        </details>
         <div class="row">
           <button id="rm-toggleqr" class="fb quiet" type="button"></button>
           <button id="rm-new" class="fb quiet" type="button" title="주소를 새로 만듭니다. 지금 연결된 휴대폰은 끊깁니다">새 주소</button>
