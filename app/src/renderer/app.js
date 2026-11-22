@@ -40,6 +40,9 @@ function render(){
   $('#btn-hide').setAttribute('aria-pressed', String(!!S.autoHide));
   $('#tool-pointer').setAttribute('aria-pressed', String(!!S.tools?.pointer));
   $('#tool-spot').setAttribute('aria-pressed', String(!!S.tools?.spot));
+  $('#tool-zoom').setAttribute('aria-pressed', String(S.tools?.grab === 'zoom'));
+  $('#tool-pin').setAttribute('aria-pressed', String(S.tools?.grab === 'pick'));
+  $('#pins-close').hidden = !S.tools?.pins;
 
   $('#screens').innerHTML = S.dual
     ? `<div class="scr-line"><i class="scr-dot"></i>학생 화면: ${esc(S.studentName)}</div>
@@ -144,6 +147,9 @@ $('#openall').addEventListener('click', () => api.act('openAll'));
 $('#hideothers').addEventListener('click', () => api.act('hideOthers'));
 $('#tool-pointer').addEventListener('click', () => api.act('pointer', !S.tools?.pointer));
 $('#tool-spot').addEventListener('click', () => api.act('spot', !S.tools?.spot));
+$('#tool-zoom').addEventListener('click', () => api.act('zoom'));
+$('#tool-pin').addEventListener('click', () => api.act('pin'));
+$('#pins-close').addEventListener('click', () => api.act('closePins'));
 $('#ax-open').addEventListener('click', () => api.act('axSettings'));
 // 모두 닫기는 한 번 더 눌러야 한다 (실수로 수업 중 창을 다 닫지 않게)
 let closeArm = 0;

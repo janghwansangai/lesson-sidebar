@@ -2,11 +2,12 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src data:">
 <title>발표 도구</title>
 <link rel="stylesheet" href="overlay.css">
 </head>
 <body>
+  <div id="grab" class="grab" hidden><img id="frozen" alt=""><div id="sel" class="sel" hidden></div></div>
   <div id="spot" class="spot" hidden></div>
   <div id="ring" class="ring" hidden></div>
   <div id="hint" class="hint" hidden>스포트라이트 · 휠로 크기 · Esc 또는 두 번 눌러 끄기</div>

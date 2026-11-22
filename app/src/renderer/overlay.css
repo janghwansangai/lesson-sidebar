@@ -7,3 +7,9 @@ html,body{margin:0;width:100%;height:100%;background:transparent;overflow:hidden
   background:radial-gradient(circle at var(--x,50%) var(--y,50%), transparent 0 var(--r,150px), rgba(0,0,0,.78) calc(var(--r,150px) + 3px))}
 .hint{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);padding:7px 14px;border-radius:999px;background:rgba(20,30,27,.85);color:#f2cd5c;
   font:600 14px -apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;pointer-events:none}
+/* 확대·캡처 핀: 멈춘 화면 그림 */
+.grab{position:fixed;inset:0;overflow:hidden;background:#000;cursor:crosshair}
+.grab img{position:absolute;left:0;top:0;width:100%;height:100%;transform-origin:var(--ox,50%) var(--oy,50%);transform:scale(var(--z,1));user-select:none;-webkit-user-drag:none}
+.grab.zoom{cursor:zoom-out}
+.grab.pick img{filter:brightness(.55)}
+.sel{position:absolute;border:2px solid #f2cd5c;background-repeat:no-repeat;box-shadow:0 0 0 1px rgba(0,0,0,.4)}
