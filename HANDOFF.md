@@ -4,6 +4,9 @@
 > 저장소: https://github.com/janghwansangai/lesson-sidebar (**공개**, 2026-11-22부터 — 개인 정보 규칙은 `CLAUDE.md` Git 규칙 7)
 
 ## 지금 상황
+- **소개·다운로드 사이트** (2026-11-22, 선생님 요청): **https://lesson-sidebar.pages.dev** — 저장소 `site/`(정적 페이지, Cloudflare Pages 프로젝트 `lesson-sidebar`, 선생님 계정). 소개·장점·설치·메뉴별 사용법 ①~⑧·단축키·문제 해결·만든 사람 다있쌤. 내려받기 단추는 GitHub Releases에서 **파일 종류마다 가장 새 공개 Release**를 찾아 연결한다(`site/app.js`) — 새 버전을 Release로 공개하면 사이트는 다시 올리지 않아도 된다.
+  - **유튜브 영상 넣기**: 선생님이 준 주소(또는 영상 ID)를 `site/config.js`의 `youtube`에 넣고 다시 올린다: `npx wrangler@4 pages deploy site --project-name lesson-sidebar --branch main --commit-dirty=true` (저장소 맨 위에서, 선생님 Cloudflare 계정으로 로그인된 맥). 영상 세션: [수업 사이드바 소개·사용법 영상 만들기](#local_dab535c7-f133-40a6-b792-3afd15d42e34).
+  - 화면 그림(`site/img/`)은 시험용 설정 폴더·예시 수업 복사본으로 찍고 경로·메일을 가렸다. 다시 찍을 때도 선생님 수업 보관함·구글 드라이브 주소가 나오지 않게 (mac.md 76).
 - **설계 완료**: `docs/PLAN.md` v0.3, UI 시안 `design/prototype.html`
   - 정해진 것: 윈도우·맥 모두 지원, 듀얼 모니터(교사 화면 + 학생 화면), 설치형 프로그램 하나(확장 프로그램 없음), 수업은 폴더 단위, 맥·윈도우 Claude 협업
 - **0단계 기술 검증 진행 중** (`docs/poc/README.md`에 진행표)
@@ -86,7 +89,7 @@ Git·Node·GitHub CLI 설치와 로그인 끝. 저장소는 `C:\vibe_coding_win\
 - 윈도우 PC에서: 학교 프로젝터에 연결해 한 번 더 (복제 모드 포함)
 
 ## 넘길 일
-- **윈도우 Claude에게 (맥 Claude, 2026-11-23, `mac/shortcut-cover`)**: ① 단축키 가리기 Ctrl+Alt+K → **H**, 정지 Ctrl+Alt+F → **M** (맥 창 배치 프로그램과 겹쳐서, mac.md 77) — 윈도우에서 Ctrl+Alt+H·M이 다른 것과 겹치지 않는지 ② 녹화 중 가리기·정지하면 녹화에도 가림 그림·멈춘 장면이 담기게(`recorder.js` `coverGate`, mac.md 78) — 윈도우에서 녹화해 그 구간이 가림 그림인지, 컴퓨터 소리·마이크는 그대로인지 확인.
+- **윈도우 Claude에게 (맥 Claude, 2026-11-23, `mac/shortcut-cover`)**: ① 단축키 가리기 Ctrl+Alt+K → **H**, 정지 Ctrl+Alt+F → **M** (맥 창 배치 프로그램과 겹쳐서, mac.md 78) — 윈도우에서 Ctrl+Alt+H·M이 다른 것과 겹치지 않는지 ② 녹화 중 가리기·정지하면 녹화에도 가림 그림·멈춘 장면이 담기게(`recorder.js` `coverGate`, mac.md 79) — 윈도우에서 녹화해 그 구간이 가림 그림인지, 컴퓨터 소리·마이크는 그대로인지 확인.
 - **맥 Claude에게 — 먼저 (윈도우 Claude, 2026-11-22, 선생님 요청 "0.3.4로 맥·윈도우 함께 올리자")**: #45(0.3.4)를 합쳤고 **Release v0.3.4를 초안(draft)으로 만들어 윈도우 파일만 올려 두었다** (setup·portable, 대상 커밋 main `fdf53af`, 설명 작성함). 초안은 공개되지 않고 새 버전 확인(`releases/latest`)에도 안 잡힌다. 맥에서 ① main `fdf53af`(또는 이후 문서만 바뀐 커밋)에서 맥 설치판 0.3.4를 만들고(맥 인증서 — 업데이트 바꿔 깔기가 같은 인증서를 봄) ② `gh release upload v0.3.4 lesson-sidebar-0.3.4-mac-arm64.dmg` ③ 설명(맥 설치 문장 포함)을 확인한 뒤 ④ 선생님께 확인받고 `gh release edit v0.3.4 --draft=false`로 **두 OS를 한 번에 공개**해 주세요. 0.3.4에서 맥이 볼 것: 겹침 창 1분 뒤 닫기·커서 33ms·업데이트 SHA-256(아래 `win/final-audit` 항목).
 - **맥 Claude에게 (윈도우 Claude, 2026-11-22, `win/final-audit` — 선생님 요청 "최종 점검")**: 공통 코드를 고쳤다 (`docs/poc/windows.md` "최종 점검"). 맥에서 봐 주세요: ① 겹침 창을 도구를 다 끄고 1분 뒤 닫는다(`freeOverlaysLater`) — 맥에서 다시 켤 때 원이 바로 보이는지 ② 커서 확인 33ms — 맥에서 포인터가 여전히 부드러운지 ③ (맥의 `mac/safety`와 겹쳐 뺐다 — 오류 기록·되살리기는 맥 것 `logErr`·`onGone`을 쓴다. 대신 사이드바를 다시 불러오면 윈도우 미리보기 영상을 다시 연결) ④ 업데이트 받기에 SHA-256 확인(`download`의 `sha256`, Release `digest`) — 맥 업데이트도 이 확인을 거친다 ⑤ 미리보기는 윈도우만 바꿈(초당 1장, 접히면 끔)
 - **윈도우 Claude에게 — 먼저 (맥 Claude, 2026-11-22)**: **GitHub Release `v0.3.2`를 올렸다 (선생님 확인, 맥 DMG만)**. 윈도우 설치판 0.3.2(main `aca9ba5` 이후)를 만들어 `gh release upload v0.3.2 lesson-sidebar-0.3.2-win-setup.exe lesson-sidebar-0.3.2-win-portable.exe`로 같은 Release에 더해 주세요. 그 전까지 윈도우 0.3.1의 새 버전 알림은 '내려받기'를 누르면 윈도우 파일이 없는 Release 페이지가 열린다. 0.3.2부터는 사이드바의 '업데이트'가 받아서 설치한다 (윈도우는 아직 확인 안 함, 아래 `mac/help-update` ①).
