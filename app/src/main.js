@@ -176,8 +176,8 @@ function createSidebar(){
   win.on('closed', () => { win = null; });
 }
 
-const fullState = () => ({ ...session.snapshot(), collapsed, trusted: session.trusted !== false, tools: { pointer: tools.pointer, spot: tools.spot, grab: grab?.mode ?? null, pins: pins.size }, cover: cover.mode, preview: previewOn && screenAccess() === 'granted', rec: rec ? { since: rec.startedAt, mic: !!rec.mic, stopping: !!rec.stopping, where: rec.where } : null, prefs: { ...prefs, steps: OPACITY_STEPS, asideAvailable: ASIDE_OK }, update: update && !update.dismissed ? { version: update.version, notes: update.notes, size: update.size } : null, version: app.getVersion(), presenter: !!presWin, remote: remote ? { url: remote.url, qr: remote.qr, showQr: remote.showQr, phones: liveSrv.clients('lan') } : null });
-function push(){ noteChapter(); win?.webContents.send('state', fullState()); syncDivider(); syncPreview(); syncLive(); }
+const fullState = () => ({ ...session.snapshot(), collapsed, trusted: session.trusted !== false, tools: { pointer: tools.pointer, spot: tools.spot, pen: tools.pen, grab: grab?.mode ?? null, pins: pins.size }, cover: cover.mode, preview: previewOn && screenAccess() === 'granted', rec: rec ? { since: rec.startedAt, mic: !!rec.mic, stopping: !!rec.stopping, where: rec.where } : null, prefs: { ...prefs, steps: OPACITY_STEPS, asideAvailable: ASIDE_OK }, update: update && !update.dismissed ? { version: update.version, notes: update.notes, size: update.size } : null, version: app.getVersion(), presenter: !!presWin, remote: remote ? { url: remote.url, qr: remote.qr, showQr: remote.showQr, phones: liveSrv.clients('lan') } : null });
+function push(){ noteChapter(); syncInk(); win?.webContents.send('state', fullState()); syncDivider(); syncPreview(); syncLive(); }
 
 // ---------- 나란히 보기 조절 바 ----------
 // 나란히 놓은 창의 경계에 가는 막대 창을 띄운다: 세로 경계(v) 하나 + 큰 화면+2·4분할이면 가로 경계(h) 하나.
@@ -254,7 +254,10 @@ ipcMain.on('divider:end', (e, x, y) => { const dir = divDir(e); if (dir && Numbe
 // 사이드바는 그보다 한 칸 위에 두어 도구를 켠 채로도 사이드바를 누를 수 있다.
 // - 포인터: 겹침 창이 마우스를 통과시켜 클릭은 아래 프로그램으로 간다
 // - 스포트라이트: 겹침 창이 마우스를 받아 휠로 크기를 바꾼다. Esc(이때만 등록)·두 번 누르기·사이드바 단추로 끈다
-const tools = { pointer: false, spot: false, r: 150 };
+// - 판서 펜: 겹침 창이 마우스(·터치·펜)를 받아 그린다. 색·굵기·형광펜·지우개는 겹침 창 아래 도구 막대에서. 끄면(Esc·✕·사이드바) 지워진다
+// - 클릭 물결: 포인터 강조를 켠 동안 도우미 'clicks'로 누른 자리를 받아 물결을 그린다 (클릭은 원래대로 아래 프로그램에)
+const tools = { pointer: false, spot: false, pen: false, r: 150, ink: { color: '#e5484d', size: 4, mode: 'pen' } };
+let inkFor = null;   // 판서를 그린 자료 — 사이드바에서 다른 자료로 넘어가면 판서를 지운다
 const overlays = new Map();   // display.id → BrowserWindow
 let toolTimer = null, lastCur = null;
 function overlayFor(d){
@@ -281,25 +284,29 @@ function overlayFor(d){
   return w;
 }
 function syncTools(){
-  const on = tools.pointer || tools.spot;
+  const on = tools.pointer || tools.spot || tools.pen;
+  const grabsMouse = tools.spot || tools.pen;
   clearInterval(toolTimer); toolTimer = null;
+  syncClicks();
   if (!on){
-    for (const w of overlays.values()) if (!w.isDestroyed()) w.hide();
+    for (const w of overlays.values()) if (!w.isDestroyed()){ w.webContents.send('overlay:state', tools); w.hide(); }   // 끈 것을 알려 판서도 지운다
     globalShortcut.unregister('Escape');
     push();
     return;
   }
   for (const d of screen.getAllDisplays()){
     const w = overlayFor(d);
-    w.setIgnoreMouseEvents(!tools.spot, { forward: true });   // 스포트라이트만 마우스(휠)를 받는다
+    w.setIgnoreMouseEvents(!grabsMouse, { forward: true });   // 스포트라이트(휠)·판서 펜만 마우스를 받는다
     w.webContents.send('overlay:state', tools);
     if (!w.isVisible()) w.showInactive();
   }
   // 사이드바·조절 바는 겹침 창보다 위에
   win?.setAlwaysOnTop(true, 'screen-saver', 1);
   for (const dw of Object.values(divWins)) dw?.setAlwaysOnTop(true, 'screen-saver', 1);
-  if (tools.spot && !globalShortcut.isRegistered('Escape')) globalShortcut.register('Escape', () => setTool('spot', false));
-  if (!tools.spot) globalShortcut.unregister('Escape');
+  if (grabsMouse && !globalShortcut.isRegistered('Escape')) globalShortcut.register('Escape', () => setTool(tools.pen ? 'pen' : 'spot', false));
+  if (!grabsMouse) globalShortcut.unregister('Escape');
+  if (tools.pen && inkFor === null) inkFor = session.highlight ?? '';
+  if (!tools.pen) inkFor = null;
   lastCur = null;
   toolTimer = setInterval(sendCursor, 16);
   push();
@@ -314,15 +321,62 @@ function sendCursor(){
     w.webContents.send('overlay:cursor', { x: p.x - b.x, y: p.y - b.y, in: inside });
   }
 }
+const ONE_OF = ['pointer', 'spot', 'pen'];   // 셋 중 하나만
 function setTool(name, v){
-  if (!(name in tools) || name === 'r') return;
+  if (!ONE_OF.includes(name)) return;
   tools[name] = !!v;
-  if (name === 'spot' && tools.spot) tools.pointer = false;      // 둘 중 하나만
-  if (name === 'pointer' && tools.pointer) tools.spot = false;
+  if (tools[name]) for (const o of ONE_OF) if (o !== name) tools[o] = false;
   syncTools();
   session.say(tools.spot ? '스포트라이트: 커서 주변만 밝게 · 휠로 크기 · Esc나 두 번 눌러 끕니다'
-    : tools.pointer ? '포인터 강조: 커서 주변에 노란 원 · 클릭은 그대로 아래 프로그램에 갑니다' : '발표 도구를 껐습니다');
+    : tools.pointer ? '포인터 강조: 커서 주변에 노란 원, 누르면 물결 · 클릭은 그대로 아래 프로그램에 갑니다'
+    : tools.pen ? '판서 펜: 화면 위에 그립니다 · 아래 막대에서 색·형광펜·지우개 · Esc나 ✕로 끄면 지워집니다 (저장은 막대의 "저장")'
+    : '발표 도구를 껐습니다');
 }
+// 클릭 물결: 포인터 강조를 켠 동안만 도우미가 클릭 자리를 알린다 (도우미가 'clicks'를 모르면 물결 없이 원만)
+function syncClicks(){
+  if (!helper) return;
+  if (!tools.pointer) return helper.stopClicks();
+  helper.startClicks(m => {
+    const p = IS_WIN ? screen.screenToDipPoint({ x: m.x, y: m.y }) : { x: m.x, y: m.y };   // 윈도우 도우미는 물리 픽셀
+    for (const d of screen.getAllDisplays()){
+      const b = d.bounds;
+      if (p.x < b.x || p.x >= b.x + b.width || p.y < b.y || p.y >= b.y + b.height) continue;
+      const w = overlays.get(d.id);
+      if (w && !w.isDestroyed()) w.webContents.send('overlay:click', { x: p.x - b.x, y: p.y - b.y, button: m.button === 'right' ? 'right' : 'left' });
+    }
+  });
+}
+// 사이드바에서 다른 자료로 넘어가면 판서를 지운다 (지난 자료 위에 그린 것이 새 자료에 남지 않게)
+function syncInk(){
+  if (!tools.pen) return;
+  const now = session.highlight ?? '';
+  if (inkFor === now) return;
+  inkFor = now;
+  for (const w of overlays.values()) if (!w.isDestroyed()) w.webContents.send('overlay:clear');
+}
+ipcMain.on('overlay:ink', (e, ink) => {
+  if (!fromOverlay(e) || !ink || typeof ink !== 'object') return;
+  const color = /^#[0-9a-f]{6}$/i.test(ink.color) ? ink.color : tools.ink.color;
+  const size = [2, 4, 8].includes(Number(ink.size)) ? Number(ink.size) : tools.ink.size;
+  const mode = ['pen', 'marker', 'eraser'].includes(ink.mode) ? ink.mode : tools.ink.mode;
+  tools.ink = { color, size, mode };
+  for (const w of overlays.values()) if (!w.isDestroyed()) w.webContents.send('overlay:state', { ink: tools.ink });
+});
+ipcMain.on('overlay:off', e => { if (fromOverlay(e)) setTool('pen', false); });
+// 판서 저장: 겹침 창이 도구 막대를 감춘 뒤 부르면, 판서가 보이는 그대로 그 화면을 찍어 수업 폴더 _캡처/에 저장
+ipcMain.on('overlay:save', async e => {
+  if (!fromOverlay(e)) return;
+  const id = [...overlays].find(([, w]) => !w.isDestroyed() && w.webContents === e.sender)?.[0];
+  const d = screen.getAllDisplays().find(x => x.id === id);
+  let name = null;
+  if (d && screenAccess() === 'granted'){
+    const img = await captureDisplay(d).catch(() => null);
+    if (img && !img.isEmpty()) name = savePin(img, '판서');
+  }
+  if (!e.sender.isDestroyed()) e.sender.send('overlay:saved', !!name);
+  if (screenAccess() !== 'granted') session.say(SCREEN_PERM, { act: 'screenSettings', label: '화면 기록 설정 열기' });
+  else session.say(name ? `판서를 저장했습니다 · 수업 폴더 _캡처/${name}` : '판서를 저장하지 못했습니다');
+});
 // ---------- 확대·캡처 핀 (화면을 찍어서 쓰는 도구 — 맥은 "화면 기록" 권한 필요) ----------
 // 커서가 있는 화면을 찍어 그 화면의 겹침 창에 멈춘 그림으로 보여 준다.
 // - 확대: 커서 둘레를 2배(휠로 1.5~4배)로, 클릭·Esc로 끝
@@ -343,7 +397,7 @@ async function startGrab(mode){
     session.say(SCREEN_PERM, { act: 'screenSettings', label: '화면 기록 설정 열기' });
     return;
   }
-  tools.pointer = false; tools.spot = false; syncTools();
+  tools.pointer = false; tools.spot = false; tools.pen = false; syncTools();
   const d = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
   for (const w of overlays.values()) if (!w.isDestroyed()) w.hide();
   await new Promise(r => setTimeout(r, 120));   // 겹침 창이 사라진 뒤에 찍는다
@@ -352,7 +406,7 @@ async function startGrab(mode){
   grab = { mode, display: d, image, payload: { mode, src: image.toDataURL() } };
   const w = overlayFor(d);   // 처음 만드는 겹침 창이면 다 읽힌 뒤(did-finish-load) 그림을 다시 보낸다
   w.setIgnoreMouseEvents(false);
-  w.webContents.send('overlay:state', { pointer: false, spot: false, grab: grab.payload });
+  w.webContents.send('overlay:state', { pointer: false, spot: false, pen: false, grab: grab.payload });
   w.showInactive();
   win?.setAlwaysOnTop(true, 'screen-saver', 1);
   if (!globalShortcut.isRegistered('Escape')) globalShortcut.register('Escape', () => endGrab());
@@ -367,11 +421,11 @@ function endGrab(){
   globalShortcut.unregister('Escape');
   syncTools();
 }
-function savePin(img){
+function savePin(img, prefix = ''){
   const root = session.lesson?.root ?? app.getPath('userData');
   const dir = path.join(root, '_캡처');
   const t = new Date(), p2 = n => String(n).padStart(2, '0');
-  const name = `${t.getFullYear()}-${p2(t.getMonth() + 1)}-${p2(t.getDate())}_${p2(t.getHours())}${p2(t.getMinutes())}${p2(t.getSeconds())}.png`;
+  const name = `${prefix ? `${prefix}_` : ''}${t.getFullYear()}-${p2(t.getMonth() + 1)}-${p2(t.getDate())}_${p2(t.getHours())}${p2(t.getMinutes())}${p2(t.getSeconds())}.png`;
   try { mkdirSync(dir, { recursive: true }); writeFileSync(path.join(dir, name), img.toPNG()); return name; } catch { return null; }
 }
 function makePin(img, r){
@@ -1181,6 +1235,7 @@ const ACTIONS = {
   prep: () => openPrep(),
   pointer: v => setTool('pointer', v === true || v === 'true'),
   spot: v => setTool('spot', v === true || v === 'true'),
+  pen: v => setTool('pen', v === true || v === 'true'),
   zoom: () => startGrab('zoom'),
   pin: () => startGrab('pick'),
   closePins: () => { for (const p of [...pins]) p.close(); },

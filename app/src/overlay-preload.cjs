@@ -7,4 +7,10 @@ contextBridge.exposeInMainWorld('overlay', {
   close: () => ipcRenderer.send('overlay:close'),
   pick: r => ipcRenderer.send('overlay:pick', r),
   end: () => ipcRenderer.send('overlay:end'),
+  onClick: cb => ipcRenderer.on('overlay:click', (_e, c) => cb(c)),
+  onClear: cb => ipcRenderer.on('overlay:clear', () => cb()),
+  onSaved: cb => ipcRenderer.on('overlay:saved', (_e, ok) => cb(!!ok)),
+  ink: s => ipcRenderer.send('overlay:ink', { color: String(s.color), size: Number(s.size), mode: String(s.mode) }),
+  save: () => ipcRenderer.send('overlay:save'),
+  off: () => ipcRenderer.send('overlay:off'),
 });
