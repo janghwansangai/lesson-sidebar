@@ -11,8 +11,8 @@ const OPEN_TIMEOUT = 30000;
 // 나란히 보기 배치 (창 수별). key·c는 poc/lib/match.js tileRects
 const LAYOUTS = {
   2: { half: { key: 'half', c: [0.5], label: '반반' }, '7:3': { key: 'half', c: [0.7], label: '7:3' }, '3:7': { key: 'half', c: [0.3], label: '3:7' } },
-  3: { thirds: { key: 'thirds', c: [1 / 3, 2 / 3], label: '3분할' }, main2: { key: 'main2', c: [0.6], label: '큰 화면 + 작은 2개' } },
-  4: { grid: { key: 'grid', c: [0.5], label: '4분할' } },
+  3: { thirds: { key: 'thirds', c: [1 / 3, 2 / 3], label: '3분할' }, main2: { key: 'main2', c: [0.6], r: [0.5], label: '큰 화면 + 작은 2개' } },
+  4: { grid: { key: 'grid', c: [0.5], r: [0.5], label: '4분할' } },
 };
 export const TILE_LAYOUTS = Object.fromEntries(Object.entries(LAYOUTS).map(([n, L]) => [n, Object.entries(L).map(([id, v]) => ({ id, label: v.label }))]));
 const ALIVE_GRACE = 4000;   // 막 연결한 창은 잠시 "사라짐" 판단에서 뺀다 (목록이 늦게 도착할 수 있어서)
@@ -441,7 +441,7 @@ export class Session extends EventEmitter {
    * layout: 2개 'half'(반반)·'7:3'·'3:7', 3개 'thirds'(3분할)·'main2'(큰 화면+작은 2개), 4개 'grid'(4분할)
    * 첫 번째 세로 경계 비율(c[0])은 조절 바로 바꿀 수 있다 (setTileRatio).
    */
-  async split(layout){
+  async split(layout, ratios = {}){
     const ids = this.sel.slice(0, 4);
     const n = ids.length;
     if (n < 2) return this.say('나란히 놓을 자료를 두 개 이상 고르세요');
@@ -454,8 +454,9 @@ export class Session extends EventEmitter {
     if (wids.some(w => !w)) return this.say('나란히 놓을 창을 열지 못했습니다');
     const where = this.dual ? 'student' : 'teacher';
     const area = this.area(where);
-    const { key, c } = L[layout];
-    this.tile = { ids, wids, where, layout, key, c: [...c], area };
+    const { key, c, r = [] } = L[layout];
+    const pick = (saved, def) => (Array.isArray(saved) && saved.length === def.length ? saved : def);
+    this.tile = { ids, wids, where, layout, key, c: [...pick(ratios.c, c)], r: [...pick(ratios.r, r)], area };
     const note = await this.applyTile(true);
     for (const id of ids){ const st = this.state.get(id); st.disp = where; st.home = where; }
     for (const w of [...wids].reverse()) await this.raiseWid(w);
@@ -474,7 +475,7 @@ export class Session extends EventEmitter {
   /** this.tile대로 창을 옮긴다. fit이면 프로그램 최소 폭 때문에 안 맞을 때 첫 경계 비율을 조정한다 (2개 배치). */
   async applyTile(fit = false){
     const t = this.tile; if (!t) return '';
-    let rects = M.tileRects(t.area, t.key, t.c);
+    let rects = M.tileRects(t.area, t.key, t.c, t.r.length ? t.r : undefined);
     const got = [];
     for (let i = 0; i < t.wids.length; i++) got.push(await this.moveWid(t.wids[i], rects[i]).catch(() => null));
     if (!fit || t.wids.length !== 2 || got.every((g, i) => !g || M.rectClose(g, rects[i], 24))) return '';
@@ -484,14 +485,20 @@ export class Session extends EventEmitter {
     const f = M.fitRatio(t.area.width, t.c[0], minA, minB);
     if (f === null) return '';
     t.c[0] = f; t.minA = minA; t.minB = minB;
-    rects = M.tileRects(t.area, t.key, t.c);
+    rects = M.tileRects(t.area, t.key, t.c, t.r.length ? t.r : undefined);
     for (let i = 0; i < 2; i++) await this.moveWid(t.wids[i], rects[i]).catch(() => null);
     return ' (프로그램 최소 폭 때문에 비율을 조정)';
   }
 
-  /** 조절 바로 첫 세로 경계를 옮긴다. ratio: 0~1 (화면 왼쪽부터). 실제로 쓴 비율을 돌려준다. */
-  async setTileRatio(ratio){
+  /** 조절 바로 경계를 옮긴다. dir 'v'(세로 경계, 왼쪽부터 비율) 또는 'h'(가로 경계, 위부터 비율). 실제로 쓴 비율을 돌려준다. */
+  async setTileRatio(ratio, dir = 'v'){
     const t = this.tile; if (!t) return null;
+    if (dir === 'h'){
+      if (!t.r.length) return null;
+      t.r[0] = Math.min(0.85, Math.max(0.15, ratio));
+      await this.applyTile();
+      return t.r[0];
+    }
     let r = Math.min(0.85, Math.max(0.15, ratio));
     if (t.key === 'thirds') r = Math.min(r, t.c[1] - 0.1);
     if (t.wids.length === 2) r = M.fitRatio(t.area.width, r, t.minA ?? 0, t.minB ?? 0) ?? r;
@@ -503,7 +510,29 @@ export class Session extends EventEmitter {
   /** 조절 바를 놓을 곳: 첫 세로 경계 (도우미 좌표). 나란히 보는 중이 아니면 null */
   tileDivider(){
     const t = this.tile; if (!t) return null;
-    return { x: Math.round(t.area.x + t.area.width * t.c[0]), y: t.area.y, height: t.area.height, area: t.area };
+    return { dir: 'v', x: Math.round(t.area.x + t.area.width * t.c[0]), y: t.area.y, height: t.area.height, area: t.area };
+  }
+
+  /** 조절 바들: 세로 경계 하나 + (큰 화면+2, 4분할이면) 가로 경계 하나. 가로는 { dir:'h', x, y, width } */
+  tileDividers(){
+    const t = this.tile; if (!t) return [];
+    const out = [this.tileDivider()];
+    if (t.r.length){
+      const a = t.area, y = Math.round(a.y + a.height * t.r[0]);
+      const x0 = t.key === 'main2' ? Math.round(a.x + a.width * t.c[0]) : a.x;
+      out.push({ dir: 'h', x: x0, y, width: a.x + a.width - x0, area: a });
+    }
+    return out;
+  }
+
+  /** 수업에 저장해 둔 배치로 다시 놓는다 (lesson.json layouts) */
+  async applyLayout(id){
+    const saved = this.lesson?.layouts?.find(l => l.id === id);
+    if (!saved) return this.say('저장한 배치를 찾지 못했습니다');
+    this.tile = null;
+    this.sel = saved.items.filter(x => this.state.has(x));
+    if (this.sel.length < 2) return this.say('그 배치의 자료가 두 개 이상 남아 있지 않습니다');
+    return this.split(saved.layout, { c: saved.c, r: saved.r });
   }
 
   async untile(){
@@ -725,6 +754,7 @@ export class Session extends EventEmitter {
       } : null,
       state: Object.fromEntries([...this.state].map(([id, st]) => [id, { status: st.status, disp: st.disp, note: st.note }])),
       highlight: this.highlight, sel: this.sel, tile: this.tile ? { ids: this.tile.ids, layout: this.tile.layout } : null, layouts: TILE_LAYOUTS,
+      saved: (this.lesson?.layouts ?? []).map(l => ({ id: l.id, name: l.name })),
       dual: this.dual, studentName: this.student?.name ?? null, teacherName: this.teacher?.name ?? null,
       openTo: this.openTo, autoHide: this.autoHide, msg: this.msg,
       offer: this.offer ? { act: this.offer.act, id: this.offer.id, label: this.offer.label } : null,

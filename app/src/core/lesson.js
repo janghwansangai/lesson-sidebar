@@ -49,5 +49,12 @@ export function loadLesson(folder){
     }
     sections.push(sec);
   }
-  return { root, title: String(data.title ?? path.basename(root)).normalize('NFC'), date: String(data.date ?? ''), sections, items };
+  // 저장한 나란히 보기 배치: 지금 있는 자료가 2개 이상 남아 있는 것만 (자료를 빼면 그 배치도 빠진다)
+  const ids = new Set(items.filter(it => !it.problem).map(it => it.id));
+  const frac = a => (Array.isArray(a) ? a : []).map(Number).filter(v => v > 0 && v < 1).slice(0, 2);
+  const layouts = (Array.isArray(data.layouts) ? data.layouts : []).map(l => ({
+    id: String(l?.id ?? ''), name: String(l?.name ?? '').normalize('NFC').slice(0, 80), layout: String(l?.layout ?? ''),
+    items: (Array.isArray(l?.items) ? l.items : []).map(String).filter(id => ids.has(id)).slice(0, 4), c: frac(l?.c), r: frac(l?.r),
+  })).filter(l => l.id && l.items.length >= 2);
+  return { root, title: String(data.title ?? path.basename(root)).normalize('NFC'), date: String(data.date ?? ''), sections, items, layouts };
 }
