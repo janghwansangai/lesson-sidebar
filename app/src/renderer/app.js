@@ -40,19 +40,24 @@ function render(){
   $('#btn-hide').setAttribute('aria-pressed', String(!!S.autoHide));
   $('#tool-pointer').setAttribute('aria-pressed', String(!!S.tools?.pointer));
   $('#tool-spot').setAttribute('aria-pressed', String(!!S.tools?.spot));
+  $('#tool-pen').setAttribute('aria-pressed', String(!!S.tools?.pen));
   $('#tool-zoom').setAttribute('aria-pressed', String(S.tools?.grab === 'zoom'));
   $('#tool-pin').setAttribute('aria-pressed', String(S.tools?.grab === 'pick'));
   $('#pins-close').hidden = !S.tools?.pins;
   // 녹화: 위쪽 빨간 막대(REC)와 경과 시간, 아래 단추
   $('#recbar').hidden = !S.rec;
-  $('#record').dataset.tip = S.rec ? '녹화 끝내기|지금까지 녹화한 것을 수업 폴더 _녹화에 저장합니다' : '녹화|학생 화면(모니터 한 대면 이 화면)을 녹화합니다. 자료를 바꿀 때마다 목차를 남깁니다';
+  $('#record').dataset.tip = S.rec ? '녹화 끝내기|지금까지 녹화한 것을 수업 폴더 _녹화에 저장합니다' : `녹화|${S.prefs?.recScreen === 'teacher' ? '교사 화면' : '학생 화면'}(모니터 한 대면 이 화면)을 녹화합니다. 자료를 바꿀 때마다 목차를 남깁니다 · 녹화할 화면·소리는 ⚙에서`;
   $('#record').setAttribute('aria-label', S.rec ? '녹화 끝내기' : '녹화');
   $('#record').setAttribute('aria-pressed', String(!!S.rec));
   if (S.rec){ $('#rec-where').textContent = `${S.rec.where}${S.rec.sys ? ' + 컴퓨터 소리' : ''}${S.rec.mic ? ' + 마이크' : ''}`; $('#rec-stop').disabled = !!S.rec.stopping; }
-  $('#rec-sys').checked = S.prefs?.recSys !== false;
+  $('#rec-sys').checked = !!S.prefs?.recSys;
   $('#rec-mic').checked = S.prefs?.recMic !== false;
   $('#rec-mic-dev').disabled = S.prefs?.recMic === false;
   if ($('#rec-mic-dev').value !== (S.prefs?.recMicId ?? '')) fillMics();
+  $('#keys-on').checked = S.prefs?.shortcuts !== false;
+  $('#keys').hidden = S.prefs?.shortcuts === false;
+  $('#keys').innerHTML = (S.prefs?.keys ?? []).map(k => `<li><kbd>${esc(k.key)}</kbd><span>${esc(k.label)}</span></li>`).join('');
+  for (const b of document.querySelectorAll('#rec-screen [data-rs]')) b.setAttribute('aria-pressed', String(b.dataset.rs === (S.prefs?.recScreen ?? 'student')));
   $('#rec-light').checked = !!S.prefs?.recLight;
 
   $('#screens').innerHTML = S.dual
@@ -142,8 +147,9 @@ function row(it){
     : st.status === 'blocked' ? '<span class="chip wait">답 기다림</span>'
     : front ? '<span class="chip now">보는 중</span>'
     : open ? '<i class="dot" title="열림"></i>' : '';
-  const acts = open ? (S.dual ? `<button class="act" data-act="move" title="${st.disp === 'student' ? '교사' : '학생'} 화면으로 보내기" aria-label="${esc(it.title)} 다른 화면으로 보내기">⇄</button>` : '') +
-    `<button class="act x" data-act="close" title="창 닫기" aria-label="${esc(it.title)} 창 닫기">✕</button>` : '';
+  const qr = it.link ? `<button class="act qr" data-act="qr" title="링크를 ${S.dual ? '학생 화면에 ' : ''}큰 QR로" aria-label="${esc(it.title)} 링크 QR 띄우기">QR</button>` : '';
+  const acts = qr + (open ? (S.dual ? `<button class="act" data-act="move" title="${st.disp === 'student' ? '교사' : '학생'} 화면으로 보내기" aria-label="${esc(it.title)} 다른 화면으로 보내기">⇄</button>` : '') +
+    `<button class="act x" data-act="close" title="창 닫기" aria-label="${esc(it.title)} 창 닫기">✕</button>` : '');
   return `<div class="it${open ? ' open' : ''}${front ? ' front' : ''}${sel ? ' sel' : ''}${it.problem ? ' bad' : ''}${open && S.dual && st.disp === 'teacher' ? ' on-t' : ''}" data-id="${esc(it.id)}" role="button" tabindex="0">` +
     `<button class="check" data-act="sel" aria-label="${esc(it.title)} 선택" aria-pressed="${sel}">${sel ? '✓' : ''}</button>` +
     `<span class="badge" style="--c:var(${c})">${b}</span>` +
@@ -159,6 +165,7 @@ $('#list').addEventListener('click', e => {
   if (a === 'sel' || (!a && (e.metaKey || e.ctrlKey || e.shiftKey))) return api.act('toggleSel', id);
   if (a === 'move') return api.act('move', id);
   if (a === 'close') return api.act('close', id);
+  if (a === 'qr') return api.act('shareQr', id);
   if (!r.classList.contains('bad')) api.act('activate', id);
 });
 $('#list').addEventListener('keydown', e => {
@@ -238,6 +245,8 @@ async function fillMics(){
 }
 navigator.mediaDevices?.addEventListener?.('devicechange', () => fillMics());
 $('#btn-prefs').addEventListener('click', () => fillMics());
+$('#keys-on').addEventListener('change', e => api.act('shortcuts', e.target.checked));
+$('#rec-screen').addEventListener('click', e => { const b = e.target.closest('[data-rs]'); if (b) api.act('recScreen', b.dataset.rs); });
 $('#rec-light').addEventListener('change', e => api.act('recLight', e.target.checked));
 setInterval(() => {
   if (!S?.rec) return;
@@ -246,6 +255,7 @@ setInterval(() => {
 }, 500);
 $('#tool-pointer').addEventListener('click', () => api.act('pointer', !S.tools?.pointer));
 $('#tool-spot').addEventListener('click', () => api.act('spot', !S.tools?.spot));
+$('#tool-pen').addEventListener('click', () => api.act('pen', !S.tools?.pen));
 $('#tool-zoom').addEventListener('click', () => api.act('zoom'));
 $('#tool-pin').addEventListener('click', () => api.act('pin'));
 $('#pins-close').addEventListener('click', () => api.act('closePins'));

@@ -69,8 +69,39 @@ export class Helper extends EventEmitter {
   /** 감시를 다시 시작한다 (손쉬운 사용 권한을 방금 켰을 때). 꺼지면 startWatch가 1초 뒤 다시 켠다. */
   restartWatch(){ this.watcher?.kill(); }
 
+  /**
+   * 클릭 자리를 계속 받는다 ('clicks': {"event":"click","x","y","button"} 한 줄씩, 좌표는 'displays'와 같은 단위).
+   * 포인터 강조를 켠 동안만 켠다. 도우미가 'clicks'를 모르면 바로 끝나므로 다시 켜지 않는다 (물결만 없음).
+   */
+  startClicks(onClick){
+    this.onClick = onClick;
+    if (this.clicker || this.stopped) return;
+    const p = spawn(this.bin, [...this.pre, 'clicks'], { ...this.opts, stdio: ['ignore', 'pipe', 'ignore'] });
+    const began = Date.now();
+    this.clicker = p;
+    createInterface({ input: p.stdout }).on('line', line => {
+      let m;
+      try { m = JSON.parse(line); } catch { return; }
+      if (m.event === 'click' && Number.isFinite(m.x) && Number.isFinite(m.y)) this.onClick?.(m);
+    });
+    p.on('error', () => {});
+    p.on('exit', () => {
+      if (this.clicker !== p) return;
+      this.clicker = null;
+      // 한참 잘 돌다 꺼졌으면(잠자기 등) 다시 켠다
+      if (this.onClick && !this.stopped && Date.now() - began > 5000) setTimeout(() => { if (this.onClick) this.startClicks(this.onClick); }, 1000);
+    });
+  }
+
+  stopClicks(){
+    this.onClick = null;
+    const p = this.clicker; this.clicker = null;
+    p?.kill();
+  }
+
   stop(){
     this.stopped = true;
     this.watcher?.kill();
+    this.stopClicks();
   }
 }

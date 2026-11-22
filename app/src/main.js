@@ -1,13 +1,14 @@
 // 수업 사이드바 체험판 — Electron 시작점 (맥·윈도우)
 // 사이드바 창(교사 화면 왼쪽)과 수업 준비 창을 띄우고, 수업 진행 로직(Session)·수업 편집(LessonDoc)과 잇는다.
-import { app, BrowserWindow, ipcMain, screen, dialog, shell, net, globalShortcut, desktopCapturer, systemPreferences } from 'electron';
-import { readFileSync, writeFileSync, mkdirSync, existsSync, statSync, cpSync, createReadStream, statfsSync, openSync, writeSync, closeSync, renameSync, copyFileSync, unlinkSync, readdirSync } from 'node:fs';
+import { app, BrowserWindow, ipcMain, screen, dialog, shell, net, globalShortcut, desktopCapturer, systemPreferences, session as eSession } from 'electron';
+import { mkdtempSync, rmSync, readFileSync, writeFileSync, mkdirSync, existsSync, statSync, cpSync, createReadStream, statfsSync, openSync, writeSync, closeSync, renameSync, copyFileSync, unlinkSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import http from 'node:http';
 import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { Helper } from './core/helper.js';
+import { SHORTCUTS, accelerator, keyLabel } from './core/shortcuts.js';
 import { loadLesson } from './core/lesson.js';
 import { startFileServer } from './core/fileserver.js';
 import { Session, TILE_LAYOUTS } from './core/session.js';
@@ -176,8 +177,8 @@ function createSidebar(){
   win.on('closed', () => { win = null; });
 }
 
-const fullState = () => ({ ...session.snapshot(), collapsed, trusted: session.trusted !== false, tools: { pointer: tools.pointer, spot: tools.spot, grab: grab?.mode ?? null, pins: pins.size }, cover: cover.mode, preview: previewOn && screenAccess() === 'granted', rec: rec ? { since: rec.startedAt, mic: !!rec.mic, sys: !!rec.sys, stopping: !!rec.stopping, where: rec.where } : null, prefs: { ...prefs, steps: OPACITY_STEPS, asideAvailable: ASIDE_OK }, update: update && !update.dismissed ? { version: update.version, notes: update.notes, size: update.size } : null, version: app.getVersion(), presenter: !!presWin, remote: remote ? { url: remote.url, qr: remote.qr, showQr: remote.showQr, phones: liveSrv.clients('lan') } : null });
-function push(){ noteChapter(); win?.webContents.send('state', fullState()); syncDivider(); syncPreview(); syncLive(); }
+const fullState = () => ({ ...session.snapshot(), collapsed, trusted: session.trusted !== false, tools: { pointer: tools.pointer, spot: tools.spot, pen: tools.pen, grab: grab?.mode ?? null, pins: pins.size }, cover: cover.mode, preview: previewOn && screenAccess() === 'granted', rec: rec ? { since: rec.startedAt, mic: !!rec.mic, sys: !!rec.sys, stopping: !!rec.stopping, where: rec.where } : null, prefs: { ...prefs, steps: OPACITY_STEPS, asideAvailable: ASIDE_OK, keys: SHORTCUTS.map(s => ({ key: keyLabel(s), label: s.label })) }, update: update && !update.dismissed ? { version: update.version, notes: update.notes, size: update.size } : null, version: app.getVersion(), presenter: !!presWin, remote: remote ? { url: remote.url, qr: remote.qr, showQr: remote.showQr, phones: liveSrv.clients('lan') } : null });
+function push(){ noteChapter(); syncInk(); win?.webContents.send('state', fullState()); syncDivider(); syncPreview(); syncLive(); }
 
 // ---------- 나란히 보기 조절 바 ----------
 // 나란히 놓은 창의 경계에 가는 막대 창을 띄운다: 세로 경계(v) 하나 + 큰 화면+2·4분할이면 가로 경계(h) 하나.
@@ -185,7 +186,7 @@ function push(){ noteChapter(); win?.webContents.send('state', fullState()); syn
 // (PPT·엑셀은 한 번 옮기는 데 0.5초 넘게 걸려, 끄는 동안 계속 옮기면 창이 3초 넘게 늦게 따라왔다 — docs/poc/mac.md 36)
 // 도우미 좌표: 맥은 Electron과 같은 포인트, 윈도우는 물리 픽셀 → DIP로 바꿔서 창을 놓는다.
 const DIV_W = 16;
-const divWins = { v: null, h: null };
+const divWins = { v: null, v2: null, h: null };
 let divDrag = null;   // 끄는 중인 막대 'v' | 'h'
 const toDipRect = r => IS_WIN ? screen.screenToDipRect(null, r) : r;
 const toHelperPt = (x, y) => IS_WIN ? screen.dipToScreenPoint({ x, y }) : { x, y };
@@ -200,12 +201,12 @@ function ensureDivider(dir){
   w.setAlwaysOnTop(true, 'screen-saver');
   w.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   lockDown(w);
-  w.loadFile(path.join(HERE, 'renderer', 'divider.html'), { query: { dir } });
+  w.loadFile(path.join(HERE, 'renderer', 'divider.html'), { query: { dir: dir === 'v2' ? 'v' : dir } });   // v2(3분할 두 번째)도 세로 막대
   w.on('closed', () => { divWins[dir] = null; });
   return (divWins[dir] = w);
 }
 function placeDivider(d){
-  const r = toDipRect(d.dir === 'v'
+  const r = toDipRect(d.dir !== 'h'
     ? { x: d.x - Math.round(DIV_W / 2), y: d.y, width: DIV_W, height: d.height }
     : { x: d.x, y: d.y - Math.round(DIV_W / 2), width: d.width, height: DIV_W });
   const w = ensureDivider(d.dir);
@@ -224,7 +225,7 @@ function placeDivider(d){
 function syncDivider(){
   if (divDrag) return;   // 끄는 동안은 마우스를 따라간다
   const ds = session?.tileDividers() ?? [];
-  for (const dir of ['v', 'h']){
+  for (const dir of ['v', 'v2', 'h']){
     const d = ds.find(x => x.dir === dir);
     if (d) placeDivider(d); else divWins[dir]?.hide();
   }
@@ -234,7 +235,7 @@ async function dragDivider(dir, x, y, final){
   const p = toHelperPt(x, y), a = d.area;
   divDrag = dir;
   let ratio;
-  if (dir === 'v'){
+  if (dir !== 'h'){
     const hx = Math.min(a.x + a.width * 0.85, Math.max(a.x + a.width * 0.15, p.x));
     placeDivider({ ...d, x: hx }); ratio = (hx - a.x) / a.width;
   } else {
@@ -245,7 +246,7 @@ async function dragDivider(dir, x, y, final){
   try { await session.setTileRatio(ratio, dir); }
   finally { divDrag = null; syncDivider(); }
 }
-const divDir = e => (e.sender === divWins.v?.webContents ? 'v' : e.sender === divWins.h?.webContents ? 'h' : null);
+const divDir = e => ['v', 'v2', 'h'].find(k => divWins[k] && !divWins[k].isDestroyed() && e.sender === divWins[k].webContents) ?? null;
 ipcMain.on('divider:move', (e, x, y) => { const dir = divDir(e); if (dir && Number.isFinite(x) && Number.isFinite(y)) dragDivider(dir, x, y, false).catch(() => {}); });
 ipcMain.on('divider:end', (e, x, y) => { const dir = divDir(e); if (dir && Number.isFinite(x) && Number.isFinite(y)) dragDivider(dir, x, y, true).catch(() => { divDrag = null; }); });
 
@@ -254,7 +255,10 @@ ipcMain.on('divider:end', (e, x, y) => { const dir = divDir(e); if (dir && Numbe
 // 사이드바는 그보다 한 칸 위에 두어 도구를 켠 채로도 사이드바를 누를 수 있다.
 // - 포인터: 겹침 창이 마우스를 통과시켜 클릭은 아래 프로그램으로 간다
 // - 스포트라이트: 겹침 창이 마우스를 받아 휠로 크기를 바꾼다. Esc(이때만 등록)·두 번 누르기·사이드바 단추로 끈다
-const tools = { pointer: false, spot: false, r: 150 };
+// - 판서 펜: 겹침 창이 마우스(·터치·펜)를 받아 그린다. 색·굵기·형광펜·지우개는 겹침 창 아래 도구 막대에서. 끄면(Esc·✕·사이드바) 지워진다
+// - 클릭 물결: 포인터 강조를 켠 동안 도우미 'clicks'로 누른 자리를 받아 물결을 그린다 (클릭은 원래대로 아래 프로그램에)
+const tools = { pointer: false, spot: false, pen: false, r: 150, ink: { color: '#e5484d', size: 4, mode: 'pen' } };
+let inkFor = null;   // 판서를 그린 자료 — 사이드바에서 다른 자료로 넘어가면 판서를 지운다
 const overlays = new Map();   // display.id → BrowserWindow
 let toolTimer = null, lastCur = null, curIn = null;   // curIn: 커서가 있던 화면 (원을 치울 화면을 알려고)
 function overlayFor(d){
@@ -281,25 +285,29 @@ function overlayFor(d){
   return w;
 }
 function syncTools(){
-  const on = tools.pointer || tools.spot;
+  const on = tools.pointer || tools.spot || tools.pen;
+  const grabsMouse = tools.spot || tools.pen;
   clearInterval(toolTimer); toolTimer = null;
+  syncClicks();
   if (!on){
-    for (const w of overlays.values()) if (!w.isDestroyed()) w.hide();
+    for (const w of overlays.values()) if (!w.isDestroyed()){ w.webContents.send('overlay:state', tools); w.hide(); }   // 끈 것을 알려 판서도 지운다
     globalShortcut.unregister('Escape');
     push();
     return;
   }
   for (const d of screen.getAllDisplays()){
     const w = overlayFor(d);
-    w.setIgnoreMouseEvents(!tools.spot, { forward: true });   // 스포트라이트만 마우스(휠)를 받는다
+    w.setIgnoreMouseEvents(!grabsMouse, { forward: true });   // 스포트라이트(휠)·판서 펜만 마우스를 받는다
     w.webContents.send('overlay:state', tools);
     if (!w.isVisible()) w.showInactive();
   }
   // 사이드바·조절 바는 겹침 창보다 위에
   win?.setAlwaysOnTop(true, 'screen-saver', 1);
   for (const dw of Object.values(divWins)) dw?.setAlwaysOnTop(true, 'screen-saver', 1);
-  if (tools.spot && !globalShortcut.isRegistered('Escape')) globalShortcut.register('Escape', () => setTool('spot', false));
-  if (!tools.spot) globalShortcut.unregister('Escape');
+  if (grabsMouse && !globalShortcut.isRegistered('Escape')) globalShortcut.register('Escape', () => setTool(tools.pen ? 'pen' : 'spot', false));
+  if (!grabsMouse) globalShortcut.unregister('Escape');
+  if (tools.pen && inkFor === null) inkFor = session.highlight ?? '';
+  if (!tools.pen) inkFor = null;
   lastCur = null; curIn = null;
   toolTimer = setInterval(sendCursor, 16);
   push();
@@ -318,15 +326,62 @@ function sendCursor(){
   const w = overlays.get(d.id);
   if (w && !w.isDestroyed()) w.webContents.send('overlay:cursor', { x: p.x - b.x, y: p.y - b.y, in: true });
 }
+const ONE_OF = ['pointer', 'spot', 'pen'];   // 셋 중 하나만
 function setTool(name, v){
-  if (!(name in tools) || name === 'r') return;
+  if (!ONE_OF.includes(name)) return;
   tools[name] = !!v;
-  if (name === 'spot' && tools.spot) tools.pointer = false;      // 둘 중 하나만
-  if (name === 'pointer' && tools.pointer) tools.spot = false;
+  if (tools[name]) for (const o of ONE_OF) if (o !== name) tools[o] = false;
   syncTools();
   session.say(tools.spot ? '스포트라이트: 커서 주변만 밝게 · 휠로 크기 · Esc나 두 번 눌러 끕니다'
-    : tools.pointer ? '포인터 강조: 커서 주변에 노란 원 · 클릭은 그대로 아래 프로그램에 갑니다' : '발표 도구를 껐습니다');
+    : tools.pointer ? '포인터 강조: 커서 주변에 노란 원, 누르면 물결 · 클릭은 그대로 아래 프로그램에 갑니다'
+    : tools.pen ? '판서 펜: 화면 위에 그립니다 · 아래 막대에서 색·형광펜·지우개 · Esc나 ✕로 끄면 지워집니다 (저장은 막대의 "저장")'
+    : '발표 도구를 껐습니다');
 }
+// 클릭 물결: 포인터 강조를 켠 동안만 도우미가 클릭 자리를 알린다 (도우미가 'clicks'를 모르면 물결 없이 원만)
+function syncClicks(){
+  if (!helper) return;
+  if (!tools.pointer) return helper.stopClicks();
+  helper.startClicks(m => {
+    const p = IS_WIN ? screen.screenToDipPoint({ x: m.x, y: m.y }) : { x: m.x, y: m.y };   // 윈도우 도우미는 물리 픽셀
+    for (const d of screen.getAllDisplays()){
+      const b = d.bounds;
+      if (p.x < b.x || p.x >= b.x + b.width || p.y < b.y || p.y >= b.y + b.height) continue;
+      const w = overlays.get(d.id);
+      if (w && !w.isDestroyed()) w.webContents.send('overlay:click', { x: p.x - b.x, y: p.y - b.y, button: m.button === 'right' ? 'right' : 'left' });
+    }
+  });
+}
+// 사이드바에서 다른 자료로 넘어가면 판서를 지운다 (지난 자료 위에 그린 것이 새 자료에 남지 않게)
+function syncInk(){
+  if (!tools.pen) return;
+  const now = session.highlight ?? '';
+  if (inkFor === now) return;
+  inkFor = now;
+  for (const w of overlays.values()) if (!w.isDestroyed()) w.webContents.send('overlay:clear');
+}
+ipcMain.on('overlay:ink', (e, ink) => {
+  if (!fromOverlay(e) || !ink || typeof ink !== 'object') return;
+  const color = /^#[0-9a-f]{6}$/i.test(ink.color) ? ink.color : tools.ink.color;
+  const size = [2, 4, 8].includes(Number(ink.size)) ? Number(ink.size) : tools.ink.size;
+  const mode = ['pen', 'marker', 'eraser'].includes(ink.mode) ? ink.mode : tools.ink.mode;
+  tools.ink = { color, size, mode };
+  for (const w of overlays.values()) if (!w.isDestroyed()) w.webContents.send('overlay:state', { ink: tools.ink });
+});
+ipcMain.on('overlay:off', e => { if (fromOverlay(e)) setTool('pen', false); });
+// 판서 저장: 겹침 창이 도구 막대를 감춘 뒤 부르면, 판서가 보이는 그대로 그 화면을 찍어 수업 폴더 _캡처/에 저장
+ipcMain.on('overlay:save', async e => {
+  if (!fromOverlay(e)) return;
+  const id = [...overlays].find(([, w]) => !w.isDestroyed() && w.webContents === e.sender)?.[0];
+  const d = screen.getAllDisplays().find(x => x.id === id);
+  let name = null;
+  if (d && screenAccess() === 'granted'){
+    const img = await captureDisplay(d).catch(() => null);
+    if (img && !img.isEmpty()) name = savePin(img, '판서');
+  }
+  if (!e.sender.isDestroyed()) e.sender.send('overlay:saved', !!name);
+  if (screenAccess() !== 'granted') session.say(SCREEN_PERM, { act: 'screenSettings', label: '화면 기록 설정 열기' });
+  else session.say(name ? `판서를 저장했습니다 · 수업 폴더 _캡처/${name}` : '판서를 저장하지 못했습니다');
+});
 // ---------- 확대·캡처 핀 (화면을 찍어서 쓰는 도구 — 맥은 "화면 기록" 권한 필요) ----------
 // 커서가 있는 화면을 찍어 그 화면의 겹침 창에 멈춘 그림으로 보여 준다.
 // - 확대: 커서 둘레를 2배(휠로 1.5~4배)로, 클릭·Esc로 끝
@@ -347,7 +402,7 @@ async function startGrab(mode){
     session.say(SCREEN_PERM, { act: 'screenSettings', label: '화면 기록 설정 열기' });
     return;
   }
-  tools.pointer = false; tools.spot = false; syncTools();
+  tools.pointer = false; tools.spot = false; tools.pen = false; syncTools();
   // 커서가 있는 화면을 찍는다. 단, 사이드바 단추를 눌렀으면 커서는 교사 화면의 사이드바 위에 있으므로
   // 학생 화면이 있으면 학생 화면을 찍는다 (그대로 두면 확대·캡처가 늘 교사 화면에서만 됐다)
   const cur = screen.getCursorScreenPoint(), sb = win && !win.isDestroyed() ? win.getBounds() : null;
@@ -361,7 +416,7 @@ async function startGrab(mode){
   grab = { mode, display: d, image, payload: { mode, src: image.toDataURL() } };
   const w = overlayFor(d);   // 처음 만드는 겹침 창이면 다 읽힌 뒤(did-finish-load) 그림을 다시 보낸다
   w.setIgnoreMouseEvents(false);
-  w.webContents.send('overlay:state', { pointer: false, spot: false, grab: grab.payload });
+  w.webContents.send('overlay:state', { pointer: false, spot: false, pen: false, grab: grab.payload });
   w.showInactive();
   win?.setAlwaysOnTop(true, 'screen-saver', 1);
   if (!globalShortcut.isRegistered('Escape')) globalShortcut.register('Escape', () => endGrab());
@@ -377,11 +432,11 @@ function endGrab(){
   globalShortcut.unregister('Escape');
   syncTools();
 }
-function savePin(img){
+function savePin(img, prefix = ''){
   const root = session.lesson?.root ?? app.getPath('userData');
   const dir = path.join(root, '_캡처');
   const t = new Date(), p2 = n => String(n).padStart(2, '0');
-  const name = `${t.getFullYear()}-${p2(t.getMonth() + 1)}-${p2(t.getDate())}_${p2(t.getHours())}${p2(t.getMinutes())}${p2(t.getSeconds())}.png`;
+  const name = `${prefix ? `${prefix}_` : ''}${t.getFullYear()}-${p2(t.getMonth() + 1)}-${p2(t.getDate())}_${p2(t.getHours())}${p2(t.getMinutes())}${p2(t.getSeconds())}.png`;
   try { mkdirSync(dir, { recursive: true }); writeFileSync(path.join(dir, name), img.toPNG()); return name; } catch { return null; }
 }
 function makePin(img, r){
@@ -536,7 +591,9 @@ async function startRecording(){
   const { root, title } = recordTarget();
   const free = freeAt(root ?? app.getPath('userData'));
   if (free != null && free < 2 * 1024 ** 3) return session.say(`남은 공간이 ${fmtBytes(free)}뿐이라 녹화를 시작하지 않았습니다 (2GB 이상 필요 · 1시간에 약 1.5GB)`);
-  const d = studentElectronDisplay() ?? screen.getPrimaryDisplay();
+  // 녹화할 화면: 학생 화면(기본, 모니터 한 대면 이 화면) 또는 교사 화면(사이드바가 있는 화면 — 진행 과정을 남길 때)
+  const teacherDisp = win && !win.isDestroyed() ? screen.getDisplayMatching(win.getBounds()) : screen.getPrimaryDisplay();
+  const d = prefs.recScreen === 'teacher' ? teacherDisp : (studentElectronDisplay() ?? screen.getPrimaryDisplay());
   const src = (await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 1, height: 1 } })).find(x => String(x.display_id) === String(d.id));
   if (!src) return session.say('녹화할 화면을 찾지 못했습니다');
   mkdirSync(recDir(), { recursive: true });
@@ -544,14 +601,20 @@ async function startRecording(){
   const file = path.join(recDir(), `${name}.mp4`);
   const meta = path.join(recDir(), `${name}.json`);
   const startedAt = Date.now();
-  rec = { fd: openSync(file, 'w'), file, meta, name, root, title, startedAt, chapters: new Chapters(startedAt), lastHi: null, where: session.dual ? '학생 화면' : '이 화면' };
+  rec = { fd: openSync(file, 'w'), file, meta, name, root, title, startedAt, chapters: new Chapters(startedAt), lastHi: null, where: !session.dual ? '이 화면' : prefs.recScreen === 'teacher' ? '교사 화면' : '학생 화면' };
   writeFileSync(meta, JSON.stringify({ root, title, name, chapters: rec.chapters }));
   noteChapter();
   // 소리 섞기(AudioContext)가 보이지 않는 창에서도 멈추지 않게 자동 재생 제한을 푼다
   rec.recWin = new BrowserWindow({ show: false, webPreferences: { ...SECURE('recorder-preload.cjs'), autoplayPolicy: 'no-user-gesture-required', backgroundThrottling: false } });
   lockDown(rec.recWin);
   await rec.recWin.loadFile(path.join(HERE, 'renderer', 'recorder.html'));
-  rec.recWin.webContents.send('rec:start', { sourceId: src.id, sys: prefs.recSys !== false, mic: prefs.recMic !== false, micId: prefs.recMicId || '', light: !!prefs.recLight });
+  // 컴퓨터 소리: 녹화 창이 getDisplayMedia로 소리만 받는다 (이 창의 요청에만 같은 화면 + 'loopback'을 준다)
+  const recWc = rec.recWin.webContents;
+  recWc.session.setDisplayMediaRequestHandler((req, cb) => {
+    if (!rec?.recWin || rec.recWin.isDestroyed() || req.frame?.top !== rec.recWin.webContents.mainFrame) return cb({});
+    cb({ video: src, audio: 'loopback' });
+  });
+  recWc.send('rec:start', { sourceId: src.id, mic: prefs.recMic !== false, micId: prefs.recMicId || '', sys: !!prefs.recSys, light: !!prefs.recLight });
   rec.spaceTimer = setInterval(() => {
     const f = freeAt(recDir());
     if (f != null && f < 1024 ** 3){ session.say(`남은 공간이 ${fmtBytes(f)}라 녹화를 멈춥니다`); stopRecording(); }
@@ -621,9 +684,12 @@ const fromRec = e => rec?.recWin && !rec.recWin.isDestroyed() && e.sender === re
 ipcMain.on('rec:chunk', (e, buf) => { if (fromRec(e)) try { writeSync(rec.fd, Buffer.from(buf)); } catch { /* 디스크 문제 */ } });
 ipcMain.on('rec:started', (e, info) => {
   if (!fromRec(e)) return;
-  rec.mic = !!info?.mic; rec.sys = !!info?.sys;
-  const missed = [info?.wantSys && !rec.sys && '컴퓨터 소리', info?.wantMic && !rec.mic && '마이크'].filter(Boolean);
-  session.say(`녹화를 시작했습니다 · ${rec.where}${rec.sys ? ' + 컴퓨터 소리' : ''}${rec.mic ? ' + 마이크' : ''}${missed.length ? ` · ${missed.join('·')}는 이 PC에서 녹음하지 못해 빼고 녹화합니다` : ''} · 학생 얼굴·목소리·이름이 담길 수 있으니 공유하기 전에 확인하세요`);
+  rec.mic = !!info?.mic;
+  rec.sys = !!info?.sys;
+  const sysMiss = prefs.recSys && !rec.sys
+    ? ` · 컴퓨터 소리는 담지 못했습니다${process.platform === 'darwin' ? ' (맥에서는 아직 시험 중인 기능입니다 · 화면·마이크는 그대로 녹화)' : ''}` : '';
+  const micMiss = prefs.recMic !== false && !rec.mic ? ' · 마이크는 쓸 수 없어 빼고 녹화합니다' : '';
+  session.say(`녹화를 시작했습니다 · ${rec.where}${rec.sys ? ' + 컴퓨터 소리' : ''}${rec.mic ? ' + 마이크' : ''}${sysMiss}${micMiss} · 학생 얼굴·목소리·이름이 담길 수 있으니 공유하기 전에 확인하세요`);
   push();
 });
 ipcMain.on('rec:stopped', e => { if (fromRec(e)) finishRecording(); });
@@ -869,6 +935,37 @@ async function setRemote(on, moved = false){
   push();
 }
 
+// ---------- 링크 QR (docs/PLAN.md 15 "학생 공유 QR") ----------
+// 링크 자료의 주소를 학생 화면(모니터 한 대면 이 화면)에 큰 QR로 띄운다. 누르거나 Esc로 닫는다
+let qrWin = null;
+function shortUrl(u){
+  try { const x = new URL(u); return (x.host.replace(/^www\./, '') + (x.pathname === '/' ? '' : x.pathname)).slice(0, 60) + (u.length > 70 ? '…' : ''); } catch { return ''; }
+}
+function closeQr(){ if (qrWin && !qrWin.isDestroyed()) qrWin.close(); qrWin = null; }
+function shareQr(id){
+  if (qrWin && !qrWin.isDestroyed()){ closeQr(); return session.say('링크 QR을 닫았습니다'); }
+  const it = session.item(id);
+  if (!it?.url || !/^https?:\/\//i.test(it.url)) return session.say('링크가 있는 자료만 QR로 띄울 수 있습니다');
+  const q = qrcode(0, 'M'); q.addData(it.url); q.make();
+  const src = `data:image/svg+xml;base64,${Buffer.from(q.createSvgTag({ cellSize: 8, margin: 0, scalable: true })).toString('base64')}`;
+  const d = coverDisplay();
+  qrWin = new BrowserWindow({
+    ...d.bounds, frame: false, resizable: false, movable: false, minimizable: false, maximizable: false, fullscreenable: false,
+    skipTaskbar: true, show: false, alwaysOnTop: true, hasShadow: false, backgroundColor: '#1b2f2a', enableLargerThanScreen: true,
+    type: process.platform === 'darwin' ? 'panel' : undefined, webPreferences: SECURE('qr-preload.cjs'),
+  });
+  qrWin.setAlwaysOnTop(true, 'screen-saver');   // 겹침 창·가림 창과 같은 높이, 사이드바(한 칸 위)보다 아래
+  qrWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  lockDown(qrWin);
+  const w = qrWin;
+  w.loadFile(path.join(HERE, 'renderer', 'qr.html'));
+  w.webContents.on('did-finish-load', () => { w.webContents.send('qr:show', { title: it.title, src, short: shortUrl(it.url) }); w.setBounds(d.bounds); w.show(); w.moveTop(); w.focus(); });
+  w.on('closed', () => { if (qrWin === w) qrWin = null; push(); });
+  win?.setAlwaysOnTop(true, 'screen-saver', 1);   // 사이드바는 그 위
+  session.say(`'${it.title}' 링크를 ${session.dual ? '학생 화면에 ' : ''}QR로 띄웠습니다 · 화면을 누르거나 Esc로 닫습니다`);
+}
+ipcMain.on('qr:close', e => { if (qrWin && !qrWin.isDestroyed() && e.sender === qrWin.webContents) closeQr(); });
+
 // ---------- 새 버전 알림 (docs/PLAN.md 13 "서명·자동 업데이트") ----------
 // 하루 한 번 GitHub Releases의 최신 버전을 보고, 새 버전이면 사이드바에 "내려받기"를 보인다. 깔기는 선생님이 직접 (update.js 맨 위 이유)
 let update = null;   // { version, url, page, notes, size, dismissed }
@@ -937,6 +1034,33 @@ function openDoc(folder){
   saveSettings({ lastPrepFolder: doc.root });
   note(other ? `주의: '${other.device}'에서 이 수업을 ${Math.max(1, Math.round((Date.now() - other.at) / 60000))}분 전까지 열고 있었습니다. 동시에 고치면 내용이 부딪힐 수 있습니다`
              : `'${doc.data.title}' 수업을 열었습니다`);
+}
+
+// ---------- 웹 자료 저장본 (docs/PLAN.md 15 "웹 자료 스냅샷") ----------
+// 준비할 때 웹 페이지를 PDF로 찍어 둔다 → 수업 중 인터넷이 끊겨도 저장본을 띄울 수 있다.
+// 따로 떨어진 메모리 세션(쿠키·로그인 없음)의 보이지 않는 창에서 열고, 내려받기·새 창·권한 요청은 모두 막는다
+let snapSession = null;
+function snapshotSession(){
+  if (snapSession) return snapSession;
+  snapSession = eSession.fromPartition('snapshot');   // persist: 없음 → 메모리에만
+  snapSession.setPermissionRequestHandler((_w, _p, cb) => cb(false));
+  snapSession.on('will-download', e => e.preventDefault());
+  return snapSession;
+}
+async function snapshotPdf(url){
+  const w = new BrowserWindow({ show: false, width: 1280, height: 900, webPreferences: { session: snapshotSession(), sandbox: true, contextIsolation: true, nodeIntegration: false } });
+  w.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  w.webContents.setAudioMuted(true);
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  try {
+    await Promise.race([w.loadURL(url), wait(30000).then(() => { throw new Error('30초 안에 열리지 않았습니다'); })]);
+    await wait(1500);
+    // 아래로 내려 가며 늦게 뜨는 그림을 불러온 뒤 맨 위로 (최대 30000px)
+    await Promise.race([w.webContents.executeJavaScript(`new Promise(r => { let y = 0; const t = setInterval(() => { scrollBy(0, 900); y += 900;
+      if (y > document.documentElement.scrollHeight || y > 30000){ clearInterval(t); scrollTo(0, 0); r(); } }, 120); })`), wait(8000)]).catch(() => {});
+    await wait(800);
+    return await w.webContents.printToPDF({ printBackground: true, pageSize: 'A4' });
+  } finally { w.destroy(); }
 }
 
 function needDoc(){ if (!doc) throw new Error('먼저 왼쪽에서 수업을 고르거나 새로 만드세요'); return doc; }
@@ -1038,7 +1162,7 @@ const PREP_ACTIONS = {
     if (r.canceled || !r.filePaths[0]) return;
     PREP_ACTIONS.openLesson({ folder: r.filePaths[0] });
   },
-  info(p){ needDoc().setInfo({ title: str(p.title, 120), date: str(p.date, 10) }); afterEdit(); },
+  info(p){ needDoc().setInfo({ title: str(p.title, 120), date: str(p.date, 10), review: str(p.review, 4000) }); afterEdit(); },
   addSection(){ needDoc().addSection(); afterEdit('구간을 넣었습니다'); },
   updateSection(p){ needDoc().updateSection(str(p.id, 60), { title: str(p.title, 40), minutes: p.minutes }); afterEdit(); },
   removeSection(p){ needDoc().removeSection(str(p.id, 60)); afterEdit('구간을 지웠습니다'); },
@@ -1054,6 +1178,26 @@ const PREP_ACTIONS = {
     const r = await dialog.showOpenDialog(prepWin, { title: '넣을 자료 고르기', properties: ['openFile', 'multiSelections'] });
     if (r.canceled || !r.filePaths.length) return;
     await PREP_ACTIONS.addFiles({ paths: r.filePaths, sec: p.sec });
+  },
+  async snapshot(p){
+    const d = needDoc(), loc = d.locate(str(p.id, 60));
+    if (!loc || loc.item.type !== 'web' || !/^https?:\/\//i.test(loc.item.url ?? '')) throw new Error('웹사이트 링크만 PDF 저장본을 만들 수 있습니다');
+    const after = loc.sec.items[loc.index + 1]?.id ?? null;
+    note(`'${loc.item.title}' 페이지를 PDF로 저장하는 중… (최대 30초)`);
+    let pdf;
+    try { pdf = await snapshotPdf(loc.item.url); }
+    catch (e){ throw new Error(`저장본을 만들지 못했습니다: ${e.message}`); }
+    const tmp = mkdtempSync(path.join(os.tmpdir(), 'lesson-snap-'));
+    try {
+      const f = path.join(tmp, `${safeName(loc.item.title, 40)} (저장본).pdf`);
+      writeFileSync(f, pdf);
+      const r = await d.addFiles([f], loc.sec.id);
+      const it = r.added[0]; if (!it) throw new Error(r.skipped[0]?.reason ?? '저장본을 넣지 못했습니다');
+      d.moveItem(it.id, loc.sec.id, after);   // 원래 링크 바로 아래에
+      d.updateItem(it.id, { title: `${loc.item.title} (저장본)`.slice(0, 80) });   // 파일 이름은 띄어쓰기를 줄이지만 보이는 이름은 그대로
+      it.title = `${loc.item.title} (저장본)`.slice(0, 80);
+      afterEdit(`'${it.title}'을(를) 링크 아래에 넣었습니다 · 인터넷이 안 될 때 이걸 띄우세요 (${fmtBytes(pdf.length)})`);
+    } finally { rmSync(tmp, { recursive: true, force: true }); }
   },
   addLink(p){ const it = needDoc().addLink(str(p.url, 2000), str(p.sec, 60), str(p.title, 80)); afterEdit(`'${it.title}' 링크를 넣었습니다`); },
   addMemo(p){ const it = needDoc().addMemo(str(p.sec, 60)); afterEdit(`'${it.title}'를 만들었습니다 · "편집"을 누르면 메모를 고칠 수 있습니다`); },
@@ -1211,8 +1355,9 @@ const ACTIONS = {
   openTo: v => session.setOpenTo(v),
   record: () => startRecording(),
   recMic: v => { prefs.recMic = v === true || v === 'true'; saveSettings({ recMic: prefs.recMic }); push(); },
-  recLight: v => { prefs.recLight = v === true || v === 'true'; saveSettings({ recLight: prefs.recLight }); push(); },
+  recScreen: v => { prefs.recScreen = v === 'teacher' ? 'teacher' : 'student'; saveSettings({ recScreen: prefs.recScreen }); push(); },
   recSys: v => { prefs.recSys = v === true || v === 'true'; saveSettings({ recSys: prefs.recSys }); push(); },
+  recLight: v => { prefs.recLight = v === true || v === 'true'; saveSettings({ recLight: prefs.recLight }); push(); },
   recMicId: v => { prefs.recMicId = typeof v === 'string' ? v.slice(0, 200) : ''; saveSettings({ recMicId: prefs.recMicId }); push(); },
   revealRec: v => { if (typeof v === 'string' && /_녹화[\\/]/.test(v) && existsSync(v)) shell.showItemInFolder(v); },
   freeze: () => setCover('freeze'),
@@ -1224,12 +1369,34 @@ const ACTIONS = {
   prep: () => openPrep(),
   pointer: v => setTool('pointer', v === true || v === 'true'),
   spot: v => setTool('spot', v === true || v === 'true'),
+  pen: v => setTool('pen', v === true || v === 'true'),
   zoom: () => startGrab('zoom'),
   pin: () => startGrab('pick'),
   closePins: () => { for (const p of [...pins]) p.close(); },
   screenSettings: () => shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture'),
+  shareQr: id => shareQr(id),
   quit: () => app.quit(),
+  shortcuts: v => { prefs.shortcuts = v === true || v === 'true'; saveSettings({ shortcuts: prefs.shortcuts }); syncShortcuts(true); push(); },
 };
+
+// ---------- 단축키 (core/shortcuts.js) ----------
+// 켜 두면 어느 프로그램이 앞에 있어도 Ctrl+Alt(맥 ⌃⌥)+글자로 사이드바 기능을 부른다. 다른 프로그램이 이미 쓰는 조합은 건너뛰고 알린다
+let shortcutsOn = false;
+function syncShortcuts(announce = false){
+  for (const s of SHORTCUTS) globalShortcut.unregister(accelerator(s));
+  shortcutsOn = false;
+  if (prefs.shortcuts === false){ if (announce) session.say('단축키를 껐습니다'); return; }
+  const taken = [];
+  for (const s of SHORTCUTS){
+    const fn = s.act === 'pen' || s.act === 'pointer' || s.act === 'spot' ? () => setTool(s.act, !tools[s.act]) : () => act(s.act);
+    let ok = false;
+    try { ok = globalShortcut.register(accelerator(s), () => { Promise.resolve(fn()).catch(e => session.say(e.message)); }); } catch { ok = false; }
+    if (!ok) taken.push(keyLabel(s));
+  }
+  shortcutsOn = true;
+  if (taken.length) session.say(`단축키 ${taken.join(', ')}는 다른 프로그램이 쓰고 있어 건너뛰었습니다`);
+  else if (announce) session.say(`단축키를 켰습니다 · ${keyLabel(SHORTCUTS[0])} 다음 자료, ${keyLabel(SHORTCUTS[1])} 이전 자료 (목록은 ⚙)`);
+}
 
 async function act(action, arg){
   const fn = Object.hasOwn(ACTIONS, action) ? ACTIONS[action] : null;
@@ -1325,7 +1492,8 @@ app.whenReady().then(async () => {
   await session.refreshDisplays();
 
   const settings = readSettings();
-  prefs = { opacity: OPACITY_STEPS.includes(settings.opacity) ? settings.opacity : 100, aside: ASIDE_OK && !!settings.aside, recMic: settings.recMic !== false, recSys: settings.recSys !== false, recMicId: typeof settings.recMicId === 'string' ? settings.recMicId : '', recLight: !!settings.recLight, updateCheck: settings.updateCheck !== false };
+  prefs = { opacity: OPACITY_STEPS.includes(settings.opacity) ? settings.opacity : 100, aside: ASIDE_OK && !!settings.aside, recMic: settings.recMic !== false, recSys: typeof settings.recSys === 'boolean' ? settings.recSys : IS_WIN,   // 맥은 아직 시험 중이라 기본은 끔 (docs/poc/mac.md 49)
+     recMicId: typeof settings.recMicId === 'string' ? settings.recMicId : '', recScreen: settings.recScreen === 'teacher' ? 'teacher' : 'student', recLight: !!settings.recLight, updateCheck: settings.updateCheck !== false, shortcuts: settings.shortcuts !== false };
   createSidebar();
   if (!(settings.lastFolder && existsSync(settings.lastFolder) && runLesson(settings.lastFolder))) runLesson(sampleLesson());
   if (settings.lastPrepFolder && existsSync(path.join(settings.lastPrepFolder, 'lesson.json'))){
@@ -1340,6 +1508,7 @@ app.whenReady().then(async () => {
   session.trusted = trusted;
   watchTrust();
   helper.startWatch();
+  syncShortcuts();
   // 고정한 채로 켜면 가려지는 창을 옆으로 (설정을 켰을 때만)
   if (trusted && prefs.aside && !session.autoHide){
     const n = await session.stepAside();

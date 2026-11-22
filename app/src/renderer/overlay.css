@@ -16,3 +16,32 @@ html,body{margin:0;width:100%;height:100%;background:transparent;overflow:hidden
 .grab.zoom{cursor:zoom-out}
 .grab.pick img{filter:brightness(.55)}
 .sel{position:absolute;border:2px solid #f2cd5c;background-repeat:no-repeat;box-shadow:0 0 0 1px rgba(0,0,0,.4)}
+/* 클릭 물결 (포인터 강조): 누른 자리에서 퍼지는 원 */
+.ripple{position:fixed;width:56px;height:56px;margin:-28px 0 0 -28px;border-radius:50%;border:4px solid rgba(242,205,92,.95);pointer-events:none;
+  animation:ripple .5s ease-out forwards}
+.ripple.right{border-color:rgba(110,170,255,.95)}
+@keyframes ripple{from{transform:scale(.3);opacity:1}to{transform:scale(1.7);opacity:0}}
+/* 판서 펜: 화면 전체 그림판 + 아래 도구 막대 */
+.pen{position:fixed;inset:0;cursor:crosshair;touch-action:none}
+.pen.eraser{cursor:cell}
+.pen canvas{position:absolute;inset:0;width:100%;height:100%}
+.penbar{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:14px;
+  background:rgba(20,30,27,.92);color:#edf3ee;box-shadow:0 6px 22px rgba(0,0,0,.35);font:600 13px -apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  user-select:none;touch-action:none;white-space:nowrap}
+.penbar.moved{transform:none}
+.penbar.saving{visibility:hidden}
+.grip{width:14px;height:28px;display:grid;place-items:center;cursor:grab;fill:#9fb3aa}
+.grip svg{width:10px;height:16px}
+.pgrp{display:flex;align-items:center;gap:3px;padding-left:8px;border-left:1px solid rgba(255,255,255,.14)}
+.grip + .pgrp{border-left:0;padding-left:0}
+.penbar button{font:inherit;color:inherit;border:1px solid transparent;background:transparent;border-radius:8px;cursor:pointer}
+.penbar button:hover{background:rgba(255,255,255,.1)}
+.sw{width:24px;height:24px;padding:0;border-radius:50% !important;background:var(--c) !important;box-shadow:inset 0 0 0 1px rgba(0,0,0,.3)}
+.sw[aria-pressed="true"]{outline:2px solid #f2cd5c;outline-offset:2px}
+.pb{height:30px;padding:0 9px}
+.pb[aria-pressed="true"]{background:rgba(242,205,92,.18) !important;border-color:#f2cd5c !important;color:#f2cd5c}
+.pb.off{font-size:15px;padding:0 10px}
+.pb:disabled{opacity:.4;cursor:default}
+.sz{width:30px;height:30px;display:grid;place-items:center;padding:0}
+.sz i{display:block;border-radius:50%;background:currentColor;width:var(--d);height:var(--d)}
+.sz[aria-pressed="true"]{background:rgba(242,205,92,.18) !important;border-color:#f2cd5c !important;color:#f2cd5c}

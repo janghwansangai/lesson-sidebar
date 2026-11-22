@@ -179,6 +179,26 @@ test('나란히 놓을 때 최소 폭이 넓은 창이면 비율을 조정한다
   assert.equal(ppt.x + ppt.width, web.x);
 });
 
+test('3분할: 최소 폭이 넓은 가운데 창에 맞춰 경계를 옮기고, 두 번째 경계에도 조절 바', async () => {
+  const { s, helper } = makeSession();
+  helper.minW = { Chrome: 600 };
+  await s.refreshDisplays(); s.load(makeLesson());
+  s.toggleSel('ppt'); s.toggleSel('web'); s.toggleSel('memo');
+  await s.split('thirds');
+  const winOf = id => helper.wins.find(w => w.wid === s.state.get(id).wid);
+  const [ppt, web, memo] = ['ppt', 'web', 'memo'].map(winOf);
+  assert.equal(web.width, 600);
+  assert.equal(ppt.x + ppt.width, web.x);                 // 겹치지 않고 붙어 있다
+  assert.ok(Math.abs(web.x + web.width - memo.x) <= 1);
+  assert.match(s.snapshot().msg, /최소 크기/);
+  const ds = s.tileDividers();
+  assert.deepEqual(ds.map(d => d.dir), ['v', 'v2']);
+  assert.equal(ds[1].x, memo.x);
+  // 두 번째 경계를 왼쪽으로 끌어도 가운데 창은 최소 폭 아래로 줄지 않는다
+  const r = await s.setTileRatio(0.3, 'v2');
+  assert.ok(winOf('web').width >= 600 - 1 && r > s.tile.c[0]);
+});
+
 test('닫기가 무시되면 "답을 기다리는 창"으로 표시한다', async () => {
   const { s, helper } = makeSession();
   await s.refreshDisplays(); s.load(makeLesson());

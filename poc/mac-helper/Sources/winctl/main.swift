@@ -322,9 +322,12 @@ func close(_ w: Win) -> [String: Any] {
 
 // MARK: - 명령
 
+var clickTap: CFMachPort? = nil   // 'clicks' 감시 (시간 초과로 꺼지면 다시 켜려고 들고 있음)
+
+
 let args = Array(CommandLine.arguments.dropFirst())
 guard let cmd = args.first else {
-    fail("사용법: winctl <trusted|displays|list|front|raise|move|minimize|close> ...")
+    fail("사용법: winctl <trusted|displays|list|front|raise|move|minimize|close|watch|clicks> ...")
 }
 
 switch cmd {
@@ -377,6 +380,31 @@ case "watch":
         tick += 1
         settle(0.3)
     }
+case "clicks":
+    // 계속 실행하며 마우스를 누를 때마다 한 줄씩 알린다 (포인터 강조의 클릭 물결용)
+    //   {"event":"ready"}                                  감시를 시작함
+    //   {"event":"click","x":..,"y":..,"button":"left"}   누른 자리 (displays와 같은 좌표: 주 화면 왼쪽 위 기준 포인트)
+    // 듣기만 하는 감시라 클릭은 그대로 원래 프로그램에 간다. 키보드는 보지 않는다.
+    setvbuf(stdout, nil, _IOLBF, 0)
+    let mask = CGEventMask((1 << CGEventType.leftMouseDown.rawValue) | (1 << CGEventType.rightMouseDown.rawValue))
+    let callback: CGEventTapCallBack = { _, type, event, _ in
+        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            if let t = clickTap { CGEvent.tapEnable(tap: t, enable: true) }
+            return Unmanaged.passUnretained(event)
+        }
+        let p = event.location
+        emit(["event": "click", "x": Double(p.x), "y": Double(p.y), "button": type == .rightMouseDown ? "right" : "left"])
+        return Unmanaged.passUnretained(event)
+    }
+    guard let tap = CGEvent.tapCreate(tap: .cgSessionEventTap, place: .tailAppendEventTap, options: .listenOnly,
+                                      eventsOfInterest: mask, callback: callback, userInfo: nil) else {
+        fail("클릭 감시를 시작하지 못했습니다 (손쉬운 사용 권한 확인)")
+    }
+    clickTap = tap
+    CFRunLoopAddSource(CFRunLoopGetCurrent(), CFMachPortCreateRunLoopSource(nil, tap, 0), .commonModes)
+    CGEvent.tapEnable(tap: tap, enable: true)
+    emit(["event": "ready"])
+    CFRunLoopRun()
 default:
     fail("모르는 명령: \(cmd)")
 }
