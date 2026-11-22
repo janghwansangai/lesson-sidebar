@@ -6,6 +6,7 @@ import { mkdtempSync, writeFileSync, mkdirSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { Session } from '../src/core/session.js';
+import { responseError } from '../src/core/helper.js';
 import { loadLesson } from '../src/core/lesson.js';
 
 const TEACHER = { index: 0, primary: true, builtin: true, x: 0, y: 0, width: 1512, height: 982, visible: { x: 0, y: 33, width: 1512, height: 949 } };
@@ -23,6 +24,7 @@ class FakeHelper extends EventEmitter {
     super(); this.displays = displays; this.wins = []; this.next = 100; this.minW = {}; this.stuck = new Set();
     this.ask = new Map(); this.pending = new Map(); this.waiting = new Map(); this.dialogs = 0; this.lists = 0; this.closes = []; this.raises = [];
     this.dirty = new Set(); this.notepadTabs = true; this.calls = [];
+    this.blockFront = null; this.failList = false;
   }
   spawn(app, title){ const w = { wid: this.next++, app, title, x: 100, y: 100, width: 800, height: 600 }; this.wins.push(w); return w; }
   tabsOf(w){ return w.tabs ?? [w.title.replace(/ - 메모장$/, '')]; }
@@ -48,15 +50,20 @@ class FakeHelper extends EventEmitter {
       case 'maximize': { const w = this.wins.find(x => x.wid === Number(a[0])); w.maximized = true; return { ok: true }; }
       case 'displays': return { ok: true, displays: this.displays };
       case 'list': {
+        if (this.failList) throw new Error('목록 실패');
         this.lists++;
         for (const [wid, at] of this.pending) if (this.lists >= at){ this.pending.delete(wid); this.waiting.set(wid, { wid: 900 + this.dialogs++, title: '저장' }); }
         const i = a.indexOf('--app'); const f = i >= 0 ? a[i + 1] : null;
         return { ok: true, windows: this.wins.filter(w => !f || w.app.includes(f)).map(w => ({ ...w, waiting: this.waiting.get(w.wid) ?? w.waiting ?? null })) };
       }
       case 'raise': {
-        const w = this.wins.find(x => x.wid === Number(a[0])); if (!w) throw new Error('없음');
+        // 진짜 Helper.call처럼 ok:false 응답은 오류로 바꾸고 응답을 붙인다 (창이 없을 때도 도우미는 ok:false + error)
+        const w = this.wins.find(x => x.wid === Number(a[0])); if (!w) throw responseError({ ok: false, error: '없음' });
         this.raises.push(w.wid);
-        return { ok: true, detail: { waiting: this.waiting.get(w.wid) ?? w.waiting ?? null } };
+        const waiting = this.waiting.get(w.wid) ?? w.waiting ?? null;
+        // blockFront: 다른 창이 맨 앞을 막아 앞으로 못 가져옴 (윈도우 "연결 프로그램 선택" 창, docs/poc/windows.md 15)
+        if (this.blockFront) throw responseError({ ok: false, front: this.blockFront, ms: 2400, detail: { waiting, tried: [] } });
+        return { ok: true, detail: { waiting } };
       }
       case 'move': {
         const w = this.wins.find(x => x.wid === Number(a[0])); const [x, y, width, height] = a.slice(1).map(Number);
@@ -442,4 +449,77 @@ test('사용자가 직접 닫은 창은 목록에서 닫힘으로 바뀐다 (막
   s.state.get('ppt').linkedAt = Date.now() - 10000;
   s.onAlive(new Set());
   assert.equal(s.state.get('ppt').status, 'closed');
+});
+
+test('앞으로 가져오기가 막혀도(도우미 raise가 ok:false) 창이 남아 있으면 다시 열지 않고, 앞을 막은 창을 알려 준다', async () => {
+  const { s, helper } = makeSession();
+  await s.refreshDisplays(); s.load(makeLesson());
+  await s.open('ppt');
+  const wid = s.state.get('ppt').wid, count = helper.wins.length;
+  // 윈도우: "연결 프로그램 선택" 창이 맨 앞에 떠 있으면 어떤 창도 앞으로 오지 않는다 (docs/poc/windows.md 15)
+  helper.blockFront = { wid: 777, pid: 55, app: 'OpenWith.exe', title: '' };
+  await s.activate('ppt');
+  assert.equal(helper.wins.length, count);              // 같은 자료를 한 번 더 열지 않음
+  assert.equal(s.state.get('ppt').wid, wid);            // 처음 창과 연결 그대로
+  assert.equal(s.state.get('ppt').status, 'open');
+  assert.equal(s.highlight, 'ppt');
+  assert.match(s.msg, /맨 앞으로 가져오지 못했습니다/);
+  assert.match(s.msg, /앞에 떠 있는 '연결 프로그램 선택' 창을 먼저 닫은 뒤 다시 눌러 주세요/);
+  assert.doesNotMatch(s.msg, /다시 엽니다/);
+  // 제목이 있으면 제목으로 알리고, 맨 앞이 사이드바 자신이면 이름 없이 알린다
+  helper.blockFront = { wid: 778, pid: 56, app: 'chrome.exe', title: '\u200B참고 사이트 - Chrome' };
+  await s.activate('ppt');
+  assert.match(s.msg, /'참고 사이트 - Chrome' 창을/);
+  helper.blockFront = { wid: 780, pid: 57, app: 'SomeTool.exe', title: '' };   // 제목이 없으면 프로그램 이름
+  await s.activate('ppt');
+  assert.match(s.msg, /'SomeTool' 창을/);
+  helper.blockFront = { wid: 779, pid: 1, app: 'LessonSidebar.exe', title: '수업 사이드바' };
+  await s.activate('ppt');
+  assert.match(s.msg, /맨 앞으로 가져오지 못했습니다\. 앞을 가리는 창/);
+  assert.equal(helper.wins.length, count);
+  // 막힌 것이 풀리면 다시 앞으로 가져온다
+  helper.blockFront = null;
+  await s.activate('ppt');
+  assert.match(s.msg, /앞으로 가져왔습니다/);
+});
+
+test('앞으로 가져오기가 막혔을 때 그 창이 답을 기다리고 있으면 "답 기다림"으로 표시한다', async () => {
+  const { s, helper } = makeSession();
+  await s.refreshDisplays(); s.load(makeLesson());
+  await s.open('ppt');
+  const wid = s.state.get('ppt').wid;
+  helper.waiting.set(wid, { wid: 901, title: '저장' });
+  helper.blockFront = { wid: 777, pid: 55, app: 'OpenWith.exe', title: '' };
+  await s.activate('ppt');
+  assert.equal(s.state.get('ppt').status, 'blocked');
+  assert.equal(s.state.get('ppt').wid, wid);
+  assert.match(s.msg, /답을 기다리는 창/);
+});
+
+test('앞으로 가져오려는데 창이 정말 없으면(직접 닫음) 다시 연다', async () => {
+  const { s, helper } = makeSession();
+  await s.refreshDisplays(); s.load(makeLesson());
+  await s.open('ppt');
+  const wid = s.state.get('ppt').wid;
+  helper.wins = helper.wins.filter(w => w.wid !== wid);   // 사이드바가 알기 전에 선생님이 직접 닫음
+  await s.activate('ppt');
+  assert.equal(helper.wins.filter(w => w.app === 'PowerPoint').length, 1);
+  assert.notEqual(s.state.get('ppt').wid, wid);
+  assert.equal(s.state.get('ppt').status, 'open');
+  assert.match(s.msg, /열었습니다/);
+});
+
+test('앞으로 가져오기가 실패하고 창 목록도 못 읽으면 예전처럼 "창 없음"으로 본다', async () => {
+  const { s, helper } = makeSession();
+  await s.refreshDisplays(); s.load(makeLesson());
+  await s.open('ppt');
+  const wid = s.state.get('ppt').wid;
+  helper.blockFront = { wid: 777, pid: 55, app: 'OpenWith.exe', title: '' };
+  helper.failList = true;
+  assert.deepEqual(await s.raiseInfo(wid), { state: 'gone' });
+  helper.failList = false;
+  assert.equal((await s.raiseInfo(wid)).state, 'notfront');
+  helper.blockFront = null;
+  assert.equal((await s.raiseInfo(wid)).state, 'ok');
+  assert.equal((await s.raiseInfo(12345)).state, 'gone');
 });
