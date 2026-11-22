@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { SHORTCUTS, accelerator, keyLabel } from '../src/core/shortcuts.js';
+import { SHORTCUTS, accelerator, keyLabel, WINDOW_TOOL_KEYS } from '../src/core/shortcuts.js';
 
 test('단축키는 Ctrl+Alt+글자 하나, 서로 겹치지 않고, 맥·윈도우 표시가 다르다', () => {
   const keys = SHORTCUTS.map(s => s.key);
@@ -13,6 +13,11 @@ test('단축키는 Ctrl+Alt+글자 하나, 서로 겹치지 않고, 맥·윈도�
   }
   assert.equal(keyLabel(SHORTCUTS[0], 'darwin'), '⌃⌥N');
   assert.equal(keyLabel(SHORTCUTS[0], 'win32'), 'Ctrl+Alt+N');
+});
+
+test('맥 창 배치 프로그램(Rectangle·Magnet) 기본 단축키와 겹치지 않는다', () => {
+  for (const s of SHORTCUTS) assert.ok(!WINDOW_TOOL_KEYS.includes(s.key), `${s.label} ⌃⌥${s.key}`);
+  assert.deepEqual(SHORTCUTS.filter(s => ['blank', 'freeze'].includes(s.act)).map(s => s.key), ['H', 'M']);
 });
 
 test('단축키가 부르는 기능은 모두 메인의 ACTIONS에 있다', () => {

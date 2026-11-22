@@ -30,3 +30,5 @@ _캡처/
 
 # Electron 내려받기 캐시
 .cache/
+# Cloudflare(wrangler)가 만드는 캐시 — 올리지 않음
+.wrangler/
