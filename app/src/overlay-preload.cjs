@@ -5,4 +5,6 @@ contextBridge.exposeInMainWorld('overlay', {
   onCursor: cb => ipcRenderer.on('overlay:cursor', (_e, p) => cb(p)),
   wheel: dy => ipcRenderer.send('overlay:wheel', Number(dy)),
   close: () => ipcRenderer.send('overlay:close'),
+  pick: r => ipcRenderer.send('overlay:pick', r),
+  end: () => ipcRenderer.send('overlay:end'),
 });

@@ -1,6 +1,6 @@
 // 수업 사이드바 체험판 — Electron 시작점 (맥·윈도우)
 // 사이드바 창(교사 화면 왼쪽)과 수업 준비 창을 띄우고, 수업 진행 로직(Session)·수업 편집(LessonDoc)과 잇는다.
-import { app, BrowserWindow, ipcMain, screen, dialog, shell, net, globalShortcut } from 'electron';
+import { app, BrowserWindow, ipcMain, screen, dialog, shell, net, globalShortcut, desktopCapturer, systemPreferences } from 'electron';
 import { readFileSync, writeFileSync, mkdirSync, existsSync, statSync, cpSync, createReadStream, statfsSync } from 'node:fs';
 import path from 'node:path';
 import http from 'node:http';
@@ -168,7 +168,7 @@ function createSidebar(){
   win.on('closed', () => { win = null; });
 }
 
-const fullState = () => ({ ...session.snapshot(), collapsed, trusted: session.trusted !== false, tools: { pointer: tools.pointer, spot: tools.spot }, prefs: { ...prefs, steps: OPACITY_STEPS, asideAvailable: ASIDE_OK } });
+const fullState = () => ({ ...session.snapshot(), collapsed, trusted: session.trusted !== false, tools: { pointer: tools.pointer, spot: tools.spot, grab: grab?.mode ?? null, pins: pins.size }, prefs: { ...prefs, steps: OPACITY_STEPS, asideAvailable: ASIDE_OK } });
 function push(){ win?.webContents.send('state', fullState()); syncDivider(); }
 
 // ---------- 나란히 보기 조절 바 ----------
@@ -254,7 +254,10 @@ function overlayFor(d){
     lockDown(w);
     w.loadFile(path.join(HERE, 'renderer', 'overlay.html'));
     // 다 읽히면 상태를 보내고, 커서도 다시 보낸다 (읽히기 전에 보낸 위치는 버려져서, 마우스를 움직이기 전까지 원이 안 보였다)
-    w.webContents.on('did-finish-load', () => { w.webContents.send('overlay:state', tools); lastCur = null; });
+    w.webContents.on('did-finish-load', () => {
+      w.webContents.send('overlay:state', { ...tools, grab: grab && grab.display.id === d.id ? grab.payload : null });
+      lastCur = null;
+    });
     overlays.set(d.id, w);
   }
   w.setBounds(d.bounds);
@@ -303,6 +306,89 @@ function setTool(name, v){
   session.say(tools.spot ? '스포트라이트: 커서 주변만 밝게 · 휠로 크기 · Esc나 두 번 눌러 끕니다'
     : tools.pointer ? '포인터 강조: 커서 주변에 노란 원 · 클릭은 그대로 아래 프로그램에 갑니다' : '발표 도구를 껐습니다');
 }
+// ---------- 확대·캡처 핀 (화면을 찍어서 쓰는 도구 — 맥은 "화면 기록" 권한 필요) ----------
+// 커서가 있는 화면을 찍어 그 화면의 겹침 창에 멈춘 그림으로 보여 준다.
+// - 확대: 커서 둘레를 2배(휠로 1.5~4배)로, 클릭·Esc로 끝
+// - 캡처 핀: 끌어서 영역을 고르면 그 부분을 항상 위 작은 창(핀)으로 고정하고 수업 폴더 _캡처/에 저장
+let grab = null;   // { mode: 'zoom'|'pick', display, image }
+const pins = new Set();
+const screenAccess = () => process.platform === 'darwin' ? systemPreferences.getMediaAccessStatus('screen') : 'granted';
+const SCREEN_PERM = "화면 기록 권한이 필요합니다. 시스템 설정 → 개인정보 보호 및 보안 → 화면 및 시스템 오디오 기록에서 '수업 사이드바'를 켠 뒤, 사이드바를 끝내고 다시 켜 주세요";
+async function captureDisplay(d){
+  const sf = d.scaleFactor || 1;
+  const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: Math.round(d.bounds.width * sf), height: Math.round(d.bounds.height * sf) } });
+  return (sources.find(x => String(x.display_id) === String(d.id)) ?? sources[0])?.thumbnail ?? null;
+}
+async function startGrab(mode){
+  if (grab) return endGrab();
+  if (screenAccess() !== 'granted'){
+    try { await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 1, height: 1 } }); } catch { /* 맥이 권한을 묻게 한 번 불러 본다 */ }
+    session.say(SCREEN_PERM, { act: 'screenSettings', label: '화면 기록 설정 열기' });
+    return;
+  }
+  tools.pointer = false; tools.spot = false; syncTools();
+  const d = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+  for (const w of overlays.values()) if (!w.isDestroyed()) w.hide();
+  await new Promise(r => setTimeout(r, 120));   // 겹침 창이 사라진 뒤에 찍는다
+  const image = await captureDisplay(d).catch(() => null);
+  if (!image || image.isEmpty()) return session.say('화면을 찍지 못했습니다');
+  grab = { mode, display: d, image, payload: { mode, src: image.toDataURL() } };
+  const w = overlayFor(d);   // 처음 만드는 겹침 창이면 다 읽힌 뒤(did-finish-load) 그림을 다시 보낸다
+  w.setIgnoreMouseEvents(false);
+  w.webContents.send('overlay:state', { pointer: false, spot: false, grab: grab.payload });
+  w.showInactive();
+  win?.setAlwaysOnTop(true, 'screen-saver', 1);
+  if (!globalShortcut.isRegistered('Escape')) globalShortcut.register('Escape', () => endGrab());
+  push();
+  session.say(mode === 'zoom' ? '확대: 마우스로 옮기고 휠로 배율(1.5~4배) · 클릭이나 Esc로 끝' : '캡처 핀: 끌어서 영역을 고르세요 · Esc로 취소');
+}
+function endGrab(){
+  if (!grab) return;
+  const w = overlays.get(grab.display.id);
+  grab = null;
+  if (w && !w.isDestroyed()){ w.webContents.send('overlay:state', { grab: null }); w.hide(); }
+  globalShortcut.unregister('Escape');
+  syncTools();
+}
+function savePin(img){
+  const root = session.lesson?.root ?? app.getPath('userData');
+  const dir = path.join(root, '_캡처');
+  const t = new Date(), p2 = n => String(n).padStart(2, '0');
+  const name = `${t.getFullYear()}-${p2(t.getMonth() + 1)}-${p2(t.getDate())}_${p2(t.getHours())}${p2(t.getMinutes())}${p2(t.getSeconds())}.png`;
+  try { mkdirSync(dir, { recursive: true }); writeFileSync(path.join(dir, name), img.toPNG()); return name; } catch { return null; }
+}
+function makePin(img, r){
+  const pin = new BrowserWindow({
+    x: Math.round(r.x), y: Math.round(r.y), width: Math.max(80, Math.round(r.width)), height: Math.max(60, Math.round(r.height)),
+    frame: false, resizable: true, minimizable: false, maximizable: false, fullscreenable: false, skipTaskbar: true, show: false,
+    alwaysOnTop: true, hasShadow: true, backgroundColor: '#1b2f2a', type: process.platform === 'darwin' ? 'panel' : undefined,
+    webPreferences: SECURE('pin-preload.cjs'),
+  });
+  pin.setAlwaysOnTop(true, 'screen-saver');
+  pin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  pin.setAspectRatio(r.width / r.height);
+  lockDown(pin);
+  pin.loadFile(path.join(HERE, 'renderer', 'pin.html'));
+  pin.webContents.on('did-finish-load', () => { pin.webContents.send('pin:image', img.toDataURL()); pin.showInactive(); });
+  pin.on('closed', () => { pins.delete(pin); push(); });
+  pins.add(pin);
+  push();
+}
+ipcMain.on('overlay:pick', (e, rect) => {
+  if (!fromOverlay(e) || grab?.mode !== 'pick' || !rect) return;
+  const { display: d, image } = grab;
+  const sf = image.getSize().width / d.bounds.width;
+  const r = { x: Math.max(0, Number(rect.x)), y: Math.max(0, Number(rect.y)), width: Number(rect.width), height: Number(rect.height) };
+  endGrab();
+  if (!(r.width >= 8 && r.height >= 8)) return session.say('캡처를 취소했습니다');
+  const img = image.crop({ x: Math.round(r.x * sf), y: Math.round(r.y * sf), width: Math.round(r.width * sf), height: Math.round(r.height * sf) });
+  makePin(img, { x: d.bounds.x + r.x, y: d.bounds.y + r.y, width: r.width, height: r.height });
+  const saved = savePin(img);
+  session.say(`캡처를 화면에 고정했습니다 · 끌어서 옮기고 ✕로 닫습니다${saved ? ` · 수업 폴더 _캡처/${saved}에 저장` : ''}`);
+});
+ipcMain.on('overlay:end', e => { if (fromOverlay(e)) endGrab(); });
+ipcMain.on('pin:close', e => { for (const p of pins) if (p.webContents === e.sender) p.close(); });
+
 const fromOverlay = e => [...overlays.values()].some(w => !w.isDestroyed() && w.webContents === e.sender);
 ipcMain.on('overlay:wheel', (e, dy) => {
   if (!fromOverlay(e) || !Number.isFinite(dy)) return;
@@ -498,7 +584,7 @@ async function runCheck(root, { quiet = false } = {}){
     apps: L.APPS, browser: L.pickBrowser(), appInstalled: L.appInstalled, readThrough,
     checkLink: (url, type) => checkLink(url, type, { fetchFn: (u, o) => net.fetch(u, o) }),
     screens: { count: session.displays?.length ?? 1, student: st ? { name: st.name, width: Math.round(st.width), height: Math.round(st.height) } : null },
-    trusted, freeBytes, lockedBy: otherLock(root, DEVICE)?.device ?? null, cloud: cloudOf(root),
+    trusted, freeBytes, lockedBy: otherLock(root, DEVICE)?.device ?? null, cloud: cloudOf(root), screenRec: screenAccess(),
     onProgress: quiet ? undefined : (phase, n, total) => note(`사전 점검 중… ${phase} ${n}/${total}`),
   });
   lastCheck = { root, at: Date.now(), ...r };
@@ -708,6 +794,10 @@ const ACTIONS = {
   prep: () => openPrep(),
   pointer: v => setTool('pointer', v === true || v === 'true'),
   spot: v => setTool('spot', v === true || v === 'true'),
+  zoom: () => startGrab('zoom'),
+  pin: () => startGrab('pick'),
+  closePins: () => { for (const p of [...pins]) p.close(); },
+  screenSettings: () => shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture'),
   quit: () => app.quit(),
 };
 
