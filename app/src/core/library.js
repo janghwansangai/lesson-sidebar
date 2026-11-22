@@ -3,6 +3,7 @@ import { readdirSync, readFileSync, existsSync, statSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { otherLock } from './lock.js';
+import { searchText, findConflicts } from './reuse.js';
 
 export const LIB_NAME = '수업 사이드바';
 
@@ -49,7 +50,8 @@ export function listLessons(root){
       const count = (d.sections ?? []).reduce((a, s) => a + (s.items?.length ?? 0), 0);
       const lock = otherLock(dir);
       out.push({ folder: dir, name: name.normalize('NFC'), title: String(d.title ?? name).normalize('NFC'), date: String(d.date ?? ''),
-        count, updatedAt: d.updatedAt ?? null, device: d.device ?? null, lockedBy: lock?.device ?? null });
+        count, updatedAt: d.updatedAt ?? null, device: d.device ?? null, lockedBy: lock?.device ?? null,
+        search: searchText(d), conflicts: Math.max(0, findConflicts(dir).length - 1) });
     } catch {
       out.push({ folder: dir, name: name.normalize('NFC'), title: name.normalize('NFC'), date: '', count: 0, broken: true });
     }

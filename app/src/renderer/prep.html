@@ -15,11 +15,18 @@
     </div>
     <p id="lib-path" class="path"></p>
     <div id="lib-setup" class="setup" hidden></div>
+    <input id="lib-search" class="search" type="search" placeholder="지난 수업 찾기 · 수업·자료 이름, 링크" aria-label="지난 수업 찾기">
     <ul id="lib-list" class="lib-list"></ul>
     <form id="new-form" class="new" hidden>
       <label><span>수업 이름</span><input id="new-title" required maxlength="120" placeholder="예: AI 활용 연수 (2차)"></label>
       <label><span>날짜</span><input id="new-date" type="date" required></label>
       <div class="row"><button class="btn primary" type="submit">만들기</button><button class="btn" type="button" id="new-cancel">취소</button></div>
+    </form>
+    <form id="dup-form" class="new" hidden>
+      <p class="dup-h">이 수업을 복사해 새 수업 만들기 <small>(자료·순서·메모 그대로, 녹화·캡처는 빼고)</small></p>
+      <label><span>새 수업 이름</span><input id="dup-title" required maxlength="120"></label>
+      <label><span>날짜</span><input id="dup-date" type="date" required></label>
+      <div class="row"><button class="btn primary" type="submit">복사해서 만들기</button><button class="btn" type="button" id="dup-cancel">취소</button></div>
     </form>
     <div class="lib-act">
       <button id="new-btn" class="btn primary" type="button">새 수업</button>
@@ -35,6 +42,7 @@
     </div>
     <div id="editor" class="editor" hidden>
       <div id="lockbar" class="lockbar" hidden></div>
+      <div id="conflictbar" class="lockbar conflict" hidden></div>
       <header class="ed-h">
         <div class="ed-info">
           <input id="title" class="t-in" maxlength="120" aria-label="수업 이름">
@@ -45,6 +53,8 @@
           <button id="check" class="btn" type="button" title="수업 전에 자료 파일·여는 프로그램·링크·모니터·권한을 한 번에 확인합니다">사전 점검</button>
           <button id="tidy" class="btn" type="button" title="파일 이름 앞 순번과 구간 폴더를 지금 순서에 맞춥니다">정리하기</button>
           <button id="reveal" class="btn" type="button">Finder에서 보기</button>
+          <button id="dup" class="btn" type="button" title="이 수업을 복사해 새 수업(예: 2차 연수)을 만듭니다">복제</button>
+          <button id="guide" class="btn" type="button" title="참여자에게 나눠 줄 수업안내.html을 만듭니다 (순서·링크, 진행 메모는 빠짐)">안내 페이지</button>
           <button id="export" class="btn" type="button" title="이 수업을 zip 파일 하나로 묶습니다 (USB·메일로 옮기거나 동료에게 줄 때)">꾸러미로 내보내기</button>
         </div>
         <p id="summary" class="sum"></p>
