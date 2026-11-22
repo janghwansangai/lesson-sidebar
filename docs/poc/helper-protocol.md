@@ -97,7 +97,7 @@
 ```
 - `x`·`y`는 `displays`와 같은 단위 (맥 포인트, 윈도우 물리 픽셀 — 앱이 `screen.screenToDipPoint`로 바꾼다). `button`은 `left`·`right`.
 - 앱은 포인터 강조를 켠 동안만 이 명령을 띄운다. 모르는 명령이라 바로 끝나면 물결 없이 원만 보인다 (오류 아님).
-- 맥: `CGEvent.tapCreate(.listenOnly)` 마우스 누름만. 윈도우: 아직 없음 — 저수준 마우스 훅(`WH_MOUSE_LL`)이나 `GetAsyncKeyState` 짧은 간격 살피기 중 윈도우 Claude가 고른다.
+- 맥: `CGEvent.tapCreate(.listenOnly)` 마우스 누름만. 윈도우: 10ms마다 `GetAsyncKeyState`로 버튼을 살핀다 (저수준 훅은 메시지 펌프가 멈추면 마우스 전체가 느려질 수 있어 피함). 왼손잡이 설정(`SM_SWAPBUTTON`)이면 left·right를 바꿔 알린다. CPU는 코어 하나의 1% 미만.
 
 ### 윈도우에만 있는 추가 명령
 `maximize <wid>`, `closetab <wid> <파일 이름>`, `findtab <wid> <파일 이름>` (윈도우 11 메모장 탭) — 설명은 `poc/win-helper/README.md`. 체험판은 윈도우에서만 부르므로 맥 도우미에는 없어도 된다.

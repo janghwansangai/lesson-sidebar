@@ -6,6 +6,7 @@
 //   node winctl.js raise <wid> | move <wid> <x> <y> <width> <height> | minimize <wid> | close <wid>
 //   node winctl.js maximize <wid> | closetab <wid> <파일 이름> | findtab <wid> <파일 이름>   (윈도우에만 있는 추가 명령)
 //   node winctl.js watch          (계속 실행하며 바뀐 것만 한 줄씩 알림)
+//   node winctl.js clicks         (계속 실행하며 마우스를 누를 때마다 한 줄 — 포인터 강조의 클릭 물결)
 //
 // 출력: 표준 출력 마지막 줄에 JSON 하나. 실패하면 {"ok":false,"error":"…"} + 종료 코드 1.
 // 좌표: 물리 픽셀, 주 모니터 왼쪽 위가 (0, 0). 이 프로세스를 Per-Monitor DPI Aware V2로 설정해
@@ -73,6 +74,9 @@ const W = {
   DwmGetWindowAttribute: fn(dwmapi, 'int32_t __stdcall DwmGetWindowAttribute(intptr_t hwnd, uint32_t attr, void *value, uint32_t size)'),
   GetDpiForMonitor:    fn(shcore, 'int32_t __stdcall GetDpiForMonitor(intptr_t hmon, int type, _Out_ uint32_t *dpiX, _Out_ uint32_t *dpiY)'),
   SetProcessDpiAwareness: fn(shcore, 'int32_t __stdcall SetProcessDpiAwareness(int value)'),
+  GetAsyncKeyState:    fn(user32, 'int16_t __stdcall GetAsyncKeyState(int vKey)'),
+  GetCursorPos:        fn(user32, 'int __stdcall GetCursorPos(_Out_ int32_t *pt)'),
+  GetSystemMetrics:    fn(user32, 'int __stdcall GetSystemMetrics(int index)'),
 };
 
 const GW_OWNER = 4, GW_ENABLEDPOPUP = 6, GA_ROOT = 2, GWL_EXSTYLE = -20;
@@ -507,6 +511,35 @@ async function watch(){
   }
 }
 
+async function clicks(){
+  // 포인터 강조의 클릭 물결: 마우스를 누를 때마다 {"event":"click","x","y","button"} 한 줄 (물리 픽셀).
+  // 듣기만 한다 — 클릭은 원래 프로그램에 그대로 간다. 저수준 훅(WH_MOUSE_LL)은 메시지 펌프가 멈추면 윈도우가 훅을 떼고
+  // 마우스 전체가 느려질 수 있어, 10ms마다 버튼 상태를 살피는 방식을 골랐다 (아주 짧은 클릭은 "그사이 눌렸음" 표시로 잡는다).
+  const VK = { left: 0x01, right: 0x02 }, SM_SWAPBUTTON = 23;
+  const was = { left: false, right: false };
+  const pt = new Int32Array(2);
+  let tick = 0;
+  emit({ event: 'ready' });
+  for (;;){
+    const swap = tick % 100 === 0 ? !!W.GetSystemMetrics(SM_SWAPBUTTON) : null;   // 왼손잡이 설정: 물리 버튼과 논리 버튼이 바뀜
+    if (swap !== null) clicks.swap = swap;
+    for (const phys of ['left', 'right']){
+      const s = W.GetAsyncKeyState(VK[phys]) & 0xffff;
+      const down = (s & 0x8000) !== 0, tapped = (s & 0x1) !== 0;
+      if ((down && !was[phys]) || (!down && !was[phys] && tapped)){
+        W.GetCursorPos(pt);
+        const button = clicks.swap ? (phys === 'left' ? 'right' : 'left') : phys;
+        emit({ event: 'click', x: pt[0], y: pt[1], button });
+      }
+      was[phys] = down;
+    }
+    // 앱이 갑자기 꺼져도 혼자 남지 않게
+    if (tick % 200 === 0){ try { process.kill(process.ppid, 0); } catch { process.exit(0); } }
+    tick++;
+    await new Promise(r => setTimeout(r, 10));
+  }
+}
+
 const args = process.argv.slice(2);
 const cmd = args[0];
 try {
@@ -556,8 +589,11 @@ try {
     case 'watch':
       await watch();
       break;
+    case 'clicks':
+      await clicks();
+      break;
     default:
-      fail(cmd ? `모르는 명령: ${cmd}` : '사용법: winctl <trusted|displays|list|front|raise|move|minimize|close|maximize|closetab|findtab|watch> ...');
+      fail(cmd ? `모르는 명령: ${cmd}` : '사용법: winctl <trusted|displays|list|front|raise|move|minimize|close|maximize|closetab|findtab|watch|clicks> ...');
   }
 } catch (e){
   emit({ ok: false, error: e instanceof Fail ? e.message : `도우미 내부 오류: ${e.message}` });

@@ -952,7 +952,8 @@ function shareQr(id){
   qrWin = new BrowserWindow({
     ...d.bounds, frame: false, resizable: false, movable: false, minimizable: false, maximizable: false, fullscreenable: false,
     skipTaskbar: true, show: false, alwaysOnTop: true, hasShadow: false, backgroundColor: '#1b2f2a', enableLargerThanScreen: true,
-    type: process.platform === 'darwin' ? 'panel' : undefined, webPreferences: SECURE('qr-preload.cjs'),
+    type: process.platform === 'darwin' ? 'panel' : undefined, thickFrame: false,   // 윈도우: 보이지 않는 테두리(5픽셀)가 교사 화면으로 넘치지 않게
+    webPreferences: SECURE('qr-preload.cjs'),
   });
   qrWin.setAlwaysOnTop(true, 'screen-saver');   // 겹침 창·가림 창과 같은 높이, 사이드바(한 칸 위)보다 아래
   qrWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
