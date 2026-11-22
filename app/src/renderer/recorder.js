@@ -1,6 +1,19 @@
 // 화면(+컴퓨터 소리·마이크)을 MP4로 녹화해 2초마다 조각을 메인에 보낸다. 메인이 이 PC 임시 폴더에 바로 이어 쓴다 → 앱이 꺼져도 그때까지 남음.
 // (변수 이름을 rec으로 하면 contextBridge가 만든 window.rec과 겹쳐 문법 오류가 난다)
-let recorder = null, streams = [], mixer = null;
+let recorder = null, streams = [], mixer = null, recTracks = null, recOpts = null, part = 1;
+// 1시간마다 나눠 저장 (선생님 요청 2026-11-22): 메인이 'rec:split'(새 부 번호)을 보내면 같은 화면·소리로 새 녹화기를 먼저 켜고,
+// 옛 녹화기는 1초 뒤에 끈다 — 넘어가는 순간 말이 잘리지 않게 1초 겹친다. 화면 받기는 그대로라 맥이 허락을 다시 묻지 않는다.
+// 조각은 몇 부인지와 함께 순서대로 보낸다 (arrayBuffer를 기다리는 동안 순서가 바뀌거나, 끝난 뒤에 늦게 가지 않게)
+function makeRecorder(n){
+  const r = new MediaRecorder(new MediaStream(recTracks), recOpts);
+  let chain = Promise.resolve();
+  r.ondataavailable = e => { if (e.data.size) chain = chain.then(async () => window.rec.chunk(await e.data.arrayBuffer(), n)).catch(() => {}); };
+  r.onerror = e => window.rec.error(e.error?.message ?? 'MediaRecorder 오류');
+  r.done = new Promise(res => { r.onstop = () => chain.then(res); });
+  r.start(2000);
+  return r;
+}
+function stopAll(){ for (const s of streams) for (const t of s.getTracks()) t.stop(); mixer?.close().catch(() => {}); mixer = null; }
 const TYPES = ['video/mp4;codecs=avc1.640028,mp4a.40.2', 'video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm'];
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 /**
@@ -64,12 +77,25 @@ window.rec.onStart(async o => {
       tracks.push(...out.stream.getAudioTracks());
     }
     const mimeType = TYPES.find(t => MediaRecorder.isTypeSupported(t));
-    recorder = new MediaRecorder(new MediaStream(tracks), { mimeType, videoBitsPerSecond: light ? 1500000 : 3000000 });
-    recorder.ondataavailable = async e => { if (e.data.size) window.rec.chunk(await e.data.arrayBuffer()); };
-    recorder.onstop = () => { for (const s of streams) for (const t of s.getTracks()) t.stop(); mixer?.close().catch(() => {}); mixer = null; setTimeout(() => window.rec.stopped(), 300); };
-    recorder.onerror = e => window.rec.error(e.error?.message ?? 'MediaRecorder 오류');
-    recorder.start(2000);
+    // videoKeyFrameIntervalDuration: MP4는 기준 화면(키프레임)마다 조각을 내보내는데, 화면이 멈춰 있으면 키프레임이 안 생겨
+    // 멈출 때까지 한 바이트도 쓰지 않고 녹화 전체를 메모리에 쌓았다(앱이 꺼지면 통째로 잃음, 2026-11-22 시험에서 찾음).
+    // 3초마다 기준 화면을 만들어 3초마다 파일에 쓴다 — 갑자기 꺼져도 잃는 것은 3초쯤, 메모리도 쌓이지 않음 (멈춘 화면이면 1시간에 약 100MB 더)
+    recTracks = tracks; recOpts = { mimeType, videoBitsPerSecond: light ? 1500000 : 3000000, videoKeyFrameIntervalDuration: 3000 };
+    recorder = makeRecorder(part = 1);
     window.rec.started({ mimeType, mic, sys, ...video.getVideoTracks()[0].getSettings() });
   } catch (e){ window.rec.error(`${e.name}: ${e.message}`); }
 });
-window.rec.onStop(() => { if (recorder && recorder.state !== 'inactive') recorder.stop(); else window.rec.stopped(); });
+window.rec.onStop(() => {
+  if (!recorder || recorder.state === 'inactive'){ stopAll(); window.rec.stopped(); return; }
+  const r = recorder;
+  r.stop();
+  r.done.then(() => { stopAll(); window.rec.stopped(); });
+});
+window.rec.onSplit(n => {
+  if (!recorder || recorder.state === 'inactive' || !(n > part)) return;
+  const old = recorder, oldN = part;
+  part = n;
+  try { recorder = makeRecorder(n); }
+  catch { recorder = old; part = oldN; return; }   // 새 녹화기를 못 켜면 지금 부에 그대로 이어서 녹화 (메인은 빈 새 부를 저장하지 않음)
+  setTimeout(() => { old.stop(); old.done.then(() => window.rec.partDone(oldN)); }, 1000);
+});
