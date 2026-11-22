@@ -107,8 +107,8 @@ let doc = null, prepMsg = '', sessionMtime = 0;
 // 사이드바 설정. aside: 고정해 둘 때 가려지는 창을 옆으로 비키기 (윈도우만 — 맥은 맥 Claude 확인 뒤)
 let prefs = { opacity: 100, aside: false };
 const ASIDE_OK = IS_WIN || process.platform === 'darwin';   // 맥도 2026-11-22부터 (docs/poc/mac.md, 기본은 꺼짐)
-// 맥: 고정해 둔 동안 2초마다 살펴 새로 가려진 창도 비킨다 (선생님 요청, docs/poc/mac.md 31). 윈도우는 지금처럼 펼치고 접는 순간에만
-const ASIDE_KEEP = process.platform === 'darwin';
+// 고정해 둔 동안 2초마다 살펴 새로 가려진 창도 비킨다 (선생님 요청, docs/poc/mac.md 31). 윈도우도 같은 기대라 켬 (docs/poc/windows.md "맥 기능 윈도우 확인")
+const ASIDE_KEEP = ASIDE_OK;
 let asideTimer = null;
 function syncAsideWatch(){
   clearInterval(asideTimer); asideTimer = null;
@@ -209,7 +209,16 @@ function placeDivider(d){
     ? { x: d.x - Math.round(DIV_W / 2), y: d.y, width: DIV_W, height: d.height }
     : { x: d.x, y: d.y - Math.round(DIV_W / 2), width: d.width, height: DIV_W });
   const w = ensureDivider(d.dir);
-  w.setBounds({ x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) });
+  const want = { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) };
+  w.setBounds(want);
+  // 윈도우는 창이 32픽셀보다 좁아지지 않는다 (docs/poc/windows.md 체험판 6). 넓어졌으면 경계에 가운데를 맞추고,
+  // 누르는 자리는 가운데 DIV_W만 남긴다 (바깥은 그리지 않는 투명 부분이라 창 모양으로 잘라도 보이는 것은 같다)
+  const got = w.getBounds();
+  if (got.width > want.width || got.height > want.height){
+    const dx = Math.round((got.width - want.width) / 2), dy = Math.round((got.height - want.height) / 2);
+    w.setBounds({ x: want.x - dx, y: want.y - dy, width: got.width, height: got.height });
+    if (IS_WIN) w.setShape([{ x: dx, y: dy, width: want.width, height: want.height }]);
+  }
   if (!w.isVisible()) w.showInactive();
 }
 function syncDivider(){

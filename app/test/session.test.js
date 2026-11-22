@@ -571,6 +571,19 @@ test('계속 비키기(맥): 고정해 둔 동안 새로 가려진 창도 옮기
   assert.deepEqual([helper.wins[1].x, helper.wins[1].width], [40, 600]);
 });
 
+test('계속 비키기(윈도우): 고정해 둔 동안 선생님이 최대화한 창은 돌려놓을 때도 최대화', async () => {
+  const { s, helper } = makeSession([TEACHER]);
+  await s.refreshDisplays(); s.load(makeLesson());
+  const w = Object.assign(helper.spawn('Chrome', '업무 - Chrome'), { x: 0, y: 200, width: 900, height: 500 });
+  assert.equal(await s.keepAside(), 1);
+  assert.equal(w.x, 280);
+  Object.assign(w, { x: 0, y: 33, width: 1512, height: 949, maximized: true });   // 선생님이 최대화
+  assert.equal(await s.keepAside(), 1);
+  assert.deepEqual([w.x, w.maximized], [280, false]);
+  assert.equal(await s.restoreAside(), 1);
+  assert.equal(w.maximized, true);
+});
+
 test('손쉬운 사용 권한이 없으면 30초 기다리지 않고 바로 알리고, 창 비키기도 하지 않는다', async () => {
   const { s, helper } = makeSession([TEACHER]);
   await s.refreshDisplays(); s.load(makeLesson());

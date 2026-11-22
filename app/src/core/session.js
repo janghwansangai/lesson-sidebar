@@ -666,7 +666,10 @@ export class Session extends EventEmitter {
         try {
           const to = (await this.moveWid(p.wid, p.to)) ?? p.to;
           const prev = moved.find(m => m.wid === p.wid);
-          if (prev) prev.to = to;            // 또 옮긴 창: 돌려놓을 곳은 처음 자리 그대로
+          if (prev){                         // 또 옮긴 창: 돌려놓을 곳은 처음 자리 그대로
+            prev.to = to;
+            if (p.maximized) prev.maximized = true;   // 고정해 둔 동안 선생님이 최대화했으면 돌려놓을 때도 최대화 (윈도우)
+          }
           else moved.push({ ...p, to });
           n++;
         } catch { /* 옮길 수 없는 창은 그대로 */ }

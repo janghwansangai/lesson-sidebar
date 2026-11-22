@@ -79,7 +79,7 @@ ${secs}
 `;
 }
 
-/** 구글 드라이브 등이 만든 충돌 사본 ("lesson (1).json", "lesson 2.json" 등)과 요약 */
+/** 구글 드라이브·원드라이브 등이 만든 충돌 사본 ("lesson (1).json", "lesson 2.json", "lesson-PC이름.json" 등)과 요약 */
 export function findConflicts(root){
   let names = [];
   try { names = readdirSync(root); } catch { return []; }
@@ -91,7 +91,9 @@ export function findConflicts(root){
       return { file: f, title: String(d.title ?? ''), items, sections: (d.sections ?? []).length, updatedAt: d.updatedAt ?? null, device: d.device ?? null };
     } catch { return null; }
   };
-  const copies = names.filter(n => n !== 'lesson.json' && /^lesson[ _-]?(\(\d+\)|\d+|.*(충돌|conflict).*)\.json$/i.test(n.normalize('NFC'))).map(sum).filter(Boolean);
+  // lesson (1).json·lesson(1).json(구글 드라이브), lesson 2.json, lesson-<PC 이름>.json(원드라이브), "충돌"·"conflict"가 든 이름(드롭박스 등).
+  // 맨 위의 lesson-….json은 사이드바가 만들지 않는다 (백업은 .sidebar/backup/에) → 수업 파일 모양(schema 1)이면 사본으로 본다
+  const copies = names.filter(n => n !== 'lesson.json' && /^lesson(\s*\(\d+\)|\d+|[ _-].+)\.json$/i.test(n.normalize('NFC'))).map(sum).filter(Boolean);
   if (!copies.length) return [];
   return [sum('lesson.json') ?? { file: 'lesson.json', broken: true }, ...copies];
 }

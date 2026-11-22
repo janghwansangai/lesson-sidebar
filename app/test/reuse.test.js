@@ -69,3 +69,14 @@ test('충돌 사본: 찾아서 요약하고, 고른 것이 lesson.json이 되며
   assert.ok(readdirSync(path.join(doc.root, '.sidebar', 'backup')).some(n => n.startsWith('충돌전_') && n.endsWith('lesson.json')));
   assert.throws(() => resolveConflict(doc.root, '없는.json'), /찾지 못했습니다/);
 });
+
+test('충돌 사본 이름: 원드라이브(lesson-PC이름.json)·구글 드라이브·드롭박스 모양을 찾고, 수업 파일이 아니거나 다른 이름은 건너뛴다', async () => {
+  const { doc } = await lesson();
+  const body = readFileSync(doc.file, 'utf8');
+  const copies = ['lesson-교실PC.json', 'lesson-DESKTOP-AB12C3-2.json', 'lesson(1).json', 'lesson 3.json', 'lesson (교실 PC의 충돌 사본 2026-11-22).json'];
+  for (const n of copies) writeFileSync(path.join(doc.root, n), body);
+  writeFileSync(path.join(doc.root, 'lesson-메모.json'), '{"memo":1}');     // 수업 파일 모양이 아님
+  writeFileSync(path.join(doc.root, 'lessons.json'), body);                  // 다른 이름
+  writeFileSync(path.join(doc.root, 'my lesson.json'), body);
+  assert.deepEqual(findConflicts(doc.root).map(c => c.file).sort(), ['lesson.json', ...copies].sort());
+});
