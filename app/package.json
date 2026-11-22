@@ -133,7 +133,8 @@
     },
     "portable": {
       "artifactName": "lesson-sidebar-${version}-win-portable.${ext}"
-    }
+    },
+    "afterSign": "build/sign-local.cjs"
   },
   "dependencies": {
     "yauzl": "3.4.0",

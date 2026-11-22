@@ -102,5 +102,11 @@ body.collapsed{background:transparent}
 .fb{flex:1;border:1px solid var(--sb-line);background:var(--sb-bg-2);font-size:11.5px;padding:6px 6px;border-radius:7px;cursor:pointer;white-space:nowrap}
 .fb:hover{border-color:var(--chalk)}
 .fb.quiet{background:transparent;color:var(--sb-muted)}
+.fb.arm{border-color:var(--chalk);color:var(--chalk)}
+.pref-row .pref-note{color:var(--chalk)}
 
 @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
+
+/* 손쉬운 사용 권한이 꺼졌을 때 위쪽 안내 (꺼져 있는 동안 계속) */
+.trustbar{margin:8px 10px 0;padding:9px 10px;border-radius:8px;background:#5a2320;color:#ffe3de;display:flex;flex-direction:column;gap:6px;font-size:11.5px;line-height:1.4}
+.trustbar b{font-size:12.5px}

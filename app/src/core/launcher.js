@@ -122,10 +122,42 @@ function open(args){
   return new Promise((resolve, reject) => execFile('open', args, { timeout: 15000 }, e => e ? reject(e) : resolve()));
 }
 
-/** 브라우저 새 창으로 연다 (맥 -n: 이미 켜진 브라우저도 --new-window 인자를 받게). */
-export function openInBrowser(browser, url){
+const out = (cmd, args) => new Promise(res => execFile(cmd, args, { timeout: 5000 }, (e, so) => res(e ? '' : String(so))));
+
+/**
+ * 맥: 브라우저가 켜져 있는지, 켜진 것과 설치된 것의 버전이 같은지.
+ * 크롬·엣지·웨일은 켜 둔 채로 업데이트를 받으면 "다시 시작"을 기다린다. 이때 새로 띄우면 새 버전이 하나 더 떠서
+ * 같은 프로필을 두 버전이 열게 된다 → "프로필 문제", 지난 창 수십 개가 되살아남, 다른 계정 로그인이 풀림 (docs/poc/mac.md 28).
+ * @returns {{ running, count?, runningVersion?, diskVersion?, stale? }}  stale: 새로 띄우면 안 되는 상태
+ */
+export async function browserState(b){
+  if (IS_WIN || !b?.app) return { running: null };
+  const pids = (await out('pgrep', ['-x', b.app])).split(/\s+/).filter(Boolean);
+  if (!pids.length) return { running: false };
+  const diskVersion = (await out('plutil', ['-extract', 'CFBundleShortVersionString', 'raw', '-o', '-', `/Applications/${b.app}.app/Contents/Info.plist`])).trim() || null;
+  let runningVersion = null;
+  for (const pid of pids){
+    const m = (await out('lsof', ['-a', '-p', pid, '-Fn'])).match(/\.framework\/Versions\/(\d+(?:\.\d+)+)\//);
+    if (m){ runningVersion = m[1]; break; }
+  }
+  const reason = pids.length > 1 ? 'two' : (runningVersion && diskVersion && runningVersion !== diskVersion ? 'update' : null);
+  return { running: true, count: pids.length, runningVersion, diskVersion, stale: !!reason, reason };
+}
+
+/**
+ * 브라우저 새 창으로 연다.
+ * - 맥: 꺼져 있거나 켜진 것과 버전이 같으면 `open -na … --new-window` (켜진 브라우저가 넘겨받아 새 창을 연다)
+ * - 맥: 업데이트 뒤 다시 시작을 기다리는 중이면 새로 띄우지 않고 켜진 브라우저에 탭으로 연다 → { tab: true }
+ */
+export async function openInBrowser(browser, url){
   if (IS_WIN) return launch(browser.path ?? browser.exe, ['--new-window', url]);
-  return open(['-na', browser.app, '--args', '--new-window', url]);
+  const s = await browserState(browser);
+  if (s.stale){
+    await open(['-a', browser.app, url]);
+    return { tab: true, ...s };
+  }
+  await open(['-na', browser.app, '--args', '--new-window', url]);
+  return { tab: false };
 }
 
 /** 파일을 지정한 프로그램으로 연다. 파일이 없으면 프로그램만 연다(빈 문서). */

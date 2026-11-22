@@ -9,6 +9,11 @@
 <body>
   <div id="strip" class="strip" hidden title="이 막대 옆으로 마우스를 밀면 사이드바가 나옵니다"></div>
   <main id="panel" class="panel">
+    <div id="trustbar" class="trustbar" role="alert" hidden>
+      <b>손쉬운 사용 권한이 꺼져 있습니다</b>
+      <span>그래서 자료 창을 찾거나 옮기지 못합니다. 시스템 설정 → 개인정보 보호 및 보안 → 손쉬운 사용에서 '수업 사이드바'를 켜 주세요. 이미 켜져 있으면 −로 지운 뒤 사이드바를 다시 켜서 새로 허용해 주세요.</span>
+      <button id="ax-open" class="dbtn" type="button">손쉬운 사용 설정 열기</button>
+    </div>
     <header class="head">
       <div class="top">
         <span class="brand">수업 사이드바 <em>체험판</em></span>
@@ -24,7 +29,7 @@
         <div id="opacity" class="seg" role="group" aria-label="펼친 사이드바 투명도"></div>
         <label id="aside-row" class="pref-row" hidden>
           <input id="aside" type="checkbox">
-          <span>고정해 둘 때 가려지는 창을 옆으로 비키기<small>교사 화면에서 사이드바에 가려지는 창(선생님 창 포함)을 오른쪽으로 옮깁니다. 자동 숨김으로 바꾸거나, 이 설정을 끄거나, 끝내면 돌려놓습니다.</small></span>
+          <span>고정해 둘 때 가려지는 창을 옆으로 비키기<small>교사 화면에서 사이드바에 가려지는 창(선생님 창 포함)을 오른쪽으로 옮깁니다. 맥은 고정해 둔 동안 새로 가려지는 창도 옮깁니다. 자동 숨김을 켜면 이 설정은 꺼지고, 끄거나 끝내면 창을 돌려놓습니다.</small></span>
         </label>
       </div>
       <h1 id="title" class="title"></h1>
@@ -40,6 +45,9 @@
       <div class="row">
         <button id="openall" class="fb">모두 미리 열기</button>
         <button id="hideothers" class="fb">다른 창 숨기기</button>
+      </div>
+      <div class="row">
+        <button id="closeall" class="fb" title="사이드바가 연 자료 창을 모두 닫습니다 (선생님이 원래 열어 둔 창은 그대로, 저장할지 묻는 창은 답을 기다림)">사이드바가 연 창 모두 닫기</button>
       </div>
       <div class="row">
         <button id="folder" class="fb">수업 준비</button>

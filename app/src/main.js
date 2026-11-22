@@ -44,7 +44,7 @@ if (!app.isPackaged){
 const firstInstance = app.requestSingleInstanceLock();
 if (!firstInstance) app.quit();
 
-const NO_TRUST = "손쉬운 사용 권한이 없어 다른 프로그램 창을 옮길 수 없습니다. 시스템 설정 → 개인정보 보호 및 보안 → 손쉬운 사용에서 '수업 사이드바'를 켜 주세요";
+const NO_TRUST = "손쉬운 사용 권한이 없어 자료 창을 찾거나 옮길 수 없습니다. 시스템 설정 → 개인정보 보호 및 보안 → 손쉬운 사용에서 '수업 사이드바'를 켜 주세요. 이미 켜져 있으면 −로 지운 뒤 사이드바를 다시 켜서 새로 허용해 주세요 (새로 설치하면 다시 해야 합니다)";
 
 /** 예시 수업 폴더. 설치판은 앱 안(바꾸면 안 되는 곳)에 들어 있으므로 설정 폴더로 한 번 복사해서 쓴다. */
 function sampleLesson(){
@@ -54,17 +54,27 @@ function sampleLesson(){
   return dst;
 }
 
-/** 권한이 켜질 때까지 2초마다 확인하고, 켜지면 바로 창 연결을 시작한다 (다시 켤 필요 없음). */
-function waitForTrust(){
-  const t = setInterval(async () => {
-    let ok = false;
+/**
+ * 손쉬운 사용 권한을 5초마다 확인한다. 꺼져 있으면 사이드바 위쪽에 안내를 계속 보이고(상태 trusted:false),
+ * 켜지면 다시 켤 필요 없이 바로 창 연결·비키기를 시작한다.
+ * 맥은 임시 서명 앱을 새로 설치할 때마다 다른 앱으로 보아, 설정에는 켜져 보여도 권한이 풀려 있을 수 있다 (docs/poc/mac.md 33).
+ */
+let trustTimer = null;
+function watchTrust(){
+  clearInterval(trustTimer);
+  trustTimer = setInterval(async () => {
+    let ok = session.trusted;
     try { ok = (await helper.call('trusted')).trusted; } catch { /* 다음에 다시 */ }
-    if (!ok) return;
-    clearInterval(t);
-    helper.restartWatch();
-    await session.relink();
-    session.say('손쉬운 사용 권한이 켜졌습니다. 이제 자료 창을 옮기고 닫을 수 있습니다');
-  }, 2000);
+    if (ok === session.trusted) return;
+    session.trusted = ok;
+    push();
+    if (ok){
+      helper.restartWatch();
+      await session.relink();
+      syncAsideWatch();
+      session.say('손쉬운 사용 권한이 켜졌습니다. 이제 자료 창을 찾고 옮기고 닫을 수 있습니다');
+    } else session.say(NO_TRUST);
+  }, 5000);
 }
 
 const IS_WIN = process.platform === 'win32';
@@ -89,6 +99,17 @@ let doc = null, prepMsg = '', sessionMtime = 0;
 // 사이드바 설정. aside: 고정해 둘 때 가려지는 창을 옆으로 비키기 (윈도우만 — 맥은 맥 Claude 확인 뒤)
 let prefs = { opacity: 100, aside: false };
 const ASIDE_OK = IS_WIN || process.platform === 'darwin';   // 맥도 2026-11-22부터 (docs/poc/mac.md, 기본은 꺼짐)
+// 맥: 고정해 둔 동안 2초마다 살펴 새로 가려진 창도 비킨다 (선생님 요청, docs/poc/mac.md 31). 윈도우는 지금처럼 펼치고 접는 순간에만
+const ASIDE_KEEP = process.platform === 'darwin';
+let asideTimer = null;
+function syncAsideWatch(){
+  clearInterval(asideTimer); asideTimer = null;
+  if (!ASIDE_KEEP || !prefs.aside || session.autoHide) return;
+  asideTimer = setInterval(async () => {
+    const n = await session.keepAside().catch(() => 0);
+    if (n) session.say(`사이드바에 가려진 창 ${n}개를 오른쪽으로 옮겼습니다 · 고정을 풀거나 이 설정을 끄면 돌려놓습니다`);
+  }, 2000);
+}
 
 // ---------- 설정 ----------
 const settingsFile = () => path.join(app.getPath('userData'), 'settings.json');
@@ -147,13 +168,18 @@ function createSidebar(){
   win.on('closed', () => { win = null; });
 }
 
-const fullState = () => ({ ...session.snapshot(), collapsed, prefs: { ...prefs, steps: OPACITY_STEPS, asideAvailable: ASIDE_OK } });
+const fullState = () => ({ ...session.snapshot(), collapsed, trusted: session.trusted !== false, prefs: { ...prefs, steps: OPACITY_STEPS, asideAvailable: ASIDE_OK } });
 function push(){ win?.webContents.send('state', fullState()); }
 
 // ---------- 자동 숨김 ----------
 async function setAutoHide(v){
   session.autoHide = !!v;
   saveSettings({ autoHide: session.autoHide });
+  // 자동 숨김과 "가려지는 창 비키기"는 함께 쓸 수 없다 → 자동 숨김을 켜면 비키기를 끈다 (선생님 요청, 2026-11-22).
+  // 계속 비키기 타이머도 먼저 멈춰서, 돌려놓는 동안 창을 다시 옮기지 않게 한다
+  const asideOff = session.autoHide && prefs.aside;
+  if (asideOff){ prefs.aside = false; saveSettings({ aside: false }); }
+  syncAsideWatch();
   clearInterval(cursorTimer);
   collapsed = session.autoHide;
   placeSidebar();
@@ -161,11 +187,12 @@ async function setAutoHide(v){
   if (session.autoHide){
     // 고정을 풀면 옆으로 옮겼던 창을 돌려놓는다 (자동 숨김 중에는 펼칠 때마다 창이 들썩이지 않게 옮기지 않음)
     const n = await session.restoreAside();
-    session.say(`자동 숨김: 화면 왼쪽 끝에 마우스를 대면 나타납니다 (왼쪽 가운데 노란 막대)${n ? ` · 옮겼던 창 ${n}개를 돌려놓았습니다` : ''}`);
+    session.say(`자동 숨김: 화면 왼쪽 끝에 마우스를 대면 나타납니다 (왼쪽 가운데 노란 막대)${asideOff ? " · '가려지는 창 비키기'를 껐습니다" : ''}${n ? ` · 옮겼던 창 ${n}개를 돌려놓았습니다` : ''}`);
   } else {
     const n = prefs.aside ? await session.stepAside() : 0;
     session.say(`사이드바를 화면 왼쪽에 고정했습니다${n ? ` · 가려지던 창 ${n}개를 오른쪽으로 옮겼습니다` : ''}`);
   }
+  syncAsideWatch();
 }
 
 // ---------- 설정 ----------
@@ -180,13 +207,19 @@ function setOpacity(v){
 async function setAside(v){
   prefs.aside = ASIDE_OK && !!v;
   saveSettings({ aside: prefs.aside });
+  syncAsideWatch();
   if (!prefs.aside){
     const n = await session.restoreAside();
     return session.say(`고정해 두어도 다른 창을 옮기지 않습니다${n ? ` · 옮겼던 창 ${n}개를 돌려놓았습니다` : ''}`);
   }
-  if (session.autoHide) return session.say('사이드바를 고정하면(자동 숨김 끄기) 가려지는 창을 오른쪽으로 옮깁니다');
+  if (session.autoHide){
+    // 비키기는 고정해 둘 때만 동작하므로, 자동 숨김 중에 켜면 사이드바를 고정한다 (자동 숨김을 켜면 비키기가 꺼지는 것과 짝)
+    await setAutoHide(false);
+    return session.say("'가려지는 창 비키기'를 켜서 사이드바를 고정했습니다 (자동 숨김 끔) · 가려지는 창을 오른쪽으로 옮깁니다");
+  }
   const n = await session.stepAside();
-  session.say(n ? `가려지던 창 ${n}개를 사이드바 오른쪽으로 옮겼습니다 · 고정을 풀거나 이 설정을 끄면 돌려놓습니다` : '사이드바에 가려진 창이 없습니다 · 고정해 둔 동안 새로 연 창은 옮기지 않습니다');
+  const later = ASIDE_KEEP ? '고정해 둔 동안 새로 가려지는 창도 옮깁니다' : '고정해 둔 동안 새로 연 창은 옮기지 않습니다';
+  session.say(n ? `가려지던 창 ${n}개를 사이드바 오른쪽으로 옮겼습니다 · 고정을 풀거나 이 설정을 끄면 돌려놓습니다` : `사이드바에 가려진 창이 없습니다 · ${later}`);
 }
 
 let lastCursor = null;
@@ -497,6 +530,9 @@ const ACTIONS = {
   openAll: () => session.openAll(),
   next: () => session.next(),
   hideOthers: () => session.hideOthers(),
+  // 손쉬운 사용 설정 화면만 열어 준다 (켜는 것은 선생님이 직접)
+  axSettings: () => shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility'),
+  closeAll: () => session.closeAll(),
   openTo: v => session.setOpenTo(v),
   autoHide: v => setAutoHide(v === true || v === 'true'),
   opacity: v => setOpacity(v),
@@ -610,13 +646,16 @@ app.whenReady().then(async () => {
   // 설치판은 권한이 없으면 macOS의 권한 요청 창을 띄운다 (켜는 것은 선생님이 직접)
   const trusted = (await helper.call('trusted', ...(app.isPackaged ? ['--prompt'] : []))).trusted;
   if (trusted) await session.relink();
-  else { session.say(NO_TRUST); waitForTrust(); }
+  else session.say(NO_TRUST);
+  session.trusted = trusted;
+  watchTrust();
   helper.startWatch();
   // 고정한 채로 켜면 가려지는 창을 옆으로 (설정을 켰을 때만)
   if (trusted && prefs.aside && !session.autoHide){
     const n = await session.stepAside();
     if (n) session.say(`가려지던 창 ${n}개를 사이드바 오른쪽으로 옮겼습니다 · 끝내거나 자동 숨김으로 바꾸면 돌려놓습니다`);
   }
+  if (trusted) syncAsideWatch();
 
   let t = null;
   const onDisplays = () => { clearTimeout(t); t = setTimeout(async () => { await session.onDisplaysChanged(); placeSidebar(); }, 800); };
@@ -633,6 +672,7 @@ app.whenReady().then(async () => {
 app.on('window-all-closed', () => app.quit());
 let restoringOnQuit = false;
 app.on('before-quit', e => {
+  clearInterval(asideTimer);
   // 끝낼 때 옆으로 옮겼던 창을 먼저 돌려놓는다 (오래 걸려도 5초까지만 기다림)
   if (session?.aside?.length && !restoringOnQuit){
     e.preventDefault();

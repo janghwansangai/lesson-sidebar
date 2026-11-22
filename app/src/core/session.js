@@ -38,6 +38,9 @@ export class Session extends EventEmitter {
     this.tile = null;
     this.msg = '';
     this.offer = null;      // 안내 옆 단추 { act, id, wid, label } (메모장 탭 닫기)
+    this.trusted = null;        // 손쉬운 사용 권한 (main.js가 5초마다 알려 줌). false면 창을 찾거나 옮길 수 없다
+    this.asideTries = new Map();   // 계속 비키기: 창마다 최근 옮긴 시각 (1분에 3번까지)
+    this.extras = new Map();   // 열 때 함께 생겼지만 자료와 짝짓지 않은 창 (브라우저가 지난 창을 되살린 경우 등) wid → 프로그램 — '모두 닫기' 때 같이 닫는다
     this.aside = null;      // 사이드바를 고정할 때 옆으로 옮긴 창들 [{ wid, from, to, maximized }]
     this.asideQueue = Promise.resolve();
     this.browser = launcher.pickBrowser();
@@ -163,8 +166,24 @@ export class Session extends EventEmitter {
       const before = await this.list(app.match);
       const page = key === 'browser' && it.type === 'pdf' && parseInt(it.start, 10) > 0 ? `#page=${parseInt(it.start, 10)}` : '';
       const target = it.url ?? (it.abs ? (key === 'browser' ? this.files.url(it.file) + page : it.abs) : null);
-      if (key === 'browser') await this.launcher.openInBrowser(app, target);
+      let opened = null;
+      if (key === 'browser') opened = await this.launcher.openInBrowser(app, target);
       else await this.launcher.openWithApp(app, target);
+      if (this.trusted === false){
+        // 권한이 없으면 창 목록을 읽을 수 없어 30초를 기다려도 못 찾는다 → 바로 알린다 (자료는 열렸다)
+        st.status = 'closed'; st.note = '손쉬운 사용 권한 없음';
+        return this.say(`'${it.title}'을(를) 열었지만, 손쉬운 사용 권한이 꺼져 있어 사이드바가 그 창을 찾거나 옮길 수 없습니다. 사이드바 위쪽 안내를 봐 주세요`);
+      }
+      if (opened?.tab){
+        // 새 창을 띄우면 같은 프로필을 두 브라우저가 열게 되는 상태: 하나 더 띄우지 않고 켜진 브라우저에 탭으로 열었다 (launcher.openInBrowser)
+        const b = app.label;
+        if (opened.reason === 'two'){
+          st.status = 'closed'; st.note = `${b}이(가) 두 개 켜져 있음`;
+          return this.say(`'${it.title}'을(를) 지금 ${b} 창에 탭으로 열었습니다. ${b}이(가) 두 개 켜져 있어(하나는 창 없이 남은 것일 수 있음) 새 창을 만들지 않았습니다 — 같은 프로필을 둘이 쓰면 로그인이 풀릴 수 있습니다. ${b}을(를) 모두 끈 뒤 다시 켜 주세요 (Dock 아이콘 오른쪽 클릭 → 종료, 그래도 남으면 '활성 상태 보기'에서 ${app.app}을(를) 골라 종료)`);
+        }
+        st.status = 'closed'; st.note = `${b} 다시 시작 필요`;
+        return this.say(`'${it.title}'을(를) 지금 ${b} 창에 탭으로 열었습니다. ${b}이(가) 업데이트를 받고 다시 시작을 기다리고 있어서 하나 더 띄우지 않았습니다 (프로필 문제·로그인 풀림 예방). ${b}을(를) 완전히 껐다 켜면 다시 새 창으로 엽니다`);
+      }
 
       const stem = key !== 'browser' && it.abs ? M.stem(it.abs) : null;
       const taken = new Set([...this.state.values()].map(s => s.wid).filter(Boolean));
@@ -180,9 +199,11 @@ export class Session extends EventEmitter {
           await sleep(500);   // 이전 창 복원 등으로 여러 개가 생길 수 있어 잠깐 더 본다
           const again = M.newWindows(before, (await this.list(app.match)).filter(x => !taken.has(x.wid)));
           w = M.pickNewWindow(again.length ? again : fresh);
+          // 함께 생긴 다른 창(지난 창 되살리기 등)은 사이드바가 연 창으로 기억해 '모두 닫기' 때 같이 닫는다
+          for (const x of again.length ? again : fresh) if (x.wid !== w?.wid) this.extras.set(x.wid, app.match);
         }
       }
-      if (!w) throw new Error('창을 찾지 못했습니다 (30초)');
+      if (!w) throw new Error('창을 찾지 못했습니다 (30초) · 그 프로그램에 확인·오류 창이 떠 있는지 봐 주세요');
 
       st.wid = w.wid; st.status = 'open'; st.home = this.home(it); st.linkedAt = Date.now();
       // 열기 전부터 있던 창이면 (이미 열려 있던 문서, 또는 윈도우 메모장이 기존 창에 탭으로 연 경우) 기억해 둔다 → close()
@@ -253,6 +274,25 @@ export class Session extends EventEmitter {
     if (this.highlight === id) this.highlight = null;
     if (this.tile?.ids.includes(id)) this.tile = null;
     this.sel = this.sel.filter(x => x !== id);
+  }
+
+  /** 사이드바가 연 창을 모두 닫는다 (정상 닫기 요청만 — 저장할지 묻는 창은 "답 기다림"으로 남긴다). 선생님이 원래 열어 둔 창은 그대로. */
+  async closeAll(){
+    const ids = [...this.state].filter(([, st]) => st.wid && (st.status === 'open' || st.status === 'blocked')).map(([id]) => id);
+    for (const id of ids){ try { await this.close(id); } catch { /* 다음 창 */ } }
+    let extra = 0;
+    if (this.extras.size){
+      let alive = new Set();
+      try { alive = new Set((await this.list()).map(w => w.wid)); } catch { /* 모름 */ }
+      for (const wid of [...this.extras.keys()]){
+        this.extras.delete(wid);
+        if (!alive.has(wid)) continue;
+        try { await this.helper.call('close', wid); extra++; } catch { /* 다음 창 */ }
+      }
+    }
+    const left = ids.filter(id => this.state.get(id)?.status === 'blocked').length;
+    const n = ids.length - left + extra;
+    this.say(n || left ? `사이드바가 연 창 ${n}개를 닫았습니다${left ? ` · ${left}개는 저장할지 묻고 있어 답을 기다립니다` : ''}` : '사이드바가 연 창이 없습니다');
   }
 
   async close(id){
@@ -515,6 +555,40 @@ export class Session extends EventEmitter {
       }
       this.aside = moved;
       return moved.length;
+    });
+  }
+
+  /**
+   * 고정해 둔 동안 계속 비키기 (맥, 2026-11-22 선생님 요청 — "고정 순간에만"으로는 새로 열거나 옮긴 창이 가려졌다).
+   * main.js가 2초마다 부른다. 사이드바 아래로 들어온 창을 옮기고 돌려놓을 기록(this.aside)에 더한다.
+   * 어떤 프로그램이 스스로 제자리로 돌아가도 서로 밀고 당기지 않게, 한 창은 1분에 3번까지만 옮긴다.
+   * @returns 이번에 옮긴 창 수
+   */
+  keepAside(){
+    return this.aside_(async () => {
+      if (!this.teacher || this.trusted === false) return 0;
+      const span = Math.round(this.sidebarWidth * (this.physicalPixels ? (this.teacher.scale ?? 1) : 1));
+      let wins;
+      try { wins = await this.list(); } catch { return 0; }
+      const plan = planAside(wins, this.teacher, span, { ownPid: this.ownPid, displays: this.displays });
+      if (!plan.length) return 0;
+      const now = Date.now();
+      const moved = this.aside ?? [];
+      let n = 0;
+      for (const p of plan){
+        const tries = (this.asideTries.get(p.wid) ?? []).filter(t => now - t < 60000);
+        if (tries.length >= 3) continue;
+        tries.push(now); this.asideTries.set(p.wid, tries);
+        try {
+          const to = (await this.moveWid(p.wid, p.to)) ?? p.to;
+          const prev = moved.find(m => m.wid === p.wid);
+          if (prev) prev.to = to;            // 또 옮긴 창: 돌려놓을 곳은 처음 자리 그대로
+          else moved.push({ ...p, to });
+          n++;
+        } catch { /* 옮길 수 없는 창은 그대로 */ }
+      }
+      this.aside = moved;
+      return n;
     });
   }
 
