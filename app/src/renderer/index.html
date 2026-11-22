@@ -57,6 +57,19 @@
         <button id="tool-pin" class="fb tool" aria-pressed="false" title="끌어서 고른 부분을 항상 위 작은 창으로 고정 (수업 폴더 _캡처에 저장)">캡처 핀</button>
         <button id="pins-close" class="fb quiet" hidden title="고정한 캡처 핀을 모두 닫습니다">핀 닫기</button>
       </div>
+      <div id="remote" class="remote" hidden>
+        <div class="rm-h"><b>휴대폰 리모컨</b><span id="rm-phones" class="rm-ph"></span></div>
+        <div id="rm-qr" class="rm-qr"></div>
+        <p id="rm-url" class="rm-url"></p>
+        <div class="row">
+          <button id="rm-toggleqr" class="fb quiet" type="button"></button>
+          <button id="rm-new" class="fb quiet" type="button" title="주소를 새로 만듭니다. 지금 연결된 휴대폰은 끊깁니다">새 주소</button>
+        </div>
+      </div>
+      <div class="row" role="group" aria-label="수업 진행 화면">
+        <button id="presenter" class="fb tool" aria-pressed="false" type="button" title="교사 화면에 진행 메모·구간 시계·다음 자료를 크게 보여 주는 창">발표자 화면</button>
+        <button id="remote-on" class="fb tool" aria-pressed="false" type="button" title="같은 와이파이의 휴대폰으로 다음·이전, 정지·가리기를 합니다 (QR로 연결)">휴대폰 리모컨</button>
+      </div>
       <div class="row">
         <button id="openall" class="fb">모두 미리 열기</button>
         <button id="hideothers" class="fb">다른 창 숨기기</button>

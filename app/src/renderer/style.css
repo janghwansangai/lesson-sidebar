@@ -138,3 +138,11 @@ body.collapsed{background:transparent}
 .fb.rec{color:#ff8b80}
 .fb.rec[aria-pressed="true"]{border-color:#ff8b80;background:rgba(255,90,79,.12)}
 @media (prefers-reduced-motion: reduce){.dotrec{animation:none}}
+
+/* 휴대폰 리모컨: QR (흰 바탕이라야 카메라가 잘 읽는다) */
+.remote{border:1px solid var(--sb-line);border-radius:8px;padding:8px;display:flex;flex-direction:column;gap:6px}
+.rm-h{display:flex;justify-content:space-between;align-items:baseline;font-size:12px}
+.rm-ph{color:var(--live);font-size:11px}
+.rm-qr{background:#fff;border-radius:6px;padding:4px;width:176px;align-self:center}
+.rm-qr svg{display:block;width:100%;height:auto}
+.rm-url{margin:0;font-size:10.5px;color:var(--sb-muted);word-break:break-all;text-align:center}

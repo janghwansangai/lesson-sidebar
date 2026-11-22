@@ -563,12 +563,22 @@ export class Session extends EventEmitter {
     this.say(`자료 ${ok}/${items.length}개를 ${Math.round((Date.now() - t0) / 1000)}초 만에 미리 열었습니다 · 목록을 누르면 바로 앞으로 옵니다`);
   }
 
-  async next(){
+  /** 다음 자료. skipMemo: 휴대폰 리모컨·발표자 화면은 진행 메모(교사 화면용)를 건너뛴다 */
+  async next({ skipMemo = false } = {}){
     const items = this.lesson.items;
     const i = items.findIndex(it => it.id === this.highlight);
-    const nx = items[i + 1];
+    const nx = items.slice(i + 1).find(it => !skipMemo || it.type !== 'memo');
     if (nx) return this.activate(nx.id);
     this.say('마지막 자료입니다');
+  }
+
+  /** 앞 자료 (휴대폰 리모컨·발표자 화면의 "이전"). 메모는 건너뛴다 */
+  async prev(){
+    const items = this.lesson.items;
+    const i = items.findIndex(it => it.id === this.highlight);
+    const pv = i > 0 ? items.slice(0, i).reverse().find(it => it.type !== 'memo') : null;
+    if (pv) return this.activate(pv.id);
+    this.say('첫 자료입니다');
   }
 
   /** 학생 화면(모니터 한 대면 그 화면)에서 지금 보는 자료만 남기고 최소화. 교사 화면의 메모 등은 그대로. */
