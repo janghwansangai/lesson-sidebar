@@ -51,15 +51,17 @@ export async function designated(appPath){
 
 /** 지금 실행 중인 앱 묶음(.app) — 응용 프로그램 폴더처럼 바꿀 수 있는 곳에 있을 때만, 아니면 null */
 export function currentMacApp(exePath){
-  const app = path.resolve(exePath, '..', '..', '..');
+  const P = path.posix;   // 맥 전용 (윈도우 검사에서 테스트가 돌 때도 맥 경로로)
+  const app = P.resolve(exePath, '..', '..', '..');
   if (!app.endsWith('.app') || app.startsWith('/Volumes/')) return null;
   return app;
 }
 
 /** 옛 앱·바꾸다 남은 것: /Applications/.LessonSidebar.old-….app, .LessonSidebar.updating.app */
 export const leftovers = (dest, names) => {
-  const base = path.basename(dest, '.app');
-  return names.filter(n => n.startsWith(`.${base}.old-`) && n.endsWith('.app')).map(n => path.join(path.dirname(dest), n));
+  const P = path.posix;   // 맥 전용
+  const base = P.basename(dest, '.app');
+  return names.filter(n => n.startsWith(`.${base}.old-`) && n.endsWith('.app')).map(n => P.join(P.dirname(dest), n));
 };
 
 /**
