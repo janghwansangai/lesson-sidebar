@@ -1,6 +1,6 @@
 # 윈도우 창 관리 도우미 (윈도우 Claude 담당)
 
-`winctl.js`는 `docs/poc/helper-protocol.md` 규격을 그대로 지킨다. 맥 쪽 구현(`../mac-helper/Sources/winctl/main.swift`)과 명령·출력 모양이 같다 (`watch` 포함). 시험 결과는 `docs/poc/windows.md`.
+`winctl.js`는 `docs/poc/helper-protocol.md` 규격을 그대로 지킨다. 맥 쪽 구현(`../mac-helper/Sources/winctl/main.swift`)과 명령·출력 모양이 같다 (`watch`·`clicks` 포함). 시험 결과는 `docs/poc/windows.md`.
 
 ## 실행 방법
 ```powershell
