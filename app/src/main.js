@@ -656,7 +656,10 @@ async function takePreview(){
 // 녹화 창(보이지 않음)이 학생 화면(없으면 이 화면)을 MP4로 2초마다 조각내 보내고, 메인이 이 PC 임시 폴더에 바로 이어 쓴다.
 // 끝내면 수업 폴더 _녹화/로 옮기고 목차(.txt)를 함께 둔다. 앱이 갑자기 꺼지면 다음에 켤 때 임시 파일을 _녹화/로 옮긴다(복구).
 // 앞에 띄운 자료가 바뀔 때마다 목차에 남긴다. 남은 공간이 2GB 아래면 시작하지 않고, 녹화 중 1GB 아래로 내려가면 멈춘다.
-let rec = null;   // { fd, file, meta, recWin, startedAt, chapters, lastHi, spaceTimer, stopping }
+let rec = null;   // { name, root, title, startedAt, parts:[{ n, file, meta, fd, startedAt, chapters, closed }], cur, split, recWin, lastHi, spaceTimer, splitTimer, stopping }
+// 1시간마다 나눠 저장 (선생님 결정 2026-11-22): 파일이 작아 구글 드라이브 올리기·공유·편집이 쉽고, 하나가 손상돼도 그 1시간만.
+// 부마다 임시 파일·목차를 따로 두고(앱이 갑자기 꺼져도 부별로 복구), 끝낼 때 모두 _녹화/로 옮긴다 (이름 끝 _1부·_2부).
+const REC_SPLIT_MS = (DEBUG_ON && Number(process.env.SIDEBAR_REC_SPLIT_MS)) || 60 * 60000;   // 시험할 때만 짧게
 const recDir = () => path.join(app.getPath('userData'), 'recording');
 const freeAt = p => { try { const f = statfsSync(p); return f.bavail * f.bsize; } catch { return null; } };
 const stamp = (d = new Date()) => { const p2 = n => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}_${p2(d.getHours())}${p2(d.getMinutes())}`; };
@@ -691,11 +694,9 @@ async function startRecording(){
   if (!src) return session.say('녹화할 화면을 찾지 못했습니다');
   mkdirSync(recDir(), { recursive: true });
   const name = `${stamp()}_${safeName(title, 40)}`;
-  const file = path.join(recDir(), `${name}.mp4`);
-  const meta = path.join(recDir(), `${name}.json`);
   const startedAt = Date.now();
-  rec = { fd: openSync(file, 'w'), file, meta, name, root, title, startedAt, chapters: new Chapters(startedAt), lastHi: null, where: !session.dual ? '이 화면' : prefs.recScreen === 'teacher' ? '교사 화면' : '학생 화면' };
-  writeFileSync(meta, JSON.stringify({ root, title, name, chapters: rec.chapters }));
+  rec = { name, root, title, startedAt, parts: [], cur: null, split: false, lastHi: null, where: !session.dual ? '이 화면' : prefs.recScreen === 'teacher' ? '교사 화면' : '학생 화면' };
+  newPart(1, startedAt);
   noteChapter();
   // 소리 섞기(AudioContext)가 보이지 않는 창에서도 멈추지 않게 자동 재생 제한을 푼다
   rec.recWin = new BrowserWindow({ show: false, webPreferences: { ...SECURE('recorder-preload.cjs'), autoplayPolicy: 'no-user-gesture-required', backgroundThrottling: false } });
@@ -711,25 +712,51 @@ async function startRecording(){
   rec.micAsked = prefs.recMic !== false && !micOk;   // 마이크를 켰는데 맥에서 막혀 있음 → 시작 안내에 알림
   // one: 컴퓨터 소리를 받는 화면을 그대로 녹화에도 쓴다 (맥 — 같은 화면을 두 번 찍지 않게). 윈도우는 확인된 방식 그대로 (HANDOFF 넘길 일)
   recWc.send('rec:start', { sourceId: src.id, mic: micOk, micId: prefs.recMicId || '', sys: !!prefs.recSys, light: !!prefs.recLight, one: !IS_WIN });
+  rec.splitTimer = setInterval(splitRecording, REC_SPLIT_MS);
   rec.spaceTimer = setInterval(() => {
     const f = freeAt(recDir());
     if (f != null && f < 1024 ** 3){ session.say(`남은 공간이 ${fmtBytes(f)}라 녹화를 멈춥니다`); stopRecording(); }
   }, 60000);
   push();
 }
+/** 새 부: 임시 파일(1부는 이름 그대로, 2부부터 _p2…)과 그 부의 목차 */
+function newPart(n, at){
+  const file = path.join(recDir(), `${rec.name}${n > 1 ? `_p${n}` : ''}.mp4`);
+  const p = { n, file, meta: file.replace(/\.mp4$/, '.json'), fd: openSync(file, 'w'), startedAt: at, chapters: new Chapters(at), closed: false };
+  rec.parts.push(p); rec.cur = p;
+  writePartMeta(p);
+  return p;
+}
+/** 부의 목차·정보 (나눈 뒤에는 몇 부인지도 — 복구할 때 이름에 붙인다) */
+function writePartMeta(p){
+  try { writeFileSync(p.meta, JSON.stringify({ root: rec.root, title: rec.title, name: rec.name, part: rec.split ? p.n : undefined, chapters: p.chapters })); } catch { /* 다음에 */ }
+}
+function closePart(p){ if (p && !p.closed){ p.closed = true; try { closeSync(p.fd); } catch { /* 이미 닫힘 */ } } }
+/** 1시간마다: 새 부를 만들고 녹화 창에 알린다 (녹화 창이 새 녹화기를 켠 뒤 옛 것을 1초 뒤에 끄고 'rec:partDone'을 보냄) */
+function splitRecording(){
+  if (!rec || rec.stopping || !rec.recWin || rec.recWin.isDestroyed() || !rec.cur) return;
+  const prev = rec.cur;
+  rec.split = true;
+  for (const q of rec.parts) writePartMeta(q);   // 1부도 이제 "1부"
+  const p = newPart(prev.n + 1, Date.now());
+  const hi = rec.lastHi && session.item(rec.lastHi)?.title;
+  if (hi){ p.chapters.add(`${hi} (앞 부에서 이어짐)`, p.startedAt); writePartMeta(p); }
+  rec.recWin.webContents.send('rec:split', p.n);
+  session.say(`녹화 ${prev.n}부를 마무리하고 ${p.n}부로 이어서 녹화합니다 (1시간마다 나눠 저장 · 끝낼 때 모두 _녹화 폴더로)`);
+}
 /** 앞에 띄운 자료가 바뀌면 목차에 남긴다 (session 'change'마다 불림) */
 function noteChapter(){
-  if (!rec) return;
+  if (!rec?.cur) return;
   const id = session.highlight;
   if (!id || id === rec.lastHi) return;
   rec.lastHi = id;
-  rec.chapters.add(session.item(id)?.title, Date.now());
-  try { writeFileSync(rec.meta, JSON.stringify({ root: rec.root, title: rec.title, name: rec.name, chapters: rec.chapters })); } catch { /* 다음에 */ }
+  rec.cur.chapters.add(session.item(id)?.title, Date.now());
+  writePartMeta(rec.cur);
 }
 function stopRecording(){
   if (!rec || rec.stopping) return;
   rec.stopping = true;
-  clearInterval(rec.spaceTimer);
+  clearInterval(rec.spaceTimer); clearInterval(rec.splitTimer);
   session.say('녹화를 마무리하는 중…');
   rec.recWin?.webContents.send('rec:stop');
   setTimeout(() => { if (rec?.stopping) finishRecording(); }, 8000);   // 녹화 창이 답하지 않아도 마무리
@@ -741,7 +768,7 @@ function recordingDest(file, meta, recovered){
   const root = m.root && existsSync(m.root) ? m.root : app.getPath('desktop');
   const dir = path.join(root, '_녹화');
   mkdirSync(dir, { recursive: true });
-  const base = `${m.name ?? path.basename(file, '.mp4')}${recovered ? '_복구' : ''}`;
+  const base = `${m.name ?? path.basename(file, '.mp4')}${m.part ? `_${m.part}부` : ''}${recovered ? '_복구' : ''}`;
   let dest = path.join(dir, `${base}.mp4`);
   for (let i = 2; existsSync(dest); i++) dest = path.join(dir, `${base}_${i}.mp4`);
   return { dest, m };
@@ -769,15 +796,24 @@ async function moveRecordingAsync(file, meta){
 async function finishRecording({ sync = false } = {}){
   if (!rec) return;
   const r = rec; rec = null;
-  try { closeSync(r.fd); } catch { /* 이미 닫힘 */ }
+  clearInterval(r.spaceTimer); clearInterval(r.splitTimer);
+  for (const p of r.parts) closePart(p);
   r.recWin?.destroy();
   push();
-  let dest = null;
-  try { dest = statSync(r.file).size > 0 ? (sync ? moveRecording(r.file, r.meta) : await moveRecordingAsync(r.file, r.meta)) : null; }
-  catch (e){ session.say(`녹화 파일을 옮기지 못했습니다 (${e.message}) · ${r.file}`); }
-  if (!dest){ try { unlinkSync(r.file); unlinkSync(r.meta); } catch { /* 없음 */ } }
+  const saved = [];
+  for (const p of r.parts){
+    let dest = null;
+    try { dest = statSync(p.file).size > 0 ? (sync ? moveRecording(p.file, p.meta) : await moveRecordingAsync(p.file, p.meta)) : null; }
+    catch (e){ session.say(`녹화 파일을 옮기지 못했습니다 (${e.message}) · ${p.file}`); continue; }
+    if (dest) saved.push(dest);
+    else { try { unlinkSync(p.file); unlinkSync(p.meta); } catch { /* 없음 */ } }
+  }
   const len = clock(Date.now() - r.startedAt);
-  if (dest) session.say(`녹화를 저장했습니다 (${len} · ${fmtBytes(statSync(dest).size)}) · ${r.root ? '수업 폴더' : '바탕화면'} _녹화/${path.basename(dest)}${r.chapters.list.length ? ' · 목차 함께' : ''}`, { act: 'revealRec', id: dest, label: '녹화 폴더 열기' });
+  const where = r.root ? '수업 폴더' : '바탕화면';
+  let size = 0; for (const f of saved){ try { size += statSync(f).size; } catch { /* 없음 */ } }
+  const toc = r.parts.some(p => p.chapters.list.length) ? ' · 목차 함께' : '';
+  if (saved.length > 1) session.say(`녹화를 ${saved.length}개로 나눠 저장했습니다 (${len} · ${fmtBytes(size)}) · ${where} _녹화/${path.basename(saved[0])} 외${toc}`, { act: 'revealRec', id: saved[0], label: '녹화 폴더 열기' });
+  else if (saved.length) session.say(`녹화를 저장했습니다 (${len} · ${fmtBytes(size)}) · ${where} _녹화/${path.basename(saved[0])}${toc}`, { act: 'revealRec', id: saved[0], label: '녹화 폴더 열기' });
   else session.say('녹화된 내용이 없어 저장하지 않았습니다');
   push();
 }
@@ -795,7 +831,12 @@ function recoverRecordings(){
   }
 }
 const fromRec = e => rec?.recWin && !rec.recWin.isDestroyed() && e.sender === rec.recWin.webContents;
-ipcMain.on('rec:chunk', (e, buf) => { if (fromRec(e)) try { writeSync(rec.fd, Buffer.from(buf)); } catch { /* 디스크 문제 */ } });
+ipcMain.on('rec:chunk', (e, buf, n) => {
+  if (!fromRec(e)) return;
+  const p = rec.parts.find(x => x.n === Number(n)) ?? rec.cur;
+  if (p && !p.closed) try { writeSync(p.fd, Buffer.from(buf)); } catch { /* 디스크 문제 */ }
+});
+ipcMain.on('rec:partDone', (e, n) => { if (fromRec(e)) closePart(rec.parts.find(x => x.n === Number(n))); });
 ipcMain.on('rec:started', (e, info) => {
   if (!fromRec(e)) return;
   rec.mic = !!info?.mic;
