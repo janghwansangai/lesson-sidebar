@@ -89,7 +89,8 @@
       ]
     },
     "dmg": {
-      "title": "수업 사이드바 ${version}"
+      "title": "수업 사이드바 ${version}",
+      "filesystem": "APFS"
     },
     "win": {
       "target": [

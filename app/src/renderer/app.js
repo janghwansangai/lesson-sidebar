@@ -76,7 +76,14 @@ function render(){
 
   // 새 버전 알림
   $('#updbar').hidden = !S.update;
-  if (S.update) $('#upd-t').textContent = `새 버전 ${S.update.version}이 있습니다${S.update.size ? ` (${Math.round(S.update.size / 1048576)}MB)` : ''}${S.update.notes ? ` · ${S.update.notes.split('\n')[0].slice(0, 60)}` : ''}`;
+  if (S.update){
+    const u = S.update;
+    // 받는 중·준비 중에는 단추를 감추고 진행만 보인다
+    $('#upd-t').textContent = u.phase === 'downloading' ? `새 버전 ${u.version} 받는 중…${u.pct != null ? ` ${u.pct}%` : ''}`
+      : u.phase === 'installing' ? `새 버전 ${u.version}을 확인하고 바꿔 깔 준비를 하는 중… 곧 다시 켜집니다`
+      : `새 버전 ${u.version}이 있습니다${u.size ? ` (${Math.round(u.size / 1048576)}MB)` : ''}${u.notes ? ` · ${u.notes.split('\n')[0].slice(0, 60)}` : ''}`;
+    $('#updbar .row').hidden = !!u.phase;
+  }
   $('#upd-check').checked = S.prefs?.updateCheck !== false;
   $('#ver').textContent = S.version ? `(지금 ${S.version})` : '';
 
@@ -276,6 +283,9 @@ $('#upd-get').addEventListener('click', () => api.act('getUpdate'));
 $('#upd-later').addEventListener('click', () => api.act('dismissUpdate'));
 $('#upd-check').addEventListener('change', e => api.act('updateCheck', e.target.checked));
 $('#upd-now').addEventListener('click', () => api.act('checkUpdateNow'));
+$('#btn-help').addEventListener('click', () => api.act('help'));
+$('#help-open').addEventListener('click', () => api.act('help'));
+$('#bug-report').addEventListener('click', () => api.act('reportBug', '사이드바 설정'));
 $('#presenter').addEventListener('click', () => api.act('presenter', !S.presenter));
 $('#remote-on').addEventListener('click', () => api.act('remote', !S.remote));
 $('#rm-toggleqr').addEventListener('click', () => api.act('remoteQr', !S.remote?.showQr));
