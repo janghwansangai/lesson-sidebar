@@ -94,6 +94,8 @@ body.collapsed{background:transparent}
 .pref-row{display:flex;gap:7px;align-items:flex-start;cursor:pointer;margin-top:2px;line-height:1.35}
 .pref-row input{margin:2px 0 0;accent-color:var(--chalk);flex:none;width:14px;height:14px}
 .pref-row small{display:block;margin-top:2px;color:var(--sb-muted);font-size:10.5px}
+.pref-select{display:block;width:calc(100% - 21px);margin:3px 0 2px 21px;padding:3px 4px;border-radius:6px;border:1px solid rgb(255 255 255 / .18);background:rgb(0 0 0 / .25);color:var(--sb-fg);font:inherit;font-size:11.5px}
+.pref-select:disabled{opacity:.5}
 .offer{align-self:stretch}
 
 .foot{border-top:1px solid var(--sb-line);padding:8px 12px 12px;display:flex;flex-direction:column;gap:6px}
@@ -125,7 +127,7 @@ body.collapsed{background:transparent}
 .stu-b:hover{border-color:var(--chalk)}
 .stu-b[aria-pressed="true"]{border-color:var(--chalk);color:var(--chalk);background:rgba(242,205,92,.12)}
 .preview{position:relative;margin:8px 0 0;border-radius:8px;overflow:hidden;border:1px solid var(--sb-line);background:#000}
-.preview img,.preview canvas{display:block;width:100%;height:auto;min-height:40px}
+.preview img,.preview canvas,.preview video{display:block;width:100%;height:auto;min-height:40px}
 .ptag{position:absolute;left:6px;bottom:6px;padding:2px 7px;border-radius:999px;background:rgba(20,30,27,.85);color:#f2cd5c;font-size:10.5px}
 /* 녹화 중 표시 (REC) */
 .recbar{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:8px 10px 0;padding:7px 10px;border-radius:8px;background:#5a1f1c;color:#ffe3de;font-size:12px}
@@ -146,6 +148,9 @@ body.collapsed{background:transparent}
 .rm-qr{background:#fff;border-radius:6px;padding:4px;width:176px;align-self:center}
 .rm-qr svg{display:block;width:100%;height:auto}
 .rm-url{margin:0;font-size:10.5px;color:var(--sb-muted);word-break:break-all;text-align:center}
+.rm-help{font-size:11px;color:var(--sb-muted)}
+.rm-help summary{cursor:pointer;text-align:center}
+.rm-help ol{margin:6px 0 0;padding-left:18px;display:flex;flex-direction:column;gap:4px;line-height:1.45}
 
 /* 새 버전 알림 */
 .updbar{margin:8px 12px 0;padding:8px 10px;border-radius:8px;background:var(--live-soft);border:1px solid var(--live);display:flex;flex-direction:column;gap:6px;font-size:12px}

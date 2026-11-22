@@ -2,6 +2,11 @@
 // (변수 이름을 rec으로 하면 contextBridge가 만든 window.rec과 겹쳐 문법 오류가 난다)
 let recorder = null, streams = [], mixer = null;
 const TYPES = ['video/mp4;codecs=avc1.640028,mp4a.40.2', 'video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm'];
+// 마이크: 고른 마이크 (빠졌거나 못 쓰면 기본 마이크)
+async function micStream(id){
+  if (id){ try { return await navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: id } }, video: false }); } catch { /* 기본으로 */ } }
+  return navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+}
 window.rec.onStart(async o => {
   try {
     const light = !!o.light;
@@ -25,7 +30,7 @@ window.rec.onStart(async o => {
     }
     let mic = false;
     if (o.mic){
-      try { const a = await navigator.mediaDevices.getUserMedia({ audio: true, video: false }); streams.push(a); audios.push(a); mic = true; }
+      try { const a = await micStream(o.micId); streams.push(a); audios.push(a); mic = true; }
       catch { /* 마이크를 못 쓰면 화면만 */ }
     }
     // 소리가 둘이면 하나로 섞는다 (MP4는 소리 줄 하나만 담는다)
@@ -34,12 +39,13 @@ window.rec.onStart(async o => {
       mixer = new AudioContext();
       const out = mixer.createMediaStreamDestination();
       for (const s of audios) mixer.createMediaStreamSource(s).connect(out);
+      if (mixer.state !== 'running') await mixer.resume().catch(() => {});   // 숨은 창은 소리 장치가 멈춘 채 시작할 수 있다
       tracks.push(...out.stream.getAudioTracks());
     }
     const mimeType = TYPES.find(t => MediaRecorder.isTypeSupported(t));
     recorder = new MediaRecorder(new MediaStream(tracks), { mimeType, videoBitsPerSecond: light ? 1500000 : 3000000 });
     recorder.ondataavailable = async e => { if (e.data.size) window.rec.chunk(await e.data.arrayBuffer()); };
-    recorder.onstop = () => { for (const s of streams) for (const t of s.getTracks()) t.stop(); mixer?.close(); setTimeout(() => window.rec.stopped(), 300); };
+    recorder.onstop = () => { for (const s of streams) for (const t of s.getTracks()) t.stop(); mixer?.close().catch(() => {}); mixer = null; setTimeout(() => window.rec.stopped(), 300); };
     recorder.onerror = e => window.rec.error(e.error?.message ?? 'MediaRecorder 오류');
     recorder.start(2000);
     window.rec.started({ mimeType, mic, sys, ...video.getVideoTracks()[0].getSettings() });

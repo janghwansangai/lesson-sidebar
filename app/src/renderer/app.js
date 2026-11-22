@@ -49,9 +49,11 @@ function render(){
   $('#record').dataset.tip = S.rec ? '녹화 끝내기|지금까지 녹화한 것을 수업 폴더 _녹화에 저장합니다' : `녹화|${S.prefs?.recScreen === 'teacher' ? '교사 화면' : '학생 화면'}(모니터 한 대면 이 화면)을 녹화합니다. 자료를 바꿀 때마다 목차를 남깁니다 · 녹화할 화면·소리는 ⚙에서`;
   $('#record').setAttribute('aria-label', S.rec ? '녹화 끝내기' : '녹화');
   $('#record').setAttribute('aria-pressed', String(!!S.rec));
-  if (S.rec){ $('#rec-where').textContent = `${S.rec.where}${S.rec.mic ? ' + 마이크' : ''}`; $('#rec-stop').disabled = !!S.rec.stopping; }
-  $('#rec-mic').checked = S.prefs?.recMic !== false;
+  if (S.rec){ $('#rec-where').textContent = `${S.rec.where}${S.rec.sys ? ' + 컴퓨터 소리' : ''}${S.rec.mic ? ' + 마이크' : ''}`; $('#rec-stop').disabled = !!S.rec.stopping; }
   $('#rec-sys').checked = !!S.prefs?.recSys;
+  $('#rec-mic').checked = S.prefs?.recMic !== false;
+  $('#rec-mic-dev').disabled = S.prefs?.recMic === false;
+  if ($('#rec-mic-dev').value !== (S.prefs?.recMicId ?? '')) fillMics();
   $('#keys-on').checked = S.prefs?.shortcuts !== false;
   $('#keys').hidden = S.prefs?.shortcuts === false;
   $('#keys').innerHTML = (S.prefs?.keys ?? []).map(k => `<li><kbd>${esc(k.key)}</kbd><span>${esc(k.label)}</span></li>`).join('');
@@ -88,6 +90,7 @@ function render(){
     $('#rm-qr').hidden = !r.showQr;
     if (r.showQr && $('#rm-qr').dataset.url !== r.url){ $('#rm-qr').innerHTML = r.qr; $('#rm-qr').dataset.url = r.url; }
     $('#rm-url').hidden = !r.showQr;
+    $('#rm-help').hidden = !r.showQr || r.phones > 0;   // 연결되면 감춘다
     $('#rm-url').textContent = r.url.replace(/[0-9a-f]{32}\/$/, '…');
     $('#rm-toggleqr').textContent = r.showQr ? 'QR 닫기' : 'QR 다시 보기';
   }
@@ -175,9 +178,25 @@ $('#screens').addEventListener('click', e => {
 });
 // 미리보기: 보통은 학생 화면 그림 한 장. 맥에서 정지 중이면 바탕 + 창 그림들을 앞뒤 순서대로 쌓아 그린다
 const loadImg = src => new Promise(r => { const i = new Image(); i.onload = () => r(i); i.onerror = () => r(null); i.src = src; });
+// 윈도우는 학생 화면을 영상으로 받아(초당 2장, 작게) 보인다 — 화면을 계속 새로 찍는 것보다 훨씬 가볍다
+let pvStream = null;
+function stopPreviewStream(){ for (const t of pvStream?.getTracks() ?? []) t.stop(); pvStream = null; $('#preview-vid').srcObject = null; }
+async function startPreviewStream(p){
+  stopPreviewStream();
+  const W = 528;   // 사이드바 폭 264 × 배율 2까지
+  try {
+    const s = await navigator.mediaDevices.getUserMedia({ audio: false, video: { mandatory: {
+      chromeMediaSource: 'desktop', chromeMediaSourceId: p.stream, maxWidth: W, maxHeight: Math.round(W * (p.ratio || 0.5625)), maxFrameRate: 2 } } });
+    pvStream = s;
+    const v = $('#preview-vid'); v.srcObject = s; v.play().catch(() => {});
+    v.hidden = false; $('#preview-img').hidden = true; $('#preview-canvas').hidden = true;
+  } catch { /* 다음 켤 때 다시 */ }
+}
 api.onPreview?.(async p => {
-  if (!p) return;
+  if (!p){ stopPreviewStream(); return; }
+  if (p.stream) return startPreviewStream(p);
   const img = $('#preview-img'), cv = $('#preview-canvas');
+  $('#preview-vid').hidden = true;
   if (typeof p === 'string'){ img.src = p; img.hidden = false; cv.hidden = true; return; }
   const W = 264, k = W / p.w;
   cv.width = W; cv.height = Math.round(p.h * k);
@@ -207,8 +226,25 @@ $('#openall').addEventListener('click', () => api.act('openAll'));
 $('#hideothers').addEventListener('click', () => api.act('hideOthers'));
 $('#record').addEventListener('click', () => api.act('record'));
 $('#rec-stop').addEventListener('click', () => api.act('record'));
-$('#rec-mic').addEventListener('change', e => api.act('recMic', e.target.checked));
 $('#rec-sys').addEventListener('change', e => api.act('recSys', e.target.checked));
+$('#rec-mic').addEventListener('change', e => api.act('recMic', e.target.checked));
+$('#rec-mic-dev').addEventListener('change', e => api.act('recMicId', e.target.value));
+// 녹음할 마이크 목록: 설정을 열 때와 장치가 바뀔 때 다시 읽는다. 고른 마이크가 빠져 있으면 "(연결 안 됨)"으로 남겨 둔다
+let micsBusy = false;
+async function fillMics(){
+  if (micsBusy) return;
+  micsBusy = true;
+  const sel = $('#rec-mic-dev'), want = S?.prefs?.recMicId ?? '';
+  let mics = [];
+  try { mics = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'audioinput' && d.deviceId !== 'default' && d.deviceId !== 'communications'); } catch { /* 목록 없이 기본 마이크만 */ }
+  const opts = [['', '기본 마이크'], ...mics.map((d, i) => [d.deviceId, d.label || `마이크 ${i + 1}`])];
+  if (want && !mics.some(d => d.deviceId === want)) opts.push([want, '고른 마이크 (연결 안 됨)']);
+  sel.innerHTML = opts.map(([v, t]) => `<option value="${esc(v)}">${esc(t)}</option>`).join('');
+  sel.value = want;
+  micsBusy = false;
+}
+navigator.mediaDevices?.addEventListener?.('devicechange', () => fillMics());
+$('#btn-prefs').addEventListener('click', () => fillMics());
 $('#keys-on').addEventListener('change', e => api.act('shortcuts', e.target.checked));
 $('#rec-screen').addEventListener('click', e => { const b = e.target.closest('[data-rs]'); if (b) api.act('recScreen', b.dataset.rs); });
 $('#rec-light').addEventListener('change', e => api.act('recLight', e.target.checked));

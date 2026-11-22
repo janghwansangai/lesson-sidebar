@@ -260,7 +260,7 @@ ipcMain.on('divider:end', (e, x, y) => { const dir = divDir(e); if (dir && Numbe
 const tools = { pointer: false, spot: false, pen: false, r: 150, ink: { color: '#e5484d', size: 4, mode: 'pen' } };
 let inkFor = null;   // 판서를 그린 자료 — 사이드바에서 다른 자료로 넘어가면 판서를 지운다
 const overlays = new Map();   // display.id → BrowserWindow
-let toolTimer = null, lastCur = null;
+let toolTimer = null, lastCur = null, curIn = null;   // curIn: 커서가 있던 화면 (원을 치울 화면을 알려고)
 function overlayFor(d){
   let w = overlays.get(d.id);
   if (!w || w.isDestroyed()){
@@ -277,7 +277,7 @@ function overlayFor(d){
     // 다 읽히면 상태를 보내고, 커서도 다시 보낸다 (읽히기 전에 보낸 위치는 버려져서, 마우스를 움직이기 전까지 원이 안 보였다)
     w.webContents.on('did-finish-load', () => {
       w.webContents.send('overlay:state', { ...tools, grab: grab && grab.display.id === d.id ? grab.payload : null });
-      lastCur = null;
+      lastCur = null; curIn = null;
     });
     overlays.set(d.id, w);
   }
@@ -308,19 +308,23 @@ function syncTools(){
   if (!grabsMouse) globalShortcut.unregister('Escape');
   if (tools.pen && inkFor === null) inkFor = session.highlight ?? '';
   if (!tools.pen) inkFor = null;
-  lastCur = null;
+  lastCur = null; curIn = null;
   toolTimer = setInterval(sendCursor, 16);
   push();
 }
+// 겹침 창은 자기 화면 안의 마우스 움직임을 직접 받아 원을 옮긴다. 여기서는 어느 화면에 있는지와
+// 마우스 움직임이 오지 않을 때(사이드바 위 등)의 위치만 알린다 — 커서가 있는 화면과 방금 떠난 화면에만 보낸다
 function sendCursor(){
   const p = screen.getCursorScreenPoint();
   if (lastCur && lastCur.x === p.x && lastCur.y === p.y) return;
   lastCur = p;
-  for (const d of screen.getAllDisplays()){
-    const w = overlays.get(d.id); if (!w || w.isDestroyed()) continue;
-    const b = d.bounds, inside = p.x >= b.x && p.x < b.x + b.width && p.y >= b.y && p.y < b.y + b.height;
-    w.webContents.send('overlay:cursor', { x: p.x - b.x, y: p.y - b.y, in: inside });
+  const d = screen.getDisplayNearestPoint(p), b = d.bounds;
+  if (curIn !== d.id){   // 처음(null)이면 다른 화면 모두, 화면을 옮겼으면 떠난 화면의 원을 치운다
+    for (const [id, o] of overlays) if (id !== d.id && (curIn == null || id === curIn) && !o.isDestroyed()) o.webContents.send('overlay:cursor', { in: false });
   }
+  curIn = d.id;
+  const w = overlays.get(d.id);
+  if (w && !w.isDestroyed()) w.webContents.send('overlay:cursor', { x: p.x - b.x, y: p.y - b.y, in: true });
 }
 const ONE_OF = ['pointer', 'spot', 'pen'];   // 셋 중 하나만
 function setTool(name, v){
@@ -399,7 +403,12 @@ async function startGrab(mode){
     return;
   }
   tools.pointer = false; tools.spot = false; tools.pen = false; syncTools();
-  const d = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+  // 커서가 있는 화면을 찍는다. 단, 사이드바 단추를 눌렀으면 커서는 교사 화면의 사이드바 위에 있으므로
+  // 학생 화면이 있으면 학생 화면을 찍는다 (그대로 두면 확대·캡처가 늘 교사 화면에서만 됐다)
+  const cur = screen.getCursorScreenPoint(), sb = win && !win.isDestroyed() ? win.getBounds() : null;
+  const onSidebar = !!sb && cur.x >= sb.x && cur.x < sb.x + sb.width && cur.y >= sb.y && cur.y < sb.y + sb.height;
+  const student = onSidebar ? studentElectronDisplay() : null;
+  const d = student ?? screen.getDisplayNearestPoint(cur);
   for (const w of overlays.values()) if (!w.isDestroyed()) w.hide();
   await new Promise(r => setTimeout(r, 120));   // 겹침 창이 사라진 뒤에 찍는다
   const image = await captureDisplay(d).catch(() => null);
@@ -412,7 +421,8 @@ async function startGrab(mode){
   win?.setAlwaysOnTop(true, 'screen-saver', 1);
   if (!globalShortcut.isRegistered('Escape')) globalShortcut.register('Escape', () => endGrab());
   push();
-  session.say(mode === 'zoom' ? '확대: 마우스로 옮기고 휠로 배율(1.5~4배) · 클릭이나 Esc로 끝' : '캡처 핀: 끌어서 영역을 고르세요 · Esc로 취소');
+  const where = student ? '학생 화면에서 ' : '';
+  session.say(mode === 'zoom' ? `확대: ${where}마우스로 옮기고 휠로 배율(1.5~4배) · 클릭이나 Esc로 끝` : `캡처 핀: ${where}끌어서 영역을 고르세요 · Esc로 취소`);
 }
 function endGrab(){
   if (!grab) return;
@@ -527,8 +537,22 @@ async function composeStudent(bg){
   const byWid = new Map(srcs.map(x => [Number(String(x.id).split(':')[1]), x]));
   return { bg, w: st.width, h: st.height, wins: wins.map(w => ({ x: w.x - st.x, y: w.y - st.y, width: w.width, height: w.height, src: byWid.get(w.wid)?.thumbnail.toDataURL() })).filter(x => x.src) };
 }
+// 윈도우: 0.5초마다 화면을 새로 찍으면(getSources) 찍을 때마다 화면 복제를 새로 시작해 코어 하나의 절반을 쓰고
+// 컴퓨터 전체가 끊겼다 (선생님 확인, docs/poc/windows.md). 그래서 사이드바 화면이 학생 화면을 영상으로 한 번 받아 초당 2장만 그린다
+let previewStream = null;   // 윈도우: 지금 영상으로 받는 학생 화면 display.id
+async function syncPreviewStream(want){
+  const d = want ? studentElectronDisplay() : null;
+  if (!d){ if (previewStream != null){ previewStream = null; win?.webContents.send('preview', null); } return; }
+  if (previewStream === d.id) return;
+  previewStream = d.id;
+  const src = (await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 1, height: 1 } }).catch(() => [])).find(x => String(x.display_id) === String(d.id));
+  if (previewStream !== d.id) return;   // 그사이 꺼짐
+  if (!src){ previewStream = null; return; }
+  win?.webContents.send('preview', { stream: src.id, ratio: d.bounds.height / d.bounds.width });
+}
 function syncPreview(){
   const want = previewOn && session?.dual && screenAccess() === 'granted' && !!win;
+  if (IS_WIN) return syncPreviewStream(want);
   if (!want){ clearInterval(previewTimer); previewTimer = null; win?.webContents.send('preview', null); return; }
   if (previewTimer) return;
   let busy = false;
@@ -580,7 +604,8 @@ async function startRecording(){
   rec = { fd: openSync(file, 'w'), file, meta, name, root, title, startedAt, chapters: new Chapters(startedAt), lastHi: null, where: !session.dual ? '이 화면' : prefs.recScreen === 'teacher' ? '교사 화면' : '학생 화면' };
   writeFileSync(meta, JSON.stringify({ root, title, name, chapters: rec.chapters }));
   noteChapter();
-  rec.recWin = new BrowserWindow({ show: false, webPreferences: SECURE('recorder-preload.cjs') });
+  // 소리 섞기(AudioContext)가 보이지 않는 창에서도 멈추지 않게 자동 재생 제한을 푼다
+  rec.recWin = new BrowserWindow({ show: false, webPreferences: { ...SECURE('recorder-preload.cjs'), autoplayPolicy: 'no-user-gesture-required', backgroundThrottling: false } });
   lockDown(rec.recWin);
   await rec.recWin.loadFile(path.join(HERE, 'renderer', 'recorder.html'));
   // 컴퓨터 소리: 녹화 창이 getDisplayMedia로 소리만 받는다 (이 창의 요청에만 같은 화면 + 'loopback'을 준다)
@@ -589,7 +614,7 @@ async function startRecording(){
     if (!rec?.recWin || rec.recWin.isDestroyed() || req.frame?.top !== rec.recWin.webContents.mainFrame) return cb({});
     cb({ video: src, audio: 'loopback' });
   });
-  recWc.send('rec:start', { sourceId: src.id, mic: prefs.recMic !== false, sys: !!prefs.recSys, light: !!prefs.recLight });
+  recWc.send('rec:start', { sourceId: src.id, mic: prefs.recMic !== false, micId: prefs.recMicId || '', sys: !!prefs.recSys, light: !!prefs.recLight });
   rec.spaceTimer = setInterval(() => {
     const f = freeAt(recDir());
     if (f != null && f < 1024 ** 3){ session.say(`남은 공간이 ${fmtBytes(f)}라 녹화를 멈춥니다`); stopRecording(); }
@@ -663,7 +688,8 @@ ipcMain.on('rec:started', (e, info) => {
   rec.sys = !!info?.sys;
   const sysMiss = prefs.recSys && !rec.sys
     ? ` · 컴퓨터 소리는 담지 못했습니다${process.platform === 'darwin' ? ' (맥에서는 아직 시험 중인 기능입니다 · 화면·마이크는 그대로 녹화)' : ''}` : '';
-  session.say(`녹화를 시작했습니다 · ${rec.where}${rec.sys ? ' + 컴퓨터 소리' : ''}${rec.mic ? ' + 마이크' : ''}${sysMiss} · 학생 얼굴·목소리·이름이 담길 수 있으니 공유하기 전에 확인하세요`);
+  const micMiss = prefs.recMic !== false && !rec.mic ? ' · 마이크는 쓸 수 없어 빼고 녹화합니다' : '';
+  session.say(`녹화를 시작했습니다 · ${rec.where}${rec.sys ? ' + 컴퓨터 소리' : ''}${rec.mic ? ' + 마이크' : ''}${sysMiss}${micMiss} · 학생 얼굴·목소리·이름이 담길 수 있으니 공유하기 전에 확인하세요`);
   push();
 });
 ipcMain.on('rec:stopped', e => { if (fromRec(e)) finishRecording(); });
@@ -877,10 +903,23 @@ async function setPresenter(on){
   push();
 }
 
-async function setRemote(on){
+// 와이파이가 바뀌면(핫스팟으로 옮김 등) 이 PC 주소도 바뀐다. 옛 주소의 QR은 휴대폰에서 "연결 거부"가 나므로 주소를 새로 만든다
+let netWatch = null;
+function watchNet(){
+  clearInterval(netWatch); netWatch = null;
+  if (!remote) return;
+  netWatch = setInterval(() => {
+    if (!remote) return watchNet();
+    const l = liveSrv.ls.get('lan'); if (!l) return;   // 주소를 만드는 중
+    const a = lanAddress(os.networkInterfaces());
+    if (a && a.address !== l.host) setRemote(true, true);   // 잠깐 끊긴 동안(a 없음)은 기다린다
+  }, 3000);
+}
+async function setRemote(on, moved = false){
   liveSrv.close('lan');
   if (!on){
     if (remote){ remote = null; session.say('휴대폰 리모컨을 껐습니다 · 연결했던 휴대폰은 더 이상 조작할 수 없습니다'); }
+    watchNet();
     return push();
   }
   const a = lanAddress(os.networkInterfaces());
@@ -890,6 +929,8 @@ async function setRemote(on){
   const url = liveSrv.url('lan');
   const q = qrcode(0, 'M'); q.addData(url); q.make();
   remote = { url, qr: q.createSvgTag({ cellSize: 4, margin: 2, scalable: true }), showQr: true };
+  watchNet();
+  if (moved){ session.say('와이파이가 바뀌어 리모컨 주소를 새로 만들었습니다 · 휴대폰으로 QR을 다시 찍어 주세요 (휴대폰도 같은 와이파이)'); return push(); }
   session.say(`휴대폰 카메라로 QR을 찍어 주세요 (이 PC와 같은 와이파이) · 처음이면 '들어오는 연결 허용'을 물을 수 있습니다${session.dual ? '' : ' · 모니터가 한 대라 QR이 학생에게도 보입니다. 연결한 뒤 QR을 닫아 주세요'}`);
   push();
 }
@@ -1317,6 +1358,7 @@ const ACTIONS = {
   recScreen: v => { prefs.recScreen = v === 'teacher' ? 'teacher' : 'student'; saveSettings({ recScreen: prefs.recScreen }); push(); },
   recSys: v => { prefs.recSys = v === true || v === 'true'; saveSettings({ recSys: prefs.recSys }); push(); },
   recLight: v => { prefs.recLight = v === true || v === 'true'; saveSettings({ recLight: prefs.recLight }); push(); },
+  recMicId: v => { prefs.recMicId = typeof v === 'string' ? v.slice(0, 200) : ''; saveSettings({ recMicId: prefs.recMicId }); push(); },
   revealRec: v => { if (typeof v === 'string' && /_녹화[\\/]/.test(v) && existsSync(v)) shell.showItemInFolder(v); },
   freeze: () => setCover('freeze'),
   blank: () => setCover('blank'),
@@ -1451,7 +1493,7 @@ app.whenReady().then(async () => {
 
   const settings = readSettings();
   prefs = { opacity: OPACITY_STEPS.includes(settings.opacity) ? settings.opacity : 100, aside: ASIDE_OK && !!settings.aside, recMic: settings.recMic !== false, recSys: typeof settings.recSys === 'boolean' ? settings.recSys : IS_WIN,   // 맥은 아직 시험 중이라 기본은 끔 (docs/poc/mac.md 49)
-     recScreen: settings.recScreen === 'teacher' ? 'teacher' : 'student', recLight: !!settings.recLight, updateCheck: settings.updateCheck !== false, shortcuts: settings.shortcuts !== false };
+     recMicId: typeof settings.recMicId === 'string' ? settings.recMicId : '', recScreen: settings.recScreen === 'teacher' ? 'teacher' : 'student', recLight: !!settings.recLight, updateCheck: settings.updateCheck !== false, shortcuts: settings.shortcuts !== false };
   createSidebar();
   if (!(settings.lastFolder && existsSync(settings.lastFolder) && runLesson(settings.lastFolder))) runLesson(sampleLesson());
   if (settings.lastPrepFolder && existsSync(path.join(settings.lastPrepFolder, 'lesson.json'))){
