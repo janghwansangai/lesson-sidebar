@@ -16,6 +16,7 @@ import { writeLock, clearLock, otherLock, deviceName } from './core/lock.js';
 import { exportBundle, inspectBundle, importBundle, findExisting, fmtBytes } from './core/bundle.js';
 import { precheck, checkLink, cloudOf } from './core/precheck.js';
 import { Chapters, clock } from './core/chapters.js';
+import { duplicateLesson, guideHtml, findConflicts, resolveConflict } from './core/reuse.js';
 import { safeName } from './core/types.js';
 import * as L from './core/launcher.js';
 
@@ -736,6 +737,7 @@ function prepSnapshot(){
     doc: doc ? { ...doc.snapshot(), lockedBy } : null,
     running: session.lesson?.root ?? null, openIds, device: DEVICE, msg: prepMsg, platform: process.platform,
     check: doc && lastCheck?.root === doc.root ? lastCheck : null,
+    conflicts: doc ? findConflicts(doc.root) : [],
   };
 }
 function prepPush(){ prepWin?.webContents.send('prep:state', prepSnapshot()); }
@@ -812,6 +814,29 @@ const PREP_ACTIONS = {
     mkdirSync(dir, { recursive: true });
     saveSettings({ libraryRoot: dir });
     note(`수업 보관함을 만들었습니다: ${dir}`);
+  },
+  // ---------- 정리와 재사용 ----------
+  duplicate(p){
+    const d = needDoc(); const lib = libraryRoot(); if (!lib) throw new Error('먼저 수업 보관함 위치를 정해 주세요');
+    d.save();
+    const dest = duplicateLesson(d.root, lib, { title: str(p.title, 120), date: str(p.date, 10) });
+    openDoc(dest);
+    note(`'${path.basename(dest)}' 수업을 만들었습니다 · 자료·순서·메모를 그대로 복사했고, 녹화·캡처는 빼고 복사했습니다`);
+  },
+  guide(){
+    const d = needDoc();
+    const file = path.join(d.root, '수업안내.html');
+    writeFileSync(file, guideHtml(d.data));
+    if (!DEBUG) shell.openPath(file);
+    note('수업 폴더에 수업안내.html을 만들었습니다 · 참여자에게 나눠 주면 순서와 링크를 볼 수 있습니다 (진행 메모는 빠짐)');
+  },
+  resolveConflict(p){
+    const d = needDoc();
+    const pick = str(p.file, 200);
+    resolveConflict(d.root, pick);
+    d.load();
+    refreshSessionIfSame(d.root);
+    note(`${pick === 'lesson.json' ? '이 PC의 내용을' : `'${pick}' 내용을`} 쓰기로 했습니다 · 다른 사본은 .sidebar/backup에 남겼습니다`);
   },
   newLesson(p){
     const root = libraryRoot(); if (!root) throw new Error('먼저 수업 보관함 위치를 정해 주세요');

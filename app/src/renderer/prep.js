@@ -38,11 +38,16 @@ function renderLibrary(){
       `<button class="btn" data-sug="pick" type="button">다른 위치 고르기</button>`;
   }
   const cur = S.doc?.root;
+  const q = $('#lib-search').value.normalize('NFC').toLowerCase().split(/\s+/).filter(Boolean);
+  const shown = L.lessons.filter(l => q.every(w => (l.search ?? l.title.toLowerCase()).includes(w)));
+  $('#lib-search').hidden = !L.root || L.lessons.length < 2;
   $('#lib-list').innerHTML = L.root && !L.lessons.length ? '<li class="lib-empty">아직 수업이 없습니다. "새 수업"을 눌러 만드세요.</li>'
-    : L.lessons.map(l => `<li class="${l.folder === cur ? 'cur' : ''}" data-folder="${esc(l.folder)}" tabindex="0" role="button">` +
+    : L.root && !shown.length ? '<li class="lib-empty">찾는 수업이 없습니다</li>'
+    : shown.map(l => `<li class="${l.folder === cur ? 'cur' : ''}" data-folder="${esc(l.folder)}" tabindex="0" role="button">` +
       `<span class="lt">${esc(l.title)}</span><span class="ld">${esc(l.date || '날짜 없음')} · 자료 ${l.count}개</span>` +
       (l.folder === S.running ? '<span class="tag run">사이드바에서 진행 중</span>' : '') +
-      (l.lockedBy ? `<span class="tag lock">${esc(l.lockedBy)}에서 열림</span>` : '') + '</li>').join('');
+      (l.lockedBy ? `<span class="tag lock">${esc(l.lockedBy)}에서 열림</span>` : '') +
+      (l.conflicts ? `<span class="tag lock">충돌 사본 ${l.conflicts}개</span>` : '') + '</li>').join('');
 }
 
 function renderDoc(d){
@@ -53,8 +58,17 @@ function renderDoc(d){
   const total = d.sections.reduce((a, s) => a + (s.minutes || 0), 0);
   const count = d.sections.reduce((a, s) => a + s.items.length, 0);
   const saved = d.updatedAt ? new Date(d.updatedAt).toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' }) : '';
-  $('#summary').textContent = `자료 ${count}개 · 총 ${total}분 · ${saved ? `마지막 저장 ${saved}${d.device ? ` (${d.device})` : ''}` : ''} · ${d.root}`;
+  $('#summary').textContent = [`자료 ${count}개`, `총 ${total}분`, saved && `마지막 저장 ${saved}${d.device ? ` (${d.device})` : ''}`, d.root].filter(Boolean).join(' · ');
   $('#run').textContent = S.running === d.root ? '사이드바에 반영됨' : '이 수업으로 진행';
+  // 충돌 사본: 두 PC에서 동시에 고쳐 드라이브가 만든 사본 → 고르게 한다
+  const cs = S.conflicts ?? [];
+  $('#conflictbar').hidden = !cs.length;
+  if (cs.length){
+    const when = t => t ? new Date(t).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '시각 모름';
+    $('#conflictbar').innerHTML = `<b>다른 PC와 동시에 고쳐 사본이 생겼습니다.</b> 쓸 것을 고르세요 (나머지는 .sidebar/backup에 남습니다)` +
+      `<div class="cf">${cs.map(c => `<div class="cf-i"><b>${c.file === 'lesson.json' ? '지금 내용' : esc(c.file)}</b><span>${esc(c.title)} · 자료 ${c.items ?? '?'}개 · ${esc(c.device ?? '어느 PC인지 모름')} · ${when(c.updatedAt)}</span>` +
+      `<button class="btn sm" type="button" data-pick="${esc(c.file)}">이것 쓰기</button></div>`).join('')}</div>`;
+  }
   $('#lockbar').hidden = !d.lockedBy;
   if (d.lockedBy) $('#lockbar').innerHTML = `<b>${esc(d.lockedBy)}</b>에서도 이 수업을 열고 있습니다. 동시에 고치면 내용이 부딪힐 수 있으니 한쪽에서만 고쳐 주세요.`;
 
@@ -175,6 +189,17 @@ $('#run').addEventListener('click', () => api.act('run'));
 $('#tidy').addEventListener('click', () => api.act('tidy'));
 $('#reveal').addEventListener('click', () => api.act('reveal'));
 $('#export').addEventListener('click', () => api.act('exportBundle'));
+$('#guide').addEventListener('click', () => api.act('guide'));
+$('#dup').addEventListener('click', () => {
+  $('#dup-form').hidden = false;
+  $('#dup-title').value = `${S.doc?.title ?? '수업'} (2차)`;
+  $('#dup-date').value = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  $('#dup-title').focus(); $('#dup-title').select();
+});
+$('#dup-cancel').addEventListener('click', () => { $('#dup-form').hidden = true; });
+$('#dup-form').addEventListener('submit', e => { e.preventDefault(); api.act('duplicate', { title: $('#dup-title').value, date: $('#dup-date').value }); $('#dup-form').hidden = true; });
+$('#lib-search').addEventListener('input', () => renderLibrary());
+$('#conflictbar').addEventListener('click', e => { const b = e.target.closest('[data-pick]'); if (b) api.act('resolveConflict', { file: b.dataset.pick }); });
 $('#check').addEventListener('click', () => api.act('precheck'));
 $('#ck-again').addEventListener('click', () => api.act('precheck'));
 $('#ck-close').addEventListener('click', () => api.act('closeCheck'));
