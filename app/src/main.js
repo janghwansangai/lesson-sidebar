@@ -1088,8 +1088,11 @@ const PREP_ACTIONS = {
         mode = pick;
       }
       note(`꾸러미를 푸는 중… (${fmtBytes(info.totalBytes)})`);
-      if (mode === 'overwrite' && doc?.root === existing){ clearLock(existing, DEVICE); doc = null; }   // 푸는 동안 이 창이 저장하지 않게
-      const r = await importBundle(info, lib, { mode, existing });
+      const wasOpen = mode === 'overwrite' && doc?.root === existing;
+      if (wasOpen){ clearLock(existing, DEVICE); doc = null; }   // 푸는 동안 이 창이 저장하지 않게
+      let r;
+      try { r = await importBundle(info, lib, { mode, existing }); }
+      catch (e){ if (wasOpen) openDoc(existing); throw e; }      // 못 덮어썼으면 보던 수업을 다시 연다 (수업은 그대로)
       openDoc(r.root);
       const c = await runCheck(r.root, { quiet: true });   // 가져오면 이 PC에 맞는지 바로 한 번 점검 (docs/PLAN.md 9.4)
       note(`'${info.lesson.title}' 수업을 가져왔습니다 (파일 ${r.count}개) · 사전 점검: ${c.summary}`

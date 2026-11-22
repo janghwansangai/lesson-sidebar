@@ -122,4 +122,10 @@ test('클라우드 폴더 알아보기 (맥·윈도우 경로)', () => {
   assert.equal(cloudOf('/Users/t/Library/CloudStorage/GoogleDrive-a@b.c/내 드라이브/수업 사이드바/x'), '구글 드라이브');
   assert.equal(cloudOf('G:\\내 드라이브\\수업 사이드바\\x'), '구글 드라이브');
   assert.equal(cloudOf('/Users/t/Documents/수업 사이드바/x'), null);
+  // 윈도우 구글 드라이브의 공유 드라이브·다른 컴퓨터·바로 가기 폴더 (드라이브 맨 위일 때만)
+  assert.equal(cloudOf('G:\\공유 드라이브\\3학년\\수업 사이드바\\x'), '구글 드라이브');
+  assert.equal(cloudOf('H:\\Shared drives\\Grade 3\\x'), '구글 드라이브');
+  assert.equal(cloudOf('G:\\다른 컴퓨터\\내 노트북\\x'), '구글 드라이브');
+  assert.equal(cloudOf('G:\\.shortcut-targets-by-id\\1abc\\수업\\x'), '구글 드라이브');
+  assert.equal(cloudOf('C:\\자료\\공유 드라이브\\x'), null);
 });
