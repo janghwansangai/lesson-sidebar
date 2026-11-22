@@ -55,6 +55,8 @@ jobs:
       - name: 설치판 만들기 (맥 도우미 빌드 포함)
         if: steps.changed.outputs.app == 'true'
         run: npm run dist:mac:dir
+        env:
+          SIDEBAR_SMOKE_BUILD: '1'   # CI 시험용 설치판만 시험 모드를 받는다 (build/after-pack.cjs)
         working-directory: app
       - name: 설치판을 켜서 예시 수업·준비 화면이 열리는지
         if: steps.changed.outputs.app == 'true'
@@ -112,6 +114,8 @@ jobs:
         if: steps.changed.outputs.app == 'true'
         run: npm run dist:win
         working-directory: app
+        env:
+          SIDEBAR_SMOKE_BUILD: '1'   # CI 시험용 설치판만 시험 모드를 받는다 (build/after-pack.cjs)
       - name: 앱 폴더를 켜서 도우미·예시 수업·준비 화면이 되는지
         if: steps.changed.outputs.app == 'true'
         run: npm run smoke:win

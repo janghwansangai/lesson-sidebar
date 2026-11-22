@@ -1,6 +1,7 @@
 // 수업 폴더(lesson.json) 읽기. 다른 PC·사람이 고친 파일일 수 있으므로 형식과 경로를 검사한다.
 import { readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
+import { BLOCKED } from './types.js';
 
 export const TYPES = new Set(['web', 'youtube', 'gdoc', 'gsheet', 'gslides', 'gdrive', 'canva', 'pdf', 'img', 'pptx', 'ppt', 'xlsx', 'xls', 'hwp', 'hwpx', 'audio', 'video', 'memo', 'folder', 'file']);
 
@@ -41,6 +42,7 @@ export function loadLesson(folder){
         const rel = String(raw.file).normalize('NFC');
         const abs = path.resolve(root, rel);
         if (!abs.startsWith(root + path.sep)) it.problem = '수업 폴더 밖의 파일은 열지 않습니다';
+        else if (BLOCKED.test(abs)) it.problem = '실행 파일·스크립트는 열지 않습니다 (안전을 위해)';   // 공유받은 수업에 들어 있어도
         else if (!existsSync(abs)) it.problem = '파일이 없습니다 (아직 동기화 중일 수 있습니다)';
         else { it.file = path.relative(root, abs).split(path.sep).join('/'); it.abs = abs; }
       }
