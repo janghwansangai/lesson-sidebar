@@ -7,4 +7,5 @@ contextBridge.exposeInMainWorld('rec', {
   started: info => ipcRenderer.send('rec:started', info),
   stopped: () => ipcRenderer.send('rec:stopped'),
   error: msg => ipcRenderer.send('rec:error', String(msg)),
+  waiting: () => ipcRenderer.send('rec:waiting'),
 });

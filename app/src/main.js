@@ -9,6 +9,8 @@ import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { Helper } from './core/helper.js';
 import { SHORTCUTS, accelerator, keyLabel } from './core/shortcuts.js';
+import { findOrphans } from './core/orphans.js';
+import { execFile } from 'node:child_process';
 import { loadLesson } from './core/lesson.js';
 import { startFileServer } from './core/fileserver.js';
 import { Session, TILE_LAYOUTS } from './core/session.js';
@@ -79,6 +81,7 @@ function watchTrust(){
     push();
     if (ok){
       helper.restartWatch();
+      helper.restartServers();
       await session.relink();
       syncAsideWatch();
       session.say('손쉬운 사용 권한이 켜졌습니다. 이제 자료 창을 찾고 옮기고 닫을 수 있습니다');
@@ -99,7 +102,8 @@ function makeHelper(){
     };
   }
   const bin = app.isPackaged ? path.join(process.resourcesPath, 'winctl') : path.join(REPO, 'poc', 'mac-helper', '.build', 'release', 'winctl');
-  return { helper: new Helper(bin), where: bin, fix: 'poc 폴더에서 npm run build:mac' };
+  // 맥 도우미는 켜 둔 채로 명령을 받는다 ('serve' — 명령마다 새로 켜면 0.3초 넘게 걸렸다)
+  return { helper: new Helper(bin, { serve: true }), where: bin, fix: 'poc 폴더에서 npm run build:mac' };
 }
 
 let win = null, prepWin = null, session = null, helper = null, files = null;
@@ -395,7 +399,11 @@ async function captureDisplay(d){
   const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: Math.round(d.bounds.width * sf), height: Math.round(d.bounds.height * sf) } });
   return (sources.find(x => String(x.display_id) === String(d.id)) ?? sources[0])?.thumbnail ?? null;
 }
-async function startGrab(mode){
+/**
+ * @param where 'student'이면 학생 화면(듀얼일 때 — 사이드바 단추), 아니면 마우스가 있는 화면(단축키).
+ * (전에는 늘 마우스가 있는 화면이라, 사이드바 단추를 누르면 마우스가 교사 화면에 있어 학생 화면을 확대할 수 없었다 — 선생님 요청 2026-11-22)
+ */
+async function startGrab(mode, where){
   if (grab) return endGrab();
   if (screenAccess() !== 'granted'){
     try { await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 1, height: 1 } }); } catch { /* 맥이 권한을 묻게 한 번 불러 본다 */ }
@@ -403,12 +411,12 @@ async function startGrab(mode){
     return;
   }
   tools.pointer = false; tools.spot = false; tools.pen = false; syncTools();
-  // 커서가 있는 화면을 찍는다. 단, 사이드바 단추를 눌렀으면 커서는 교사 화면의 사이드바 위에 있으므로
-  // 학생 화면이 있으면 학생 화면을 찍는다 (그대로 두면 확대·캡처가 늘 교사 화면에서만 됐다)
+  // 커서가 있는 화면을 찍는다. 단, 사이드바 단추를 눌렀으면(where 'student', 또는 커서가 사이드바 위) 학생 화면이 있으면 학생 화면을
+  // 찍는다 (그대로 두면 확대·캡처가 늘 교사 화면에서만 됐다 — 맥·윈도우 선생님 확인)
   const cur = screen.getCursorScreenPoint(), sb = win && !win.isDestroyed() ? win.getBounds() : null;
   const onSidebar = !!sb && cur.x >= sb.x && cur.x < sb.x + sb.width && cur.y >= sb.y && cur.y < sb.y + sb.height;
-  const student = onSidebar ? studentElectronDisplay() : null;
-  const d = student ?? screen.getDisplayNearestPoint(cur);
+  const here = screen.getDisplayNearestPoint(cur);
+  const d = (onSidebar || where === 'student' ? studentElectronDisplay() : null) ?? here;
   for (const w of overlays.values()) if (!w.isDestroyed()) w.hide();
   await new Promise(r => setTimeout(r, 120));   // 겹침 창이 사라진 뒤에 찍는다
   const image = await captureDisplay(d).catch(() => null);
@@ -421,8 +429,10 @@ async function startGrab(mode){
   win?.setAlwaysOnTop(true, 'screen-saver', 1);
   if (!globalShortcut.isRegistered('Escape')) globalShortcut.register('Escape', () => endGrab());
   push();
-  const where = student ? '학생 화면에서 ' : '';
-  session.say(mode === 'zoom' ? `확대: ${where}마우스로 옮기고 휠로 배율(1.5~4배) · 클릭이나 Esc로 끝` : `캡처 핀: ${where}끌어서 영역을 고르세요 · Esc로 취소`);
+  const there = d.id === here.id ? '' : session.dual && d.id === studentElectronDisplay()?.id ? '학생 화면' : '그 화면';   // 마우스가 다른 화면에 있으면
+  session.say(mode === 'zoom'
+    ? `확대: ${there ? `${there}으로 마우스를 옮기면 그 둘레가 커집니다` : '마우스로 옮기고'} · 휠로 배율(1.5~4배) · 클릭이나 Esc로 끝`
+    : `캡처 핀: ${there ? `${there}에서 ` : ''}끌어서 영역을 고르세요 · Esc로 취소`);
 }
 function endGrab(){
   if (!grab) return;
@@ -474,9 +484,12 @@ ipcMain.on('pin:close', e => { for (const p of pins) if (p.webContents === e.sen
 // ---------- 학생 화면 관리: 미리보기·정지·가리기 (docs/PLAN.md 6.3) ----------
 // 가림 창은 학생 화면 전체를 덮는다 (모니터 한 대면 그 화면 — 가리기만). 화면 찍기에서 빠지게(setContentProtection) 해서
 // 미리보기·확대·캡처 핀에는 가림 창 뒤의 실제 화면이 보인다 ("정지 중에도 미리보기에는 실제 상태").
-// 미리보기는 듀얼일 때 0.5초마다 작게 찍어 사이드바에 보낸다 (저장하지 않음).
+// 미리보기(맥)는 듀얼일 때 5초마다 작게 찍어 사이드바에 보낸다 (저장하지 않음). 윈도우는 영상으로 받는다 (syncPreviewStream). 자료를 띄우거나 배치·가리기를 바꾸면 0.7초 뒤 바로 한 번,
+// 미리보기를 누르면 그 자리에서. (전에는 0.5초마다였는데, 한 번 찍는 데 두 화면 모두 0.7~1.2초씩 걸려 쉬지 않고 찍는 셈이라
+// 컴퓨터 전체가 느려졌다 — 선생님 요청 2026-11-22, docs/poc/mac.md 55)
+const PREVIEW_EVERY = 5000, PREVIEW_SOON = 700;
 const cover = { mode: null };   // 'freeze' | 'blank' | null
-let coverWin = null, previewTimer = null, previewOn = true;
+let coverWin = null, previewOn = true, previewLive = false, previewT = null, previewBusy = false, previewKey = '';
 function studentElectronDisplay(){
   const st = session?.student;
   if (!st) return null;
@@ -533,7 +546,7 @@ async function composeStudent(bg){
   try { wins = (await helper.call('list')).windows; } catch { return bg; }
   wins = wins.filter(w => w.display === st.index && !w.minimized && w.pid !== process.pid).sort((a, b) => (b.z ?? 0) - (a.z ?? 0));   // 뒤에서 앞으로
   if (!wins.length) return { bg, w: st.width, h: st.height, wins: [] };
-  const srcs = await desktopCapturer.getSources({ types: ['window'], thumbnailSize: { width: 480, height: 480 } });
+  const srcs = await desktopCapturer.getSources({ types: ['window'], thumbnailSize: { width: 264, height: 264 } });   // 미리보기 폭(264)이면 충분
   const byWid = new Map(srcs.map(x => [Number(String(x.id).split(':')[1]), x]));
   return { bg, w: st.width, h: st.height, wins: wins.map(w => ({ x: w.x - st.x, y: w.y - st.y, width: w.width, height: w.height, src: byWid.get(w.wid)?.thumbnail.toDataURL() })).filter(x => x.src) };
 }
@@ -552,25 +565,37 @@ async function syncPreviewStream(want){
 }
 function syncPreview(){
   const want = previewOn && session?.dual && screenAccess() === 'granted' && !!win;
-  if (IS_WIN) return syncPreviewStream(want);
-  if (!want){ clearInterval(previewTimer); previewTimer = null; win?.webContents.send('preview', null); return; }
-  if (previewTimer) return;
-  let busy = false;
-  previewTimer = setInterval(async () => {
-    if (busy || collapsed) return;
-    busy = true;
-    try {
-      const d = studentElectronDisplay(); if (!d) return;
-      const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 264, height: Math.round(264 * d.bounds.height / d.bounds.width) } });
-      const src = sources.find(x => String(x.display_id) === String(d.id));
-      if (!src) return;
-      if (cover.mode === 'freeze' && process.platform === 'darwin'){
-        // 맥은 가림 창 아래 창들이 화면 찍기에서 빠진다(가려진 것으로 봄). 창을 하나씩 찍어 앞뒤 순서대로 쌓아 실제 상태를 보인다 (mac.md 41)
-        return win?.webContents.send('preview', await composeStudent(src.thumbnail.toDataURL()));
-      }
-      win?.webContents.send('preview', src.thumbnail.toDataURL());
-    } catch { /* 다음에 다시 */ } finally { busy = false; }
-  }, 500);
+  if (IS_WIN) return syncPreviewStream(want);   // 윈도우는 영상으로 (windows.md) — 맥은 아래처럼 5초마다 찍기
+  if (!want){
+    if (previewLive){ previewLive = false; clearTimeout(previewT); previewT = null; win?.webContents.send('preview', null); }
+    return;
+  }
+  // 학생 화면이 바뀌었을 만한 일(띄운 자료·나란히 보기·가리기·접기)이면 곧바로 한 번 더
+  const key = [session.highlight, session.tile?.ids?.join(','), session.tile?.layout, cover.mode, collapsed, session.student?.index].join('|');
+  if (!previewLive){ previewLive = true; previewKey = key; return nextPreview(0); }
+  if (key !== previewKey){ previewKey = key; nextPreview(PREVIEW_SOON); }
+}
+function nextPreview(ms){ clearTimeout(previewT); previewT = setTimeout(takePreview, ms); }
+async function takePreview(){
+  previewT = null;
+  if (!previewLive) return;
+  if (previewBusy) return nextPreview(300);
+  if (collapsed) return nextPreview(PREVIEW_EVERY);   // 접혀 있으면 찍지 않는다 (펼치면 key가 바뀌어 바로 찍음)
+  previewBusy = true;
+  try {
+    const d = studentElectronDisplay(); if (!d) return;
+    const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 264, height: Math.round(264 * d.bounds.height / d.bounds.width) } });
+    const src = sources.find(x => String(x.display_id) === String(d.id));
+    if (!src || !previewLive) return;
+    if (cover.mode === 'freeze' && process.platform === 'darwin'){
+      // 맥은 가림 창 아래 창들이 화면 찍기에서 빠진다(가려진 것으로 봄). 창을 하나씩 찍어 앞뒤 순서대로 쌓아 실제 상태를 보인다 (mac.md 41)
+      return win?.webContents.send('preview', await composeStudent(src.thumbnail.toDataURL()));
+    }
+    win?.webContents.send('preview', src.thumbnail.toDataURL());
+  } catch { /* 다음에 다시 */ } finally {
+    previewBusy = false;
+    if (previewLive && !previewT) nextPreview(PREVIEW_EVERY);
+  }
 }
 
 // ---------- 화면 녹화 + 목차 (docs/PLAN.md 8) ----------
@@ -585,9 +610,23 @@ function recordTarget(){
   const root = session.lesson?.root ?? null;
   return { root, title: session.lesson?.title ?? '녹화' };
 }
+let recPreparing = false;
 async function startRecording(){
   if (rec) return stopRecording();
+  if (recPreparing) return;
   if (screenAccess() !== 'granted') return session.say(SCREEN_PERM, { act: 'screenSettings', label: '화면 기록 설정 열기' });
+  // 맥: 마이크 허락을 아직 묻지 않았으면 먼저 묻고 답을 기다린 뒤 시작한다 (전에는 녹화 도중에 허락 창이 떠
+  // 첫 녹화에서 허락을 여러 번 누르고 녹화도 다시 눌러야 했다 — 선생님 요청 2026-11-22)
+  let micOk = prefs.recMic !== false;
+  if (micOk && process.platform === 'darwin'){
+    const st = systemPreferences.getMediaAccessStatus('microphone');
+    if (st === 'not-determined'){
+      recPreparing = true;
+      session.say('마이크를 써도 되는지 맥이 묻습니다 · "허용"을 누르면 바로 녹화를 시작합니다');
+      try { micOk = await systemPreferences.askForMediaAccess('microphone'); } catch { micOk = false; } finally { recPreparing = false; }
+      if (rec) return;
+    } else if (st === 'denied' || st === 'restricted') micOk = false;
+  }
   const { root, title } = recordTarget();
   const free = freeAt(root ?? app.getPath('userData'));
   if (free != null && free < 2 * 1024 ** 3) return session.say(`남은 공간이 ${fmtBytes(free)}뿐이라 녹화를 시작하지 않았습니다 (2GB 이상 필요 · 1시간에 약 1.5GB)`);
@@ -614,7 +653,9 @@ async function startRecording(){
     if (!rec?.recWin || rec.recWin.isDestroyed() || req.frame?.top !== rec.recWin.webContents.mainFrame) return cb({});
     cb({ video: src, audio: 'loopback' });
   });
-  recWc.send('rec:start', { sourceId: src.id, mic: prefs.recMic !== false, micId: prefs.recMicId || '', sys: !!prefs.recSys, light: !!prefs.recLight });
+  rec.micAsked = prefs.recMic !== false && !micOk;   // 마이크를 켰는데 맥에서 막혀 있음 → 시작 안내에 알림
+  // one: 컴퓨터 소리를 받는 화면을 그대로 녹화에도 쓴다 (맥 — 같은 화면을 두 번 찍지 않게). 윈도우는 확인된 방식 그대로 (HANDOFF 넘길 일)
+  recWc.send('rec:start', { sourceId: src.id, mic: micOk, micId: prefs.recMicId || '', sys: !!prefs.recSys, light: !!prefs.recLight, one: !IS_WIN });
   rec.spaceTimer = setInterval(() => {
     const f = freeAt(recDir());
     if (f != null && f < 1024 ** 3){ session.say(`남은 공간이 ${fmtBytes(f)}라 녹화를 멈춥니다`); stopRecording(); }
@@ -688,11 +729,13 @@ ipcMain.on('rec:started', (e, info) => {
   rec.sys = !!info?.sys;
   const sysMiss = prefs.recSys && !rec.sys
     ? ` · 컴퓨터 소리는 담지 못했습니다${process.platform === 'darwin' ? ' (맥에서는 아직 시험 중인 기능입니다 · 화면·마이크는 그대로 녹화)' : ''}` : '';
-  const micMiss = prefs.recMic !== false && !rec.mic ? ' · 마이크는 쓸 수 없어 빼고 녹화합니다' : '';
+  const micMiss = rec.micAsked ? ' · 마이크가 꺼져 있어 목소리는 빠집니다 (시스템 설정 → 개인정보 보호 및 보안 → 마이크에서 수업 사이드바를 켜면 다음부터 담김)'
+    : prefs.recMic !== false && !rec.mic ? ' · 마이크는 쓸 수 없어 빼고 녹화합니다' : '';
   session.say(`녹화를 시작했습니다 · ${rec.where}${rec.sys ? ' + 컴퓨터 소리' : ''}${rec.mic ? ' + 마이크' : ''}${sysMiss}${micMiss} · 학생 얼굴·목소리·이름이 담길 수 있으니 공유하기 전에 확인하세요`);
   push();
 });
 ipcMain.on('rec:stopped', e => { if (fromRec(e)) finishRecording(); });
+ipcMain.on('rec:waiting', e => { if (fromRec(e)) session.say('맥이 허락을 묻는 창을 띄웠다면 "허용"을 눌러 주세요 · 누르면 녹화가 저절로 시작됩니다 (다시 누르지 않아도 됨)'); });
 ipcMain.on('rec:error', (e, msg) => { if (!fromRec(e)) return; session.say(`녹화하지 못했습니다: ${msg}`); if (rec){ rec.stopping = true; finishRecording(); } });
 
 const fromOverlay = e => [...overlays.values()].some(w => !w.isDestroyed() && w.webContents === e.sender);
@@ -1364,6 +1407,7 @@ const ACTIONS = {
   freeze: () => setCover('freeze'),
   blank: () => setCover('blank'),
   preview: v => { previewOn = v === true || v === 'true'; syncPreview(); push(); },
+  previewNow: () => { if (previewLive) nextPreview(0); },
   autoHide: v => setAutoHide(v === true || v === 'true'),
   opacity: v => setOpacity(v),
   aside: v => setAside(v === true || v === 'true'),
@@ -1371,10 +1415,11 @@ const ACTIONS = {
   pointer: v => setTool('pointer', v === true || v === 'true'),
   spot: v => setTool('spot', v === true || v === 'true'),
   pen: v => setTool('pen', v === true || v === 'true'),
-  zoom: () => startGrab('zoom'),
-  pin: () => startGrab('pick'),
+  zoom: where => startGrab('zoom', where),
+  pin: where => startGrab('pick', where),
   closePins: () => { for (const p of [...pins]) p.close(); },
   screenSettings: () => shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture'),
+  cleanOrphans: () => cleanOrphans(),
   shareQr: id => shareQr(id),
   quit: () => app.quit(),
   shortcuts: v => { prefs.shortcuts = v === true || v === 'true'; saveSettings({ shortcuts: prefs.shortcuts }); syncShortcuts(true); push(); },
@@ -1441,6 +1486,27 @@ function watchOutside(){
   }
 }
 
+// ---------- 남은 조각 정리 (맥 설치판) ----------
+// 지난번에 꺼지지 않고 남은 사이드바 도우미가 있으면 알리고, 선생님이 '정리하기'를 누르면 정상 종료를 요청한다 (강제 종료는 하지 않음)
+const psText = () => new Promise(r => execFile('ps', ['-A', '-o', 'pid=,ppid=,pcpu=,comm='], { timeout: 5000, maxBuffer: 4 << 20 }, (e, so) => r(e ? '' : String(so))));
+const orphanName = () => path.basename(process.execPath);
+async function checkOrphans(){
+  if (process.platform !== 'darwin' || !app.isPackaged) return;
+  const list = findOrphans(await psText(), orphanName(), process.pid);
+  if (!list.length) return;
+  const cpu = Math.round(list.reduce((a, o) => a + o.cpu, 0));
+  session.say(`지난번에 꺼지지 않은 수업 사이드바 조각 ${list.length}개가 남아 있습니다${cpu >= 20 ? ` · CPU를 ${cpu}% 쓰고 있어 컴퓨터가 느려집니다` : ''}`, { act: 'cleanOrphans', label: '정리하기' });
+}
+async function cleanOrphans(){
+  const list = findOrphans(await psText(), orphanName(), process.pid);
+  for (const o of list){ try { process.kill(o.pid, 'SIGTERM'); } catch { /* 이미 끝남 */ } }
+  await new Promise(r => setTimeout(r, 2500));
+  const left = findOrphans(await psText(), orphanName(), process.pid);
+  session.say(!list.length ? '남은 조각이 없습니다'
+    : !left.length ? `남아 있던 조각 ${list.length}개를 정리했습니다`
+    : `조각 ${left.length}개가 끝나지 않았습니다 · 응용 프로그램 → 유틸리티 → 활성 상태 보기에서 'LessonSidebar Helper'를 찾아 선택하고 위의 ⓧ(중단)를 눌러 주세요`);
+}
+
 function heartbeat(){
   for (const root of new Set([doc?.root, session.lesson?.root].filter(Boolean))) writeLock(root, DEVICE);
 }
@@ -1475,6 +1541,7 @@ app.on('second-instance', () => { if (!win) return; collapsed = false; placeSide
 
 app.whenReady().then(async () => {
   if (!firstInstance) return;
+  if (await leaveDmg()) return;
   if (process.platform === 'darwin') app.dock?.hide();
   const h = makeHelper();
   helper = h.helper;
@@ -1518,7 +1585,7 @@ app.whenReady().then(async () => {
   if (trusted) syncAsideWatch();
 
   let t = null;
-  const onDisplays = () => { clearTimeout(t); t = setTimeout(async () => { await session.onDisplaysChanged(); placeSidebar(); for (const [id, w] of overlays){ if (!screen.getAllDisplays().some(d => d.id === id)){ w.destroy(); overlays.delete(id); } } syncTools(); if (cover.mode === 'freeze' && !session.dual) setCover(null); else if (cover.mode) ensureCover(coverDisplay()); syncPreview(); }, 800); };
+  const onDisplays = () => { clearTimeout(t); t = setTimeout(async () => { helper.restartServers(); await session.onDisplaysChanged(); placeSidebar(); for (const [id, w] of overlays){ if (!screen.getAllDisplays().some(d => d.id === id)){ w.destroy(); overlays.delete(id); } } syncTools(); if (cover.mode === 'freeze' && !session.dual) setCover(null); else if (cover.mode) ensureCover(coverDisplay()); syncPreview(); }, 800); };
   screen.on('display-added', onDisplays);
   screen.on('display-removed', onDisplays);
   screen.on('display-metrics-changed', onDisplays);
@@ -1526,10 +1593,37 @@ app.whenReady().then(async () => {
   recoverRecordings();
   scheduleUpdateCheck();
   setInterval(watchOutside, 3000);
-  setInterval(heartbeat, 30000);
+  // 잠금 표시는 5분 동안 유효(lock.js FRESH_MS)라 2분마다면 충분하다. 30초마다 쓰면 구글 드라이브가 그때마다 올리느라 바빴다
+  setInterval(heartbeat, 120000);
+  setTimeout(checkOrphans, 8000);            // 켜면서 나오는 안내들 뒤에
+  setInterval(checkOrphans, 30 * 60000);
 
   if (process.env.SIDEBAR_DEBUG === '1') await startDebugServer();
 });
+
+/**
+ * 맥: 설치 파일(DMG) 창에서 바로 켰으면 응용 프로그램 폴더로 옮기도록 권한다.
+ * DMG에서 켠 채로 설치 파일을 꺼내면 사이드바 조각이 남아 CPU를 계속 쓸 수 있다 (2026-11-22, orphans.js).
+ * @returns true면 이 사이드바는 끝난다 (옮겨서 다시 켜짐 / 설치된 새 버전을 켬)
+ */
+async function leaveDmg(){
+  if (process.platform !== 'darwin' || !app.isPackaged || !process.execPath.startsWith('/Volumes/') || app.isInApplicationsFolder()) return false;
+  const installed = await new Promise(r => execFile('plutil', ['-extract', 'CFBundleShortVersionString', 'raw', '-o', '-', `/Applications/${orphanName()}.app/Contents/Info.plist`], { timeout: 5000 }, (e, so) => r(e ? null : String(so).trim() || null)));
+  const newer = installed && installed.localeCompare(app.getVersion(), undefined, { numeric: true }) > 0;
+  const { response } = await dialog.showMessageBox({
+    type: 'warning', title: '수업 사이드바', defaultId: 0, cancelId: 2,
+    message: '설치 파일(DMG) 창에서 바로 켰습니다',
+    detail: newer
+      ? `응용 프로그램 폴더에 더 새 버전(${installed})이 있습니다. 그것을 켜 주세요.\n이 설치 파일은 ${app.getVersion()}입니다.`
+      : `이대로 쓰다가 설치 파일을 꺼내면 사이드바 조각이 남아 컴퓨터가 느려질 수 있습니다.\n응용 프로그램 폴더로 옮겨 그곳에서 켜 주세요.${installed ? `\n(설치된 ${installed}은 휴지통으로 가고 이 ${app.getVersion()}이 들어갑니다)` : ''}`,
+    buttons: newer ? ['설치된 새 버전 켜기', '이 설치 파일로 그냥 쓰기', '끝내기'] : ['응용 프로그램 폴더로 옮기기', '이번만 그대로 쓰기', '끝내기'],
+  });
+  if (response === 2){ app.quit(); return true; }
+  if (response === 1) return false;
+  if (newer){ await shell.openPath(`/Applications/${orphanName()}.app`); app.quit(); return true; }
+  try { return app.moveToApplicationsFolder({ conflictHandler: type => type === 'exists' }); }   // 옮기면 그곳에서 다시 켜진다
+  catch (e){ dialog.showErrorBox('수업 사이드바', `옮기지 못했습니다: ${e.message}\n설치 파일 창에서 응용 프로그램 폴더로 끌어 옮겨 주세요.`); return false; }
+}
 
 app.on('window-all-closed', () => app.quit());
 let restoringOnQuit = false;
