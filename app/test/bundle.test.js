@@ -1,14 +1,14 @@
 // 수업 꾸러미(.zip) 시험: 임시 폴더에서 실제로 묶고 푼다. 위험한 zip은 직접 바이트로 만든다.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, readFileSync, existsSync, readdirSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync, existsSync, readdirSync, mkdirSync, openSync, closeSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import zlib from 'node:zlib';
 import yauzl from 'yauzl';
 import { LessonDoc } from '../src/core/editor.js';
 import { loadLesson } from '../src/core/lesson.js';
-import { exportBundle, inspectBundle, importBundle, findExisting, unsafePath, LIMITS } from '../src/core/bundle.js';
+import { exportBundle, inspectBundle, importBundle, findExisting, unsafePath, busyFiles, LIMITS } from '../src/core/bundle.js';
 
 const tmp = () => mkdtempSync(path.join(os.tmpdir(), 'bundle-'));
 
@@ -118,6 +118,30 @@ test('같은 수업이 있으면: 사본은 _2 폴더와 새 수업 번호, 덮�
   assert.ok(over.backup.includes(path.join('.sidebar', '덮어쓰기 전')));
 });
 
+test('덮어쓸 수업의 파일이 다른 프로그램에 열려 있으면(윈도우): 풀지 않고 쉬운 말로 알리고, 임시 폴더를 남기지 않으며 수업은 그대로', { skip: process.platform !== 'win32' && '윈도우 파일 잠금 시험' }, async () => {
+  const doc = await makeLesson();
+  const out = path.join(tmp(), 'a.zip');
+  await exportBundle(doc.root, out);
+  const lib = path.dirname(doc.root);
+  const info = await inspectBundle(out);
+  const ppt = readdirSync(path.join(doc.root, '2_전개')).find(n => /^01_.*\.pptx$/.test(n));
+  // 파일 하나를 열어 둔다. Node는 파워포인트처럼 "쓰기 금지"로 잡지는 못하지만(그래서 busyFiles는 못 알아챔),
+  // 열린 파일이 있으면 윈도우가 폴더 이름 바꾸기를 막는 것은 같다 → 다 푼 뒤 바꿔치기에서 실패하는 길을 시험한다.
+  // (파워포인트로 연 파일은 busyFiles가 이름까지 알아챈다 — docs/poc/windows.md "수업 꾸러미")
+  const fd = openSync(path.join(doc.root, '2_전개', ppt), 'r');
+  try {
+    await assert.rejects(importBundle(info, lib, { mode: 'overwrite', existing: doc.root }),
+      e => e.code === 'BUSY' && !e.message.includes(lib) && /열려 있어 덮어쓰지 못했습니다/.test(e.message) && /사본으로 가져오기/.test(e.message));
+    assert.ok(!readdirSync(lib).some(n => n.startsWith('.가져오는 중')), '임시 폴더가 남지 않음');
+    assert.ok(!readdirSync(path.join(lib, '.sidebar', '덮어쓰기 전')).length, '백업 폴더도 만들지 않음');
+    assert.ok(existsSync(path.join(doc.root, '2_전개', ppt)));
+  } finally { closeSync(fd); }
+  assert.deepEqual(busyFiles(doc.root), []);
+  const over = await importBundle(info, lib, { mode: 'overwrite', existing: doc.root });
+  assert.ok(existsSync(over.backup));
+  assert.equal(busyFiles(doc.root, { platform: 'darwin' }).length, 0);
+});
+
 test('위험한 경로(../, 절대 경로, 드라이브 문자)가 하나라도 있으면 꾸러미 전체를 거절한다', async () => {
   for (const bad of ['../밖.txt', '수업/../../밖.txt', '/etc/밖', 'C:/Windows/밖.txt', '수업\\..\\..\\밖.txt']){
     const z = rawZip(path.join(tmp(), 'bad.zip'), [{ name: '수업/lesson.json', data: LESSON() }, { name: bad, data: 'x' }]);
@@ -138,6 +162,23 @@ test('윈도우 탐색기로 묶은 zip(한글 CP949 이름, 역슬래시, manif
   assert.deepEqual(info.plan.map(p => p.rel).sort(), ['2_전개/01_활동지.hwp', 'lesson.json']);
   assert.deepEqual(info.skipped, [{ name: '모둠.exe', reason: '실행 파일은 가져오지 않습니다' }]);
   const r = await importBundle(info, tmp());
+  assert.deepEqual(loadLesson(r.root).items.filter(i => i.problem), []);
+});
+
+test('맥 Finder "압축"으로 묶은 zip(한글 이름 NFD, UTF-8 표시 없음, __MACOSX·.DS_Store)도 윈도우에서 바른 이름으로 가져온다', async () => {
+  const nfd = s => Buffer.from(s.normalize('NFD'), 'utf8');   // 표시 없이 바이트만 (Finder가 이렇게 쓴다)
+  const z = rawZip(path.join(tmp(), 'mac.zip'), [
+    { name: nfd('2026-12-01_맥수업/lesson.json'), data: LESSON() },
+    { name: nfd('2026-12-01_맥수업/2_전개/01_활동지.hwp'), data: 'hwp' },
+    { name: nfd('2026-12-01_맥수업/.DS_Store'), data: 'x' },
+    { name: nfd('__MACOSX/2026-12-01_맥수업/2_전개/._01_활동지.hwp'), data: 'x' },
+  ]);
+  const info = await inspectBundle(z);
+  assert.equal(info.folderName, '2026-12-01_맥수업'.normalize('NFC'));
+  assert.deepEqual(info.plan.map(p => p.rel).sort(), ['2_전개/01_활동지.hwp', 'lesson.json']);
+  const r = await importBundle(info, tmp());
+  assert.equal(path.basename(r.root), '2026-12-01_맥수업');
+  assert.ok(readdirSync(path.join(r.root, '2_전개')).every(n => n === n.normalize('NFC')));
   assert.deepEqual(loadLesson(r.root).items.filter(i => i.problem), []);
 });
 

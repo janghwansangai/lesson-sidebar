@@ -54,7 +54,8 @@ function appPath(exe){
 
 /** 확장자에 연결된 프로그램 실행 파일 (예: .hwp → …\Hwp.exe). */
 function assocExe(ext){
-  const run = (...a) => execFileSync('cmd.exe', ['/d', '/c', ...a], { encoding: 'utf8', windowsHide: true, timeout: 5000 }).trim();
+  // 연결이 없으면 cmd가 오류 글(한국어 CP949)을 내므로 버린다 — 실패는 종료 코드로 안다
+  const run = (...a) => execFileSync('cmd.exe', ['/d', '/c', ...a], { encoding: 'utf8', windowsHide: true, timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }).trim();
   const prog = run('assoc', ext).split('=')[1];
   const cmdline = run('ftype', prog).split('=').slice(1).join('=');
   return cmdline.match(/^"([^"]+)"/)?.[1] ?? cmdline.split(' ')[0];
