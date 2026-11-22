@@ -60,11 +60,14 @@ function render(){
   const dock = $('#dock');
   if (S.tile){
     dock.hidden = false;
-    dock.innerHTML = `<div class="dock-h"><b>나란히 보는 중</b></div><button class="dbtn" data-dock="untile">나란히 보기 풀기</button>`;
+    const opts = (S.layouts?.[S.tile.ids.length] ?? []).map(l => `<button class="seg-b" data-lay="${l.id}" aria-pressed="${S.tile.layout === l.id}">${esc(l.label)}</button>`).join('');
+    dock.innerHTML = `<div class="dock-h"><b>나란히 보는 중</b></div><p>창 사이 노란 막대를 끌면 폭이 바뀝니다</p>` +
+      (opts ? `<div class="lays" data-mode="relayout">${opts}</div>` : '') + `<button class="dbtn" data-dock="untile">원래대로 (나란히 보기 풀기)</button>`;
   } else if (S.sel.length){
     dock.hidden = false;
     dock.innerHTML = `<div class="dock-h"><b>${S.sel.length}개 선택</b><button class="link" data-dock="clear">선택 해제</button></div>` +
-      (S.sel.length === 2 ? `<button class="dbtn" data-dock="split">${S.dual ? '학생 화면에 ' : ''}반반으로 나란히</button>` : '<p>하나 더 고르면 반반으로 나란히 놓습니다</p>');
+      (S.sel.length >= 2 ? `<p>${S.dual ? '학생 화면에 ' : ''}어떻게 놓을까요?</p><div class="lays" data-mode="split">${(S.layouts?.[S.sel.length] ?? []).map(l => `<button class="seg-b" data-lay="${l.id}">${esc(l.label)}</button>`).join('')}</div>`
+        : '<p>하나 더 고르면 나란히 놓을 수 있습니다 (네 개까지)</p>');
   } else dock.hidden = true;
 
   $('#msg').textContent = S.msg || '';
@@ -113,6 +116,8 @@ $('#list').addEventListener('keydown', e => {
 });
 $('#screens').addEventListener('click', e => { const b = e.target.closest('[data-to]'); if (b) api.act('openTo', b.dataset.to); });
 $('#dock').addEventListener('click', e => {
+  const lay = e.target.closest('[data-lay]');
+  if (lay) return api.act(lay.closest('[data-mode]').dataset.mode, lay.dataset.lay);
   const d = e.target.closest('[data-dock]')?.dataset.dock;
   if (d === 'split') api.act('split');
   else if (d === 'untile') api.act('untile');

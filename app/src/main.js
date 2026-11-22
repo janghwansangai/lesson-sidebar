@@ -169,7 +169,55 @@ function createSidebar(){
 }
 
 const fullState = () => ({ ...session.snapshot(), collapsed, trusted: session.trusted !== false, prefs: { ...prefs, steps: OPACITY_STEPS, asideAvailable: ASIDE_OK } });
-function push(){ win?.webContents.send('state', fullState()); }
+function push(){ win?.webContents.send('state', fullState()); syncDivider(); }
+
+// ---------- 나란히 보기 조절 바 ----------
+// 나란히 놓은 창의 첫 세로 경계에 가는 막대 창을 띄운다. 끌면 경계가 따라오며 두 창 폭이 함께 바뀐다.
+// 도우미 좌표: 맥은 Electron과 같은 포인트, 윈도우는 물리 픽셀 → DIP로 바꿔서 창을 놓는다.
+const DIV_W = 16;
+let divWin = null, divDrag = null;   // divDrag: 끄는 중이면 true
+const toDipRect = r => IS_WIN ? screen.screenToDipRect(null, r) : r;
+const toHelperX = (x, y) => IS_WIN ? screen.dipToScreenPoint({ x, y }).x : x;
+function ensureDivider(){
+  if (divWin) return divWin;
+  divWin = new BrowserWindow({
+    width: DIV_W, height: 100, frame: false, transparent: true, backgroundColor: '#00000000', resizable: false, movable: false,
+    minimizable: false, maximizable: false, fullscreenable: false, focusable: false, hasShadow: false, skipTaskbar: true, show: false,
+    alwaysOnTop: true, type: process.platform === 'darwin' ? 'panel' : undefined, thickFrame: false,
+    webPreferences: SECURE('divider-preload.cjs'),
+  });
+  divWin.setAlwaysOnTop(true, 'screen-saver');
+  divWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  lockDown(divWin);
+  divWin.loadFile(path.join(HERE, 'renderer', 'divider.html'));
+  divWin.on('closed', () => { divWin = null; });
+  return divWin;
+}
+function placeDivider(d){
+  const r = toDipRect({ x: d.x - Math.round(DIV_W / 2), y: d.y, width: DIV_W, height: d.height });
+  const w = ensureDivider();
+  w.setBounds({ x: Math.round(r.x), y: Math.round(r.y), width: DIV_W, height: Math.round(r.height) });
+  if (!w.isVisible()) w.showInactive();
+}
+function syncDivider(){
+  if (divDrag) return;   // 끄는 동안은 마우스를 따라간다
+  const d = session?.tileDivider();
+  if (!d){ divWin?.hide(); return; }
+  placeDivider(d);
+}
+// 끄는 동안에는 막대만 마우스를 따라가고, 놓을 때 창들을 한 번에 옮긴다.
+// (PPT·엑셀은 한 번 옮기는 데 0.5초 넘게 걸려, 끄는 동안 계속 옮기면 창이 3초 넘게 늦게 따라왔다 — docs/poc/mac.md 36)
+async function dragDivider(x, final){
+  const d = session.tileDivider(); if (!d){ divDrag = null; return; }
+  const a = d.area, hx = Math.min(a.x + a.width * 0.85, Math.max(a.x + a.width * 0.15, toHelperX(x, d.y)));
+  divDrag = true;
+  placeDivider({ ...d, x: hx });
+  if (!final) return;
+  try { await session.setTileRatio((hx - a.x) / a.width); }
+  finally { divDrag = null; syncDivider(); }
+}
+ipcMain.on('divider:move', (e, x) => { if (e.sender === divWin?.webContents && Number.isFinite(x)) dragDivider(x, false).catch(() => {}); });
+ipcMain.on('divider:end', (e, x) => { if (e.sender === divWin?.webContents && Number.isFinite(x)) dragDivider(x, true).catch(() => { divDrag = null; }); });
 
 // ---------- 자동 숨김 ----------
 async function setAutoHide(v){
@@ -525,7 +573,8 @@ const ACTIONS = {
   close: id => session.close(id),
   closeTab: id => session.closeTab(id),
   toggleSel: id => session.toggleSel(id),
-  split: () => session.split(),
+  split: v => session.split(v),
+  relayout: v => session.relayout(v),
   untile: () => session.untile(),
   openAll: () => session.openAll(),
   next: () => session.next(),
