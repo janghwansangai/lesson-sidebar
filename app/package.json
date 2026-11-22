@@ -137,6 +137,11 @@
     "portable": {
       "artifactName": "lesson-sidebar-${version}-win-portable.${ext}"
     },
+    "afterPack": "build/after-pack.cjs",
+    "electronFuses": {
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false
+    },
     "afterSign": "build/sign-local.cjs"
   },
   "dependencies": {

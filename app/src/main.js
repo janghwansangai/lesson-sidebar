@@ -1,7 +1,8 @@
 // 수업 사이드바 체험판 — Electron 시작점 (맥·윈도우)
 // 사이드바 창(교사 화면 왼쪽)과 수업 준비 창을 띄우고, 수업 진행 로직(Session)·수업 편집(LessonDoc)과 잇는다.
 import { app, BrowserWindow, ipcMain, screen, dialog, shell, net, globalShortcut, desktopCapturer, systemPreferences, session as eSession } from 'electron';
-import { mkdtempSync, rmSync, readFileSync, writeFileSync, mkdirSync, existsSync, statSync, cpSync, createReadStream, statfsSync, openSync, writeSync, closeSync, renameSync, copyFileSync, unlinkSync, readdirSync } from 'node:fs';
+import { copyFile } from 'node:fs/promises';
+import { mkdtempSync, rmSync, readFileSync, writeFileSync, appendFileSync, mkdirSync, existsSync, statSync, cpSync, createReadStream, statfsSync, openSync, writeSync, closeSync, renameSync, copyFileSync, unlinkSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import http from 'node:http';
@@ -52,6 +53,14 @@ if (!app.isPackaged){
   app.setPath('logs', path.join(ud, 'logs'));
 }
 
+// 시험 모드(SIDEBAR_DEBUG — 이 PC 안 조작 주소)와 디버깅 주소(--remote-debugging-port 등)는 개발 실행과 CI 시험용 설치판에서만.
+// 선생님이 쓰는 설치판에서 다른 프로그램이 이것으로 사이드바를 조작하거나 이 앱의 맥 권한(화면 기록 등)을 빌려 쓰지 못하게 (2026-11-22 보안 점검)
+const TEST_BUILD = !app.isPackaged || existsSync(path.join(process.resourcesPath, 'test-mode'));
+const DEBUG_ON = process.env.SIDEBAR_DEBUG === '1' && TEST_BUILD;
+if (!TEST_BUILD && ['remote-debugging-port', 'remote-debugging-pipe', 'inspect', 'inspect-brk', 'inspect-port', 'js-flags'].some(k => app.commandLine.hasSwitch(k))){
+  app.exit(0);
+}
+
 // 설치판에서 앱을 두 번 눌러도 사이드바는 하나만 (두 번째는 기존 사이드바를 펼친다)
 const firstInstance = app.requestSingleInstanceLock();
 if (!firstInstance) app.quit();
@@ -91,6 +100,32 @@ function watchTrust(){
 }
 
 const IS_WIN = process.platform === 'win32';
+
+// ---------- 안전망 (연수 중에 멈추거나 오류 창이 뜨지 않게, 2026-11-22 점검) ----------
+// 예상 못 한 오류는 화면에 창을 띄우지 않고 설정 폴더 logs/main.log에만 남기고 계속 동작한다 (1MB 넘으면 main.old.log로)
+function logErr(what, err){
+  try {
+    const dir = path.join(app.getPath('userData'), 'logs'), f = path.join(dir, 'main.log');
+    mkdirSync(dir, { recursive: true });
+    try { if (statSync(f).size > 1 << 20) renameSync(f, path.join(dir, 'main.old.log')); } catch { /* 아직 없음 */ }
+    const detail = err instanceof Error ? (err.stack ?? err.message) : String(err ?? '');
+    appendFileSync(f, `[${new Date().toISOString()}] ${app.getVersion()} ${what}: ${detail}\n`);
+  } catch { /* 기록도 못 하면 그냥 넘어간다 */ }
+}
+process.on('uncaughtException', e => logErr('uncaughtException', e));
+process.on('unhandledRejection', e => logErr('unhandledRejection', e));
+app.on('child-process-gone', (_e, d) => { if (d.reason !== 'clean-exit') logErr('child-process-gone', `${d.type} ${d.reason} ${d.exitCode}`); });
+/**
+ * 창의 화면 프로세스가 죽으면(메모리 부족·그래픽 오류 등) fix를 부른다: 사이드바·준비 창은 다시 읽고,
+ * 겹침 창·가림 창처럼 화면을 덮는 창은 걷어서 화면·마우스를 막지 않게 한다.
+ */
+function onGone(w, what, fix){
+  w.webContents.on('render-process-gone', (_e, d) => {
+    if (d.reason === 'clean-exit') return;
+    logErr(`${what} 화면 멈춤`, `${d.reason} ${d.exitCode}`);
+    try { fix(); } catch (e){ logErr(`${what} 되살리기`, e); }
+  });
+}
 
 /** 창 관리 도우미. 윈도우는 winctl.js를 Electron에 들어 있는 Node로 실행한다 (koffi는 N-API라 그대로 동작). */
 function makeHelper(){
@@ -181,6 +216,10 @@ function createSidebar(){
   win.loadFile(path.join(HERE, 'renderer', 'index.html'));
   win.once('ready-to-show', () => win.show());
   win.on('closed', () => { win = null; });
+  onGone(win, '사이드바', () => setTimeout(() => { if (win && !win.isDestroyed()){ win.reload(); session?.say('사이드바 화면을 다시 불러왔습니다'); } }, 300));
+  let hang = null;
+  win.webContents.on('unresponsive', () => { clearTimeout(hang); hang = setTimeout(() => { logErr('사이드바 응답 없음', '8초'); win?.webContents.forcefullyCrashRenderer(); }, 8000); });
+  win.webContents.on('responsive', () => { clearTimeout(hang); hang = null; });
 }
 
 const fullState = () => ({ ...session.snapshot(), collapsed, trusted: session.trusted !== false, tools: { pointer: tools.pointer, spot: tools.spot, pen: tools.pen, grab: grab?.mode ?? null, pins: pins.size }, cover: cover.mode, preview: previewOn && screenAccess() === 'granted', rec: rec ? { since: rec.startedAt, mic: !!rec.mic, sys: !!rec.sys, stopping: !!rec.stopping, where: rec.where } : null, prefs: { ...prefs, steps: OPACITY_STEPS, asideAvailable: ASIDE_OK, keys: SHORTCUTS.map(s => ({ key: keyLabel(s), label: s.label })) }, update: update && !update.dismissed ? { version: update.version, notes: update.notes, size: update.size, phase: update.phase ?? null, pct: update.pct ?? null } : null, version: app.getVersion(), presenter: !!presWin, remote: remote ? { url: remote.url, qr: remote.qr, showQr: remote.showQr, phones: liveSrv.clients('lan') } : null });
@@ -207,6 +246,7 @@ function ensureDivider(dir){
   w.setAlwaysOnTop(true, 'screen-saver');
   w.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   lockDown(w);
+  onGone(w, '조절 바', () => { w.destroy(); setTimeout(syncDivider, 300); });   // 닫히면(closed) 다음에 새로 만든다
   w.loadFile(path.join(HERE, 'renderer', 'divider.html'), { query: { dir: dir === 'v2' ? 'v' : dir } });   // v2(3분할 두 번째)도 세로 막대
   w.on('closed', () => { divWins[dir] = null; });
   return (divWins[dir] = w);
@@ -279,6 +319,12 @@ function overlayFor(d){
     w.setAlwaysOnTop(true, 'screen-saver');
     w.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
     lockDown(w);
+    onGone(w, '발표 도구', () => {
+      overlays.delete(d.id); w.destroy();
+      if (grab?.display.id === d.id){ grab = null; globalShortcut.unregister('Escape'); }
+      tools.pointer = tools.spot = tools.pen = false; syncTools();
+      session.say('발표 도구 화면에 문제가 생겨 껐습니다 · 다시 켜 주세요');
+    });
     w.loadFile(path.join(HERE, 'renderer', 'overlay.html'));
     // 다 읽히면 상태를 보내고, 커서도 다시 보낸다 (읽히기 전에 보낸 위치는 버려져서, 마우스를 움직이기 전까지 원이 안 보였다)
     w.webContents.on('did-finish-load', () => {
@@ -462,6 +508,7 @@ function makePin(img, r){
   pin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   pin.setAspectRatio(r.width / r.height);
   lockDown(pin);
+  onGone(pin, '캡처 핀', () => pin.destroy());
   pin.loadFile(path.join(HERE, 'renderer', 'pin.html'));
   pin.webContents.on('did-finish-load', () => { pin.webContents.send('pin:image', img.toDataURL()); pin.showInactive(); });
   pin.on('closed', () => { pins.delete(pin); push(); });
@@ -510,6 +557,11 @@ function ensureCover(d){
     coverWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
     coverWin.setContentProtection(true);   // 화면 찍기(미리보기·확대·핀·녹화)에서 빠진다
     lockDown(coverWin);
+    const cw = coverWin;
+    onGone(cw, '가림 화면', () => {
+      cw.destroy(); if (coverWin === cw) coverWin = null;
+      if (cover.mode){ cover.mode = null; cover.payload = null; session.say('정지·가리기 화면에 문제가 생겨 걷었습니다 · 다시 눌러 주세요'); push(); }
+    });
     coverWin.loadFile(path.join(HERE, 'renderer', 'cover.html'));
     coverWin.webContents.on('did-finish-load', () => coverWin?.webContents.send('cover:state', cover.payload ?? null));
   }
@@ -648,6 +700,7 @@ async function startRecording(){
   // 소리 섞기(AudioContext)가 보이지 않는 창에서도 멈추지 않게 자동 재생 제한을 푼다
   rec.recWin = new BrowserWindow({ show: false, webPreferences: { ...SECURE('recorder-preload.cjs'), autoplayPolicy: 'no-user-gesture-required', backgroundThrottling: false } });
   lockDown(rec.recWin);
+  onGone(rec.recWin, '녹화', () => { if (rec){ session.say('녹화 창에 문제가 생겨 지금까지 녹화한 것을 저장합니다'); rec.stopping = true; finishRecording(); } });
   await rec.recWin.loadFile(path.join(HERE, 'renderer', 'recorder.html'));
   // 컴퓨터 소리: 녹화 창이 getDisplayMedia로 소리만 받는다 (이 창의 요청에만 같은 화면 + 'loopback'을 준다)
   const recWc = rec.recWin.webContents;
@@ -682,7 +735,7 @@ function stopRecording(){
   setTimeout(() => { if (rec?.stopping) finishRecording(); }, 8000);   // 녹화 창이 답하지 않아도 마무리
 }
 /** 임시 파일을 수업 폴더 _녹화/로 옮기고 목차를 쓴다. 복구할 때도 쓴다 */
-function moveRecording(file, meta, recovered = false){
+function recordingDest(file, meta, recovered){
   let m = {};
   try { m = JSON.parse(readFileSync(meta, 'utf8')); } catch { /* 목차 없이 */ }
   const root = m.root && existsSync(m.root) ? m.root : app.getPath('desktop');
@@ -691,19 +744,37 @@ function moveRecording(file, meta, recovered = false){
   const base = `${m.name ?? path.basename(file, '.mp4')}${recovered ? '_복구' : ''}`;
   let dest = path.join(dir, `${base}.mp4`);
   for (let i = 2; existsSync(dest); i++) dest = path.join(dir, `${base}_${i}.mp4`);
-  try { renameSync(file, dest); } catch { copyFileSync(file, dest); unlinkSync(file); }
+  return { dest, m };
+}
+function recordingDone(dest, m, meta){
   const ch = Chapters.from(m.chapters);
   if (ch.list.length) writeFileSync(dest.replace(/\.mp4$/, '_목차.txt'), ch.text(`${m.title ?? ''} 녹화 목차`));
   try { unlinkSync(meta); } catch { /* 없음 */ }
   return dest;
 }
-function finishRecording(){
+/** 끝낼 때·복구할 때 (바로 끝나야 함) */
+function moveRecording(file, meta, recovered = false){
+  const { dest, m } = recordingDest(file, meta, recovered);
+  try { renameSync(file, dest); } catch { copyFileSync(file, dest); unlinkSync(file); }
+  return recordingDone(dest, m, meta);
+}
+/** 수업 중: 수업 폴더가 다른 드라이브(윈도우 구글 드라이브 G: 등)면 1GB 넘는 파일을 복사하는 동안 사이드바가 굳지 않게 */
+async function moveRecordingAsync(file, meta){
+  const { dest, m } = recordingDest(file, meta, false);
+  try { renameSync(file, dest); }
+  catch { session.say('녹화 파일을 수업 폴더로 옮기는 중… (사이드바는 그대로 쓸 수 있습니다)'); await copyFile(file, dest); unlinkSync(file); }
+  return recordingDone(dest, m, meta);
+}
+/** sync: 사이드바를 끝낼 때 (기다릴 수 없어 바로 옮김) */
+async function finishRecording({ sync = false } = {}){
   if (!rec) return;
   const r = rec; rec = null;
   try { closeSync(r.fd); } catch { /* 이미 닫힘 */ }
   r.recWin?.destroy();
+  push();
   let dest = null;
-  try { dest = statSync(r.file).size > 0 ? moveRecording(r.file, r.meta) : null; } catch (e){ session.say(`녹화 파일을 옮기지 못했습니다 (${e.message}) · ${r.file}`); }
+  try { dest = statSync(r.file).size > 0 ? (sync ? moveRecording(r.file, r.meta) : await moveRecordingAsync(r.file, r.meta)) : null; }
+  catch (e){ session.say(`녹화 파일을 옮기지 못했습니다 (${e.message}) · ${r.file}`); }
   if (!dest){ try { unlinkSync(r.file); unlinkSync(r.meta); } catch { /* 없음 */ } }
   const len = clock(Date.now() - r.startedAt);
   if (dest) session.say(`녹화를 저장했습니다 (${len} · ${fmtBytes(statSync(dest).size)}) · ${r.root ? '수업 폴더' : '바탕화면'} _녹화/${path.basename(dest)}${r.chapters.list.length ? ' · 목차 함께' : ''}`, { act: 'revealRec', id: dest, label: '녹화 폴더 열기' });
@@ -941,6 +1012,7 @@ async function setPresenter(on){
     webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false },
   });
   lockDown(presWin);
+  onGone(presWin, '발표자 화면', () => presWin?.destroy());
   presWin.loadURL(liveSrv.url('local'));
   presWin.once('ready-to-show', () => presWin?.show());
   presWin.on('closed', () => { presWin = null; liveSrv.close('local'); push(); });
@@ -1004,6 +1076,7 @@ function shareQr(id){
   qrWin.setAlwaysOnTop(true, 'screen-saver');   // 겹침 창·가림 창과 같은 높이, 사이드바(한 칸 위)보다 아래
   qrWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   lockDown(qrWin);
+  onGone(qrWin, '링크 QR', () => { qrWin?.destroy(); qrWin = null; });
   const w = qrWin;
   w.loadFile(path.join(HERE, 'renderer', 'qr.html'));
   w.webContents.on('did-finish-load', () => { w.webContents.send('qr:show', { title: it.title, src, short: shortUrl(it.url) }); w.setBounds(d.bounds); w.show(); w.moveTop(); w.focus(); });
@@ -1018,7 +1091,7 @@ ipcMain.on('qr:close', e => { if (qrWin && !qrWin.isDestroyed() && e.sender === 
 let update = null;   // { version, url, page, notes, size, dismissed }
 async function runUpdateCheck({ manual = false } = {}){
   try {
-    const u = process.env.SIDEBAR_DEBUG === '1' && process.env.SIDEBAR_FAKE_UPDATE
+    const u = DEBUG_ON && process.env.SIDEBAR_FAKE_UPDATE
       ? { version: process.env.SIDEBAR_FAKE_UPDATE, url: process.env.SIDEBAR_FAKE_UPDATE_URL || 'https://github.com/janghwansangai/lesson-sidebar/releases', page: 'https://github.com/janghwansangai/lesson-sidebar/releases', notes: '시험용 새 버전', size: null }
       : await checkUpdate(app.getVersion(), { fetchFn: net.fetch });
     saveSettings({ lastUpdateCheck: Date.now() });
@@ -1033,7 +1106,7 @@ async function runUpdateCheck({ manual = false } = {}){
 }
 // ---------- 업데이트 바꿔 깔기 (core/selfupdate.js) ----------
 // 시험(SIDEBAR_DEBUG=1)에서만: SIDEBAR_UPDATE_TEST=<시험용 .app 경로> — 그 앱을 바꾸고 다시 켜지 않는다. SIDEBAR_FAKE_UPDATE_URL은 127.0.0.1만
-const UPDATE_TEST = process.env.SIDEBAR_DEBUG === '1' ? process.env.SIDEBAR_UPDATE_TEST || null : null;
+const UPDATE_TEST = DEBUG_ON ? process.env.SIDEBAR_UPDATE_TEST || null : null;
 let updating = false;
 async function installUpdate(){
   const u = update;
@@ -1103,6 +1176,7 @@ function openHelp(){
     webPreferences: SECURE('help-preload.cjs'),
   });
   lockDown(helpWin);
+  onGone(helpWin, '도움말', () => helpWin?.destroy());
   helpWin.loadFile(path.join(HERE, 'renderer', 'help.html'));
   helpWin.once('ready-to-show', () => { helpWin.show(); helpWin.focus(); app.focus({ steal: true }); });
   helpWin.on('closed', () => { helpWin = null; });
@@ -1138,6 +1212,7 @@ function openPrep(){
     webPreferences: SECURE('prep-preload.cjs'),
   });
   lockDown(prepWin);
+  onGone(prepWin, '수업 준비', () => setTimeout(() => { if (prepWin && !prepWin.isDestroyed()) prepWin.reload(); }, 300));
   prepWin.loadFile(path.join(HERE, 'renderer', 'prep.html'));
   prepWin.once('ready-to-show', () => { prepWin.show(); app.focus({ steal: true }); });
   prepWin.on('closed', () => { prepWin = null; });
@@ -1239,7 +1314,7 @@ async function runCheck(root, { quiet = false } = {}){
   return r;
 }
 
-const DEBUG = process.env.SIDEBAR_DEBUG === '1';   // 시험용 원격 조작: 꾸러미 저장·열기 창 대신 경로를 받는다
+const DEBUG = DEBUG_ON;   // 시험용 원격 조작: 꾸러미 저장·열기 창 대신 경로를 받는다
 let busy = false;
 /** 꾸러미처럼 오래 걸리는 일은 하나씩 (두 번 눌러도 겹치지 않게) */
 async function oneAtATime(fn){
@@ -1703,7 +1778,7 @@ app.whenReady().then(async () => {
   setTimeout(checkOrphans, 8000);            // 켜면서 나오는 안내들 뒤에
   setInterval(checkOrphans, 30 * 60000);
 
-  if (process.env.SIDEBAR_DEBUG === '1') await startDebugServer();
+  if (DEBUG_ON) await startDebugServer();
 });
 
 /**
@@ -1735,7 +1810,7 @@ let restoringOnQuit = false;
 app.on('will-quit', () => globalShortcut.unregisterAll());
 app.on('before-quit', e => {
   clearInterval(asideTimer);
-  if (rec) finishRecording();   // 끝낼 때 녹화 중이면 그때까지 저장 (마지막 2초 조각은 빠질 수 있음)
+  if (rec) finishRecording({ sync: true });   // 끝낼 때 녹화 중이면 그때까지 저장 (마지막 2초 조각은 빠질 수 있음)
   // 끝낼 때 옆으로 옮겼던 창을 먼저 돌려놓는다 (오래 걸려도 5초까지만 기다림)
   if (session?.aside?.length && !restoringOnQuit){
     e.preventDefault();

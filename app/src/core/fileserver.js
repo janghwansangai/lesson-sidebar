@@ -3,7 +3,7 @@
 // 이 PC 안에서만 열리고, 실행할 때마다 바뀌는 토큰이 맞아야 하며, 수업 폴더 밖 파일은 주지 않는다.
 import http from 'node:http';
 import { randomBytes } from 'node:crypto';
-import { createReadStream, statSync } from 'node:fs';
+import { createReadStream, realpathSync, statSync } from 'node:fs';
 import path from 'node:path';
 
 const MIME = {
@@ -12,6 +12,13 @@ const MIME = {
   '.webp': 'image/webp', '.svg': 'image/svg+xml', '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.wav': 'audio/wav',
   '.mp4': 'video/mp4', '.webm': 'video/webm',
 };
+
+/** 파일을 보내다 읽기 오류가 나도(구글 드라이브 파일이 받다 끊김 등) 사이드바 본체가 멈추지 않게 연결만 끊는다 */
+function send(stream, res){
+  stream.on('error', () => res.destroy());
+  res.on('close', () => stream.destroy());
+  stream.pipe(res);
+}
 
 export async function startFileServer(getRoot){
   const token = randomBytes(16).toString('hex');
@@ -24,6 +31,9 @@ export async function startFileServer(getRoot){
     catch { res.writeHead(400); res.end(); return; }
     const abs = path.resolve(root, rel);
     if (!abs.startsWith(root + path.sep)){ res.writeHead(403); res.end(); return; }
+    // 수업 폴더 안의 바로 가기(심볼릭 링크)가 폴더 밖을 가리켜도 주지 않는다
+    try { const real = realpathSync(abs), realRoot = realpathSync(root); if (!real.startsWith(realRoot + path.sep)){ res.writeHead(403); res.end(); return; } }
+    catch { res.writeHead(404); res.end(); return; }
     let st;
     try { st = statSync(abs); } catch { res.writeHead(404); res.end(); return; }
     if (!st.isFile()){ res.writeHead(404); res.end(); return; }
@@ -41,16 +51,18 @@ export async function startFileServer(getRoot){
       start = Math.max(0, start); end = Math.min(st.size - 1, end);
       if (start > end){ res.writeHead(416, { 'Content-Range': `bytes */${st.size}` }); res.end(); return; }
       res.writeHead(206, { ...head, 'Content-Range': `bytes ${start}-${end}/${st.size}`, 'Content-Length': end - start + 1 });
-      createReadStream(abs, { start, end }).pipe(res);
+      send(createReadStream(abs, { start, end }), res);
       return;
     }
     res.writeHead(200, { ...head, 'Content-Length': st.size });
-    createReadStream(abs).pipe(res);
+    send(createReadStream(abs), res);
   });
+  server.on('clientError', (_e, socket) => socket.destroy());
   await new Promise((resolve, reject) => {
     server.once('error', reject);
     server.listen(0, '127.0.0.1', resolve);
   });
+  server.on('error', () => { /* 듣기 시작한 뒤의 오류는 무시 (요청마다 따로 처리) */ });
   const port = server.address().port;
   return {
     url: rel => `http://127.0.0.1:${port}/${token}/` + rel.split('/').map(encodeURIComponent).join('/'),

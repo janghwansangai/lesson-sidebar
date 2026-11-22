@@ -32,10 +32,12 @@ export class LiveServer {
     const l = { token: randomBytes(16).toString('hex'), sse: new Set(), sockets: new Set(), host };
     l.server = http.createServer((req, res) => this.handle(l, kind, req, res).catch(() => { if (!res.headersSent) res.writeHead(500); res.end(); }));
     l.server.on('connection', s => { l.sockets.add(s); s.on('close', () => l.sockets.delete(s)); });
+    l.server.on('clientError', (_e, socket) => socket.destroy());   // 잘못된 요청은 연결만 끊는다 (본체가 멈추지 않게)
     const tryListen = port => new Promise((resolve, reject) => { l.server.once('error', reject); l.server.listen(port, host, resolve); });
     const prev = this.ports.get(kind);
     if (prev){ try { await tryListen(prev); } catch { await tryListen(0); } }
     else await tryListen(0);
+    l.server.on('error', () => { /* 듣기 시작한 뒤의 오류는 무시 */ });
     this.ports.set(kind, l.server.address().port);
     l.port = l.server.address().port;
     this.ls.set(kind, l);
@@ -83,6 +85,7 @@ export class LiveServer {
       res.writeHead(200, { ...HEAD, 'Content-Type': 'text/event-stream', Connection: 'keep-alive' });
       res.write('retry: 2000\n\n');
       l.sse.add(res);
+      res.on('error', () => {});   // 휴대폰이 갑자기 끊겨도
       const ping = setInterval(() => res.write(': ping\n\n'), 20000);
       req.on('close', () => { clearInterval(ping); l.sse.delete(res); this.onClients(); });
       this.send(res, this.last ?? (this.last = JSON.stringify(this.getState())));
