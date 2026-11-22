@@ -102,6 +102,22 @@ export function appKeyFor(item){
   }
 }
 
+/**
+ * 이 PC에 그 프로그램이 있는지 (사전 점검용, 켜지는 않는다). true / false / null(알 수 없음: 기본 프로그램 등)
+ * - 맥: `open -Ra <앱>` — LaunchServices가 앱을 찾기만 한다
+ * - 윈도우: 메모장처럼 exe가 정해진 것은 있음, 나머지는 확장자에 연결된 프로그램(assoc/ftype)이 실제로 있는지
+ */
+export async function appInstalled(app){
+  if (!app) return null;
+  if (IS_WIN){
+    if (app.exe) return true;
+    if (!app.ext) return null;
+    try { const exe = assocExe(app.ext); return !!exe && existsSync(exe); } catch { return false; }
+  }
+  if (!app.app) return null;
+  return new Promise(resolve => execFile('open', ['-Ra', app.app], { timeout: 10000 }, e => resolve(!e)));
+}
+
 function open(args){
   return new Promise((resolve, reject) => execFile('open', args, { timeout: 15000 }, e => e ? reject(e) : resolve()));
 }
