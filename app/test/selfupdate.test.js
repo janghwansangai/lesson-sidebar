@@ -18,8 +18,19 @@ test('받기: 파일로 쓰고 진행을 알리며, 크기가 다르면 오류',
   assert.equal(n, 6);
   assert.equal(readFileSync(path.join(dir, 'a.dmg'), 'utf8'), 'abcdef');
   assert.deepEqual(seen, [33, 66, 100]);
-  await assert.rejects(download('https://x/b', path.join(dir, 'b'), { fetchFn: fakeFetch(['abc']), expected: 10 }), /크기가 맞지 않습니다/);
-  await assert.rejects(download('https://x/c', path.join(dir, 'c'), { fetchFn: fakeFetch([], { status: 404 }) }), /HTTP 404/);
+  await assert.rejects(download('https://x/b', path.join(dir, 'b'), { fetchFn: fakeFetch(['abc']), expected: 10, waits: [] }), /크기가 맞지 않습니다/);
+  await assert.rejects(download('https://x/c', path.join(dir, 'c'), { fetchFn: fakeFetch([], { status: 404 }), waits: [] }), /HTTP 404/);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('받기: 실패하면 잠시 기다렸다가 다시 받고, 끝내 안 되면 오류', async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'upd-'));
+  let n = 0;
+  const flaky = async (...a) => (++n <= 2 ? new Response('잠깐', { status: 400 }) : fakeFetch(['ok'], { length: 2 })(...a));
+  const tries = [];
+  assert.equal(await download('https://x/a', path.join(dir, 'a'), { fetchFn: flaky, sleep: async () => {}, onRetry: (k, e) => tries.push([k, e.message]) }), 2);
+  assert.deepEqual(tries, [[1, 'HTTP 400'], [2, 'HTTP 400']]);
+  await assert.rejects(download('https://x/b', path.join(dir, 'b'), { fetchFn: async () => new Response('', { status: 400 }), sleep: async () => {} }), e => e.message === 'HTTP 400' && 'detail' in e);
   rmSync(dir, { recursive: true, force: true });
 });
 

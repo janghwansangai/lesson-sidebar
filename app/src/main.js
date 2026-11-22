@@ -1167,7 +1167,8 @@ async function installUpdate(){
     const file = path.join(dir, path.basename(new URL(u.url).pathname));
     u.phase = 'downloading'; u.pct = 0; push();
     let shown = 0;
-    await download(u.url, file, { fetchFn: net.fetch, expected: u.size, onProgress: pct => { u.pct = pct; if (Date.now() - shown > 400){ shown = Date.now(); push(); } } });
+    await download(u.url, file, { fetchFn: net.fetch, expected: u.size, onProgress: pct => { u.pct = pct; if (Date.now() - shown > 400){ shown = Date.now(); push(); } },
+      onRetry: (n, e) => { logErr('업데이트 받기 다시', `${n}번째 · ${e.message} ${e.detail ?? ''}`); session.say(`새 버전을 받지 못해 잠시 뒤 다시 받습니다 (${e.message})`); } });
     u.phase = 'installing'; push();
     if (process.platform === 'darwin'){
       const staged = await stageMacUpdate(file, { currentApp: macApp, version: u.version, workDir: dir });
@@ -1180,6 +1181,7 @@ async function installUpdate(){
     }
     setTimeout(() => app.quit(), 1500);
   } catch (e){
+    logErr('업데이트', `${e.message} ${e.detail ?? ''}`);
     updating = false; u.phase = null; u.pct = null; push();
     byHand(`새 버전을 바꿔 깔지 못했습니다 (${e.message})`);
   }

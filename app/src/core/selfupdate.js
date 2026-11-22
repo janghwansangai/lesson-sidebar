@@ -14,11 +14,25 @@ const run = (cmd, args, opts = {}) => new Promise((resolve, reject) =>
 /**
  * 파일 하나를 받는다. onProgress(퍼센트 또는 null, 받은 바이트, 전체 바이트).
  * expected(바이트)를 주면 크기가 다를 때 오류.
+ * 실패하면 잠시 기다렸다가 다시 받는다 (waits: 기다릴 초) — GitHub는 설치판을 막 올린 뒤 몇 분 동안 HTTP 400을 주기도 했다 (docs/poc/mac.md 75)
  */
-export async function download(url, file, { fetchFn = fetch, onProgress, expected = null, timeoutMs = 20 * 60000 } = {}){
+export async function download(url, file, { waits = [10, 30], sleep = s => new Promise(r => setTimeout(r, s * 1000)), onRetry, ...o } = {}){
+  for (let i = 0; ; i++){
+    try { return await downloadOnce(url, file, o); }
+    catch (e){
+      if (i >= waits.length) throw e;
+      onRetry?.(i + 1, e);
+      await sleep(waits[i]);
+    }
+  }
+}
+async function downloadOnce(url, file, { fetchFn = fetch, onProgress, expected = null, timeoutMs = 20 * 60000 } = {}){
   // cache 'no-store': 120MB 설치판을 브라우저 캐시에 남기지 않고, 예전에 받은 것을 다시 쓰지도 않는다 (시험에서 옛 파일이 나왔다)
   const r = await fetchFn(url, { signal: AbortSignal.timeout(timeoutMs), cache: 'no-store' });
-  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  if (!r.ok){
+    const body = await r.text().catch(() => '');
+    throw Object.assign(new Error(`HTTP ${r.status}`), { detail: `${r.url || url} ${body.replace(/\s+/g, ' ').slice(0, 400)}` });
+  }
   const total = Number(r.headers.get('content-length')) || expected || 0;
   mkdirSync(path.dirname(file), { recursive: true });
   const out = createWriteStream(file);
