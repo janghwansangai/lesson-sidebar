@@ -46,11 +46,13 @@ function render(){
   $('#pins-close').hidden = !S.tools?.pins;
   // 녹화: 위쪽 빨간 막대(REC)와 경과 시간, 아래 단추
   $('#recbar').hidden = !S.rec;
-  $('#record').dataset.tip = S.rec ? '녹화 끝내기|지금까지 녹화한 것을 수업 폴더 _녹화에 저장합니다' : '녹화|학생 화면(모니터 한 대면 이 화면)을 녹화합니다. 자료를 바꿀 때마다 목차를 남깁니다';
+  $('#record').dataset.tip = S.rec ? '녹화 끝내기|지금까지 녹화한 것을 수업 폴더 _녹화에 저장합니다' : `녹화|${S.prefs?.recScreen === 'teacher' ? '교사 화면' : '학생 화면'}(모니터 한 대면 이 화면)을 녹화합니다. 자료를 바꿀 때마다 목차를 남깁니다 · 녹화할 화면·소리는 ⚙에서`;
   $('#record').setAttribute('aria-label', S.rec ? '녹화 끝내기' : '녹화');
   $('#record').setAttribute('aria-pressed', String(!!S.rec));
   if (S.rec){ $('#rec-where').textContent = `${S.rec.where}${S.rec.mic ? ' + 마이크' : ''}`; $('#rec-stop').disabled = !!S.rec.stopping; }
   $('#rec-mic').checked = S.prefs?.recMic !== false;
+  $('#rec-sys').checked = S.prefs?.recSys !== false;
+  for (const b of document.querySelectorAll('#rec-screen [data-rs]')) b.setAttribute('aria-pressed', String(b.dataset.rs === (S.prefs?.recScreen ?? 'student')));
   $('#rec-light').checked = !!S.prefs?.recLight;
 
   $('#screens').innerHTML = S.dual
@@ -201,6 +203,8 @@ $('#hideothers').addEventListener('click', () => api.act('hideOthers'));
 $('#record').addEventListener('click', () => api.act('record'));
 $('#rec-stop').addEventListener('click', () => api.act('record'));
 $('#rec-mic').addEventListener('change', e => api.act('recMic', e.target.checked));
+$('#rec-sys').addEventListener('change', e => api.act('recSys', e.target.checked));
+$('#rec-screen').addEventListener('click', e => { const b = e.target.closest('[data-rs]'); if (b) api.act('recScreen', b.dataset.rs); });
 $('#rec-light').addEventListener('change', e => api.act('recLight', e.target.checked));
 setInterval(() => {
   if (!S?.rec) return;

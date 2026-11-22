@@ -176,7 +176,7 @@ function createSidebar(){
   win.on('closed', () => { win = null; });
 }
 
-const fullState = () => ({ ...session.snapshot(), collapsed, trusted: session.trusted !== false, tools: { pointer: tools.pointer, spot: tools.spot, pen: tools.pen, grab: grab?.mode ?? null, pins: pins.size }, cover: cover.mode, preview: previewOn && screenAccess() === 'granted', rec: rec ? { since: rec.startedAt, mic: !!rec.mic, stopping: !!rec.stopping, where: rec.where } : null, prefs: { ...prefs, steps: OPACITY_STEPS, asideAvailable: ASIDE_OK }, update: update && !update.dismissed ? { version: update.version, notes: update.notes, size: update.size } : null, version: app.getVersion(), presenter: !!presWin, remote: remote ? { url: remote.url, qr: remote.qr, showQr: remote.showQr, phones: liveSrv.clients('lan') } : null });
+const fullState = () => ({ ...session.snapshot(), collapsed, trusted: session.trusted !== false, tools: { pointer: tools.pointer, spot: tools.spot, pen: tools.pen, grab: grab?.mode ?? null, pins: pins.size }, cover: cover.mode, preview: previewOn && screenAccess() === 'granted', rec: rec ? { since: rec.startedAt, mic: !!rec.mic, sys: !!rec.sys, stopping: !!rec.stopping, where: rec.where } : null, prefs: { ...prefs, steps: OPACITY_STEPS, asideAvailable: ASIDE_OK }, update: update && !update.dismissed ? { version: update.version, notes: update.notes, size: update.size } : null, version: app.getVersion(), presenter: !!presWin, remote: remote ? { url: remote.url, qr: remote.qr, showQr: remote.showQr, phones: liveSrv.clients('lan') } : null });
 function push(){ noteChapter(); syncInk(); win?.webContents.send('state', fullState()); syncDivider(); syncPreview(); syncLive(); }
 
 // ---------- 나란히 보기 조절 바 ----------
@@ -566,7 +566,9 @@ async function startRecording(){
   const { root, title } = recordTarget();
   const free = freeAt(root ?? app.getPath('userData'));
   if (free != null && free < 2 * 1024 ** 3) return session.say(`남은 공간이 ${fmtBytes(free)}뿐이라 녹화를 시작하지 않았습니다 (2GB 이상 필요 · 1시간에 약 1.5GB)`);
-  const d = studentElectronDisplay() ?? screen.getPrimaryDisplay();
+  // 녹화할 화면: 학생 화면(기본, 모니터 한 대면 이 화면) 또는 교사 화면(사이드바가 있는 화면 — 진행 과정을 남길 때)
+  const teacherDisp = win && !win.isDestroyed() ? screen.getDisplayMatching(win.getBounds()) : screen.getPrimaryDisplay();
+  const d = prefs.recScreen === 'teacher' ? teacherDisp : (studentElectronDisplay() ?? screen.getPrimaryDisplay());
   const src = (await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 1, height: 1 } })).find(x => String(x.display_id) === String(d.id));
   if (!src) return session.say('녹화할 화면을 찾지 못했습니다');
   mkdirSync(recDir(), { recursive: true });
@@ -574,13 +576,19 @@ async function startRecording(){
   const file = path.join(recDir(), `${name}.mp4`);
   const meta = path.join(recDir(), `${name}.json`);
   const startedAt = Date.now();
-  rec = { fd: openSync(file, 'w'), file, meta, name, root, title, startedAt, chapters: new Chapters(startedAt), lastHi: null, where: session.dual ? '학생 화면' : '이 화면' };
+  rec = { fd: openSync(file, 'w'), file, meta, name, root, title, startedAt, chapters: new Chapters(startedAt), lastHi: null, where: !session.dual ? '이 화면' : prefs.recScreen === 'teacher' ? '교사 화면' : '학생 화면' };
   writeFileSync(meta, JSON.stringify({ root, title, name, chapters: rec.chapters }));
   noteChapter();
   rec.recWin = new BrowserWindow({ show: false, webPreferences: SECURE('recorder-preload.cjs') });
   lockDown(rec.recWin);
   await rec.recWin.loadFile(path.join(HERE, 'renderer', 'recorder.html'));
-  rec.recWin.webContents.send('rec:start', { sourceId: src.id, mic: prefs.recMic !== false, light: !!prefs.recLight });
+  // 컴퓨터 소리: 녹화 창이 getDisplayMedia로 소리만 받는다 (이 창의 요청에만 같은 화면 + 'loopback'을 준다)
+  const recWc = rec.recWin.webContents;
+  recWc.session.setDisplayMediaRequestHandler((req, cb) => {
+    if (!rec?.recWin || rec.recWin.isDestroyed() || req.frame?.top !== rec.recWin.webContents.mainFrame) return cb({});
+    cb({ video: src, audio: 'loopback' });
+  });
+  recWc.send('rec:start', { sourceId: src.id, mic: prefs.recMic !== false, sys: prefs.recSys !== false, light: !!prefs.recLight });
   rec.spaceTimer = setInterval(() => {
     const f = freeAt(recDir());
     if (f != null && f < 1024 ** 3){ session.say(`남은 공간이 ${fmtBytes(f)}라 녹화를 멈춥니다`); stopRecording(); }
@@ -651,7 +659,10 @@ ipcMain.on('rec:chunk', (e, buf) => { if (fromRec(e)) try { writeSync(rec.fd, Bu
 ipcMain.on('rec:started', (e, info) => {
   if (!fromRec(e)) return;
   rec.mic = !!info?.mic;
-  session.say(`녹화를 시작했습니다 · ${rec.where}${rec.mic ? ' + 마이크' : ''} · 학생 얼굴·목소리·이름이 담길 수 있으니 공유하기 전에 확인하세요`);
+  rec.sys = !!info?.sys;
+  const sysMiss = prefs.recSys !== false && !rec.sys
+    ? ` · 컴퓨터 소리는 담지 못했습니다${process.platform === 'darwin' ? " (시스템 설정 → 개인정보 보호 및 보안 → 화면 및 시스템 오디오 기록에서 '수업 사이드바' 확인)" : ''}` : '';
+  session.say(`녹화를 시작했습니다 · ${rec.where}${rec.sys ? ' + 컴퓨터 소리' : ''}${rec.mic ? ' + 마이크' : ''}${sysMiss} · 학생 얼굴·목소리·이름이 담길 수 있으니 공유하기 전에 확인하세요`);
   push();
 });
 ipcMain.on('rec:stopped', e => { if (fromRec(e)) finishRecording(); });
@@ -1224,6 +1235,8 @@ const ACTIONS = {
   openTo: v => session.setOpenTo(v),
   record: () => startRecording(),
   recMic: v => { prefs.recMic = v === true || v === 'true'; saveSettings({ recMic: prefs.recMic }); push(); },
+  recScreen: v => { prefs.recScreen = v === 'teacher' ? 'teacher' : 'student'; saveSettings({ recScreen: prefs.recScreen }); push(); },
+  recSys: v => { prefs.recSys = v === true || v === 'true'; saveSettings({ recSys: prefs.recSys }); push(); },
   recLight: v => { prefs.recLight = v === true || v === 'true'; saveSettings({ recLight: prefs.recLight }); push(); },
   revealRec: v => { if (typeof v === 'string' && /_녹화[\\/]/.test(v) && existsSync(v)) shell.showItemInFolder(v); },
   freeze: () => setCover('freeze'),
@@ -1337,7 +1350,7 @@ app.whenReady().then(async () => {
   await session.refreshDisplays();
 
   const settings = readSettings();
-  prefs = { opacity: OPACITY_STEPS.includes(settings.opacity) ? settings.opacity : 100, aside: ASIDE_OK && !!settings.aside, recMic: settings.recMic !== false, recLight: !!settings.recLight, updateCheck: settings.updateCheck !== false };
+  prefs = { opacity: OPACITY_STEPS.includes(settings.opacity) ? settings.opacity : 100, aside: ASIDE_OK && !!settings.aside, recMic: settings.recMic !== false, recSys: settings.recSys !== false, recScreen: settings.recScreen === 'teacher' ? 'teacher' : 'student', recLight: !!settings.recLight, updateCheck: settings.updateCheck !== false };
   createSidebar();
   if (!(settings.lastFolder && existsSync(settings.lastFolder) && runLesson(settings.lastFolder))) runLesson(sampleLesson());
   if (settings.lastPrepFolder && existsSync(path.join(settings.lastPrepFolder, 'lesson.json'))){
