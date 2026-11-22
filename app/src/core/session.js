@@ -116,10 +116,20 @@ export class Session extends EventEmitter {
   /**
    * state: 'ok' | 'notfront'(창은 있는데 맨 앞이 안 됨) | 'gone'(창이 없음)
    * waiting: 답을 기다리는 창 {wid, title} 또는 null. 도우미가 알려 주지 않으면 undefined.
+   * front: 'notfront'일 때 도우미가 알려 준 그때 맨 앞 창 (없으면 null).
    */
   async raiseInfo(wid){
     try { const r = await this.helper.call('raise', wid); return { state: r.ok ? 'ok' : 'notfront', waiting: r.detail?.waiting }; }
-    catch { return { state: 'gone' }; }
+    catch (e){
+      // 도우미는 창이 있어도 맨 앞으로 못 가져오면 ok:false로 답한다 (윈도우: "연결 프로그램 선택" 창이 맨 앞을 막을 때,
+      // docs/poc/windows.md 15). 오류만으로는 창이 없어진 것인지 알 수 없으므로 목록에서 그 창이 아직 있는지 본다.
+      // 창이 있는데 'gone'으로 보면 raise()가 같은 자료를 한 번 더 연다.
+      let w;
+      try { w = await this.findWid(wid); } catch { return { state: 'gone' }; }
+      if (!w) return { state: 'gone' };
+      const res = e?.response;
+      return { state: 'notfront', waiting: 'waiting' in w ? w.waiting : res?.detail?.waiting, front: res?.front ?? null };
+    }
   }
   async raiseWid(wid){ return (await this.raiseInfo(wid)).state; }
   /** 목록에서 창 하나 (없으면 null). 규격의 waiting(답을 기다리는 창)을 함께 본다. */
@@ -189,9 +199,21 @@ export class Session extends EventEmitter {
     }
   }
 
+  /** 맨 앞을 차지한 다른 창의 이름 (안내용, 30자까지). 그 창이 이 자료 창이거나 사이드바 자신이거나 이름이 없으면 null. */
+  frontLabel(front, wid){
+    if (!front || front.wid == null || front.wid === wid || front.pid === this.ownPid) return null;
+    // 엣지 제목의 U+200B 같은 보이지 않는 글자는 뺀다 (docs/poc/windows.md)
+    const clean = s => String(s ?? '').replace(/[​-‏‪-‮⁠﻿]/g, '').trim();
+    // 윈도우 "연결 프로그램 선택" 창은 제목이 비어 있고 실행 파일 이름(OpenWith.exe)만 알 수 있다 (docs/poc/windows.md 15)
+    const known = { 'openwith.exe': '연결 프로그램 선택' }[clean(front.app).toLowerCase()];
+    const name = clean(front.title) || known || clean(front.app).replace(/\.exe$/i, '');
+    if (!name) return null;
+    return name.length > 30 ? `${name.slice(0, 29)}…` : name;
+  }
+
   async raise(id){
     const it = this.item(id), st = this.state.get(id);
-    const { state: r, waiting } = await this.raiseInfo(st.wid);
+    const { state: r, waiting, front } = await this.raiseInfo(st.wid);
     if (r === 'gone'){
       st.status = 'closed'; st.wid = null; st.disp = null;
       this.say(`'${it.title}' 창이 닫혀 있어 다시 엽니다`);
@@ -202,7 +224,13 @@ export class Session extends EventEmitter {
     if (waiting) st.status = 'blocked';
     else if (waiting === null && st.status === 'blocked') st.status = 'open';
     if (st.status === 'blocked') this.say(`'${it.title}': 프로그램이 답을 기다리는 창을 띄웠습니다. 그 창에서 답해 주세요`);
-    else if (r === 'notfront') this.say(`'${it.title}'을(를) 맨 앞으로 가져오지 못했습니다 (프로그램이 다른 창을 띄웠을 수 있음)`);
+    else if (r === 'notfront'){
+      // 창은 그대로 있으므로 다시 열지 않는다. 다른 창이 맨 앞을 막고 있으면 그 창을 알려 준다
+      const name = this.frontLabel(front, st.wid);
+      this.say(name
+        ? `'${it.title}'을(를) 맨 앞으로 가져오지 못했습니다. 앞에 떠 있는 '${name}' 창을 먼저 닫은 뒤 다시 눌러 주세요`
+        : `'${it.title}'을(를) 맨 앞으로 가져오지 못했습니다. 앞을 가리는 창(확인 창 등)이 있으면 먼저 닫은 뒤 다시 눌러 주세요`);
+    }
     else this.say(`'${it.title}'을(를) 앞으로 가져왔습니다`);
   }
 

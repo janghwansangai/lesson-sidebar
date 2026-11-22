@@ -6,6 +6,16 @@ import { EventEmitter } from 'node:events';
 import { createInterface } from 'node:readline';
 import { existsSync } from 'node:fs';
 
+/**
+ * 도우미가 ok:false로 답했을 때의 오류. 받은 응답 전체를 response에 붙인다 —
+ * raise는 창이 있어도 맨 앞이 안 되면 {ok:false, front, detail}로 답하므로 그 내용(front 등)을 쓸 수 있게.
+ */
+export function responseError(res){
+  const e = new Error(res.error || '도우미 오류');
+  e.response = res;
+  return e;
+}
+
 export class Helper extends EventEmitter {
   /**
    * @param bin   실행 파일
@@ -25,7 +35,7 @@ export class Helper extends EventEmitter {
 
   available(){ return this.needs.every(p => existsSync(p)); }
 
-  /** 명령 하나 실행 → 마지막 줄 JSON. ok:false면 오류. */
+  /** 명령 하나 실행 → 마지막 줄 JSON. ok:false면 오류 (응답은 오류의 response). */
   call(...args){
     return new Promise((resolve, reject) => {
       execFile(this.bin, [...this.pre, ...args.map(String)], { ...this.opts, timeout: 20000, maxBuffer: 8 << 20 }, (err, stdout) => {
@@ -33,7 +43,7 @@ export class Helper extends EventEmitter {
         let res = null;
         try { res = JSON.parse(last); } catch { /* 아래에서 처리 */ }
         if (!res) return reject(new Error(err ? err.message : '도우미 응답을 읽지 못했습니다'));
-        if (res.ok === false) return reject(new Error(res.error || '도우미 오류'));
+        if (res.ok === false) return reject(responseError(res));
         resolve(res);
       });
     });
