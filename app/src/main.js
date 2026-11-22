@@ -87,7 +87,7 @@ let collapsed = false, outSince = 0, cursorTimer = null;
 let doc = null, prepMsg = '', sessionMtime = 0;
 // 사이드바 설정. aside: 고정해 둘 때 가려지는 창을 옆으로 비키기 (윈도우만 — 맥은 맥 Claude 확인 뒤)
 let prefs = { opacity: 100, aside: false };
-const ASIDE_OK = IS_WIN;
+const ASIDE_OK = IS_WIN || process.platform === 'darwin';   // 맥도 2026-11-22부터 (docs/poc/mac.md, 기본은 꺼짐)
 
 // ---------- 설정 ----------
 const settingsFile = () => path.join(app.getPath('userData'), 'settings.json');
