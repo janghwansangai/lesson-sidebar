@@ -551,3 +551,22 @@ test('앞으로 가져오기가 실패하고 창 목록도 못 읽으면 예전�
   assert.equal((await s.raiseInfo(wid)).state, 'ok');
   assert.equal((await s.raiseInfo(12345)).state, 'gone');
 });
+
+test('계속 비키기(맥): 고정해 둔 동안 새로 가려진 창도 옮기고, 스스로 되돌아가는 창은 1분에 3번까지만, 돌려놓기는 처음 자리로', async () => {
+  const { s, helper } = makeSession([TEACHER]);
+  await s.refreshDisplays(); s.load(makeLesson());
+  helper.spawn('Finder', '선생님 창 1'); Object.assign(helper.wins[0], { x: 0, y: 200, width: 900, height: 500 });
+  assert.equal(await s.keepAside(), 1);
+  assert.deepEqual([helper.wins[0].x, helper.wins[0].width], [280, 620]);
+  helper.spawn('Notes', '나중에 연 창'); Object.assign(helper.wins[1], { x: 40, y: 100, width: 600, height: 400 });
+  assert.equal(await s.keepAside(), 1);                  // 새로 가려진 창
+  assert.equal(helper.wins[1].x, 280);
+  assert.equal(await s.keepAside(), 0);                  // 이미 비킨 창은 그대로
+  for (let i = 0; i < 3; i++){ helper.wins[1].x = 40; await s.keepAside(); }   // 스스로 제자리로 돌아가는 창
+  helper.wins[1].x = 40;
+  assert.equal(await s.keepAside(), 0);                  // 1분에 3번 넘게는 옮기지 않음
+  helper.wins[1].x = 280;
+  assert.equal(await s.restoreAside(), 2);
+  assert.deepEqual([helper.wins[0].x, helper.wins[0].width], [0, 900]);
+  assert.deepEqual([helper.wins[1].x, helper.wins[1].width], [40, 600]);
+});

@@ -63,6 +63,7 @@ function waitForTrust(){
     clearInterval(t);
     helper.restartWatch();
     await session.relink();
+    syncAsideWatch();
     session.say('손쉬운 사용 권한이 켜졌습니다. 이제 자료 창을 옮기고 닫을 수 있습니다');
   }, 2000);
 }
@@ -89,6 +90,17 @@ let doc = null, prepMsg = '', sessionMtime = 0;
 // 사이드바 설정. aside: 고정해 둘 때 가려지는 창을 옆으로 비키기 (윈도우만 — 맥은 맥 Claude 확인 뒤)
 let prefs = { opacity: 100, aside: false };
 const ASIDE_OK = IS_WIN || process.platform === 'darwin';   // 맥도 2026-11-22부터 (docs/poc/mac.md, 기본은 꺼짐)
+// 맥: 고정해 둔 동안 2초마다 살펴 새로 가려진 창도 비킨다 (선생님 요청, docs/poc/mac.md 31). 윈도우는 지금처럼 펼치고 접는 순간에만
+const ASIDE_KEEP = process.platform === 'darwin';
+let asideTimer = null;
+function syncAsideWatch(){
+  clearInterval(asideTimer); asideTimer = null;
+  if (!ASIDE_KEEP || !prefs.aside || session.autoHide) return;
+  asideTimer = setInterval(async () => {
+    const n = await session.keepAside().catch(() => 0);
+    if (n) session.say(`사이드바에 가려진 창 ${n}개를 오른쪽으로 옮겼습니다 · 고정을 풀거나 이 설정을 끄면 돌려놓습니다`);
+  }, 2000);
+}
 
 // ---------- 설정 ----------
 const settingsFile = () => path.join(app.getPath('userData'), 'settings.json');
@@ -166,6 +178,7 @@ async function setAutoHide(v){
     const n = prefs.aside ? await session.stepAside() : 0;
     session.say(`사이드바를 화면 왼쪽에 고정했습니다${n ? ` · 가려지던 창 ${n}개를 오른쪽으로 옮겼습니다` : ''}`);
   }
+  syncAsideWatch();
 }
 
 // ---------- 설정 ----------
@@ -180,13 +193,15 @@ function setOpacity(v){
 async function setAside(v){
   prefs.aside = ASIDE_OK && !!v;
   saveSettings({ aside: prefs.aside });
+  syncAsideWatch();
   if (!prefs.aside){
     const n = await session.restoreAside();
     return session.say(`고정해 두어도 다른 창을 옮기지 않습니다${n ? ` · 옮겼던 창 ${n}개를 돌려놓았습니다` : ''}`);
   }
   if (session.autoHide) return session.say('사이드바를 고정하면(자동 숨김 끄기) 가려지는 창을 오른쪽으로 옮깁니다');
   const n = await session.stepAside();
-  session.say(n ? `가려지던 창 ${n}개를 사이드바 오른쪽으로 옮겼습니다 · 고정을 풀거나 이 설정을 끄면 돌려놓습니다` : '사이드바에 가려진 창이 없습니다 · 고정해 둔 동안 새로 연 창은 옮기지 않습니다');
+  const later = ASIDE_KEEP ? '고정해 둔 동안 새로 가려지는 창도 옮깁니다' : '고정해 둔 동안 새로 연 창은 옮기지 않습니다';
+  session.say(n ? `가려지던 창 ${n}개를 사이드바 오른쪽으로 옮겼습니다 · 고정을 풀거나 이 설정을 끄면 돌려놓습니다` : `사이드바에 가려진 창이 없습니다 · ${later}`);
 }
 
 let lastCursor = null;
@@ -618,6 +633,7 @@ app.whenReady().then(async () => {
     const n = await session.stepAside();
     if (n) session.say(`가려지던 창 ${n}개를 사이드바 오른쪽으로 옮겼습니다 · 끝내거나 자동 숨김으로 바꾸면 돌려놓습니다`);
   }
+  if (trusted) syncAsideWatch();
 
   let t = null;
   const onDisplays = () => { clearTimeout(t); t = setTimeout(async () => { await session.onDisplaysChanged(); placeSidebar(); }, 800); };
@@ -634,6 +650,7 @@ app.whenReady().then(async () => {
 app.on('window-all-closed', () => app.quit());
 let restoringOnQuit = false;
 app.on('before-quit', e => {
+  clearInterval(asideTimer);
   // 끝낼 때 옆으로 옮겼던 창을 먼저 돌려놓는다 (오래 걸려도 5초까지만 기다림)
   if (session?.aside?.length && !restoringOnQuit){
     e.preventDefault();

@@ -140,8 +140,8 @@ export async function browserState(b){
     const m = (await out('lsof', ['-a', '-p', pid, '-Fn'])).match(/\.framework\/Versions\/(\d+(?:\.\d+)+)\//);
     if (m){ runningVersion = m[1]; break; }
   }
-  return { running: true, count: pids.length, runningVersion, diskVersion,
-    stale: pids.length > 1 || (!!runningVersion && !!diskVersion && runningVersion !== diskVersion) };
+  const reason = pids.length > 1 ? 'two' : (runningVersion && diskVersion && runningVersion !== diskVersion ? 'update' : null);
+  return { running: true, count: pids.length, runningVersion, diskVersion, stale: !!reason, reason };
 }
 
 /**
@@ -154,7 +154,7 @@ export async function openInBrowser(browser, url){
   const s = await browserState(browser);
   if (s.stale){
     await open(['-a', browser.app, url]);
-    return { tab: true, reason: 'stale', ...s };
+    return { tab: true, ...s };
   }
   await open(['-na', browser.app, '--args', '--new-window', url]);
   return { tab: false };
