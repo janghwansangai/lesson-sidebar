@@ -38,6 +38,8 @@ function render(){
   const openN = Object.values(S.state).filter(s => s.status === 'open' || s.status === 'blocked').length;
   $('#meta').textContent = L ? `${L.date ? L.date + ' · ' : ''}${L.sections.reduce((a, s) => a + (s.minutes || 0), 0)}분 · 열린 창 ${openN}개` : '';
   $('#btn-hide').setAttribute('aria-pressed', String(!!S.autoHide));
+  $('#tool-pointer').setAttribute('aria-pressed', String(!!S.tools?.pointer));
+  $('#tool-spot').setAttribute('aria-pressed', String(!!S.tools?.spot));
 
   $('#screens').innerHTML = S.dual
     ? `<div class="scr-line"><i class="scr-dot"></i>학생 화면: ${esc(S.studentName)}</div>
@@ -140,6 +142,8 @@ $('#aside').addEventListener('change', e => api.act('aside', e.target.checked));
 $('#offer').addEventListener('click', () => { if (S.offer) api.act(S.offer.act, S.offer.id); });
 $('#openall').addEventListener('click', () => api.act('openAll'));
 $('#hideothers').addEventListener('click', () => api.act('hideOthers'));
+$('#tool-pointer').addEventListener('click', () => api.act('pointer', !S.tools?.pointer));
+$('#tool-spot').addEventListener('click', () => api.act('spot', !S.tools?.spot));
 $('#ax-open').addEventListener('click', () => api.act('axSettings'));
 // 모두 닫기는 한 번 더 눌러야 한다 (실수로 수업 중 창을 다 닫지 않게)
 let closeArm = 0;

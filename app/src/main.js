@@ -1,6 +1,6 @@
 // 수업 사이드바 체험판 — Electron 시작점 (맥·윈도우)
 // 사이드바 창(교사 화면 왼쪽)과 수업 준비 창을 띄우고, 수업 진행 로직(Session)·수업 편집(LessonDoc)과 잇는다.
-import { app, BrowserWindow, ipcMain, screen, dialog, shell, net } from 'electron';
+import { app, BrowserWindow, ipcMain, screen, dialog, shell, net, globalShortcut } from 'electron';
 import { readFileSync, writeFileSync, mkdirSync, existsSync, statSync, cpSync, createReadStream, statfsSync } from 'node:fs';
 import path from 'node:path';
 import http from 'node:http';
@@ -168,7 +168,7 @@ function createSidebar(){
   win.on('closed', () => { win = null; });
 }
 
-const fullState = () => ({ ...session.snapshot(), collapsed, trusted: session.trusted !== false, prefs: { ...prefs, steps: OPACITY_STEPS, asideAvailable: ASIDE_OK } });
+const fullState = () => ({ ...session.snapshot(), collapsed, trusted: session.trusted !== false, tools: { pointer: tools.pointer, spot: tools.spot }, prefs: { ...prefs, steps: OPACITY_STEPS, asideAvailable: ASIDE_OK } });
 function push(){ win?.webContents.send('state', fullState()); syncDivider(); }
 
 // ---------- 나란히 보기 조절 바 ----------
@@ -231,6 +231,85 @@ async function dragDivider(dir, x, y, final){
 const divDir = e => (e.sender === divWins.v?.webContents ? 'v' : e.sender === divWins.h?.webContents ? 'h' : null);
 ipcMain.on('divider:move', (e, x, y) => { const dir = divDir(e); if (dir && Number.isFinite(x) && Number.isFinite(y)) dragDivider(dir, x, y, false).catch(() => {}); });
 ipcMain.on('divider:end', (e, x, y) => { const dir = divDir(e); if (dir && Number.isFinite(x) && Number.isFinite(y)) dragDivider(dir, x, y, true).catch(() => { divDrag = null; }); });
+
+// ---------- 발표 도구: 포인터 강조·스포트라이트 (docs/PLAN.md 7) ----------
+// 화면마다 화면 전체를 덮는 투명 겹침 창 하나. 슬라이드 쇼·전체 화면 위에도 보이게 'screen-saver' 높이 (기술 검증 항목 4).
+// 사이드바는 그보다 한 칸 위에 두어 도구를 켠 채로도 사이드바를 누를 수 있다.
+// - 포인터: 겹침 창이 마우스를 통과시켜 클릭은 아래 프로그램으로 간다
+// - 스포트라이트: 겹침 창이 마우스를 받아 휠로 크기를 바꾼다. Esc(이때만 등록)·두 번 누르기·사이드바 단추로 끈다
+const tools = { pointer: false, spot: false, r: 150 };
+const overlays = new Map();   // display.id → BrowserWindow
+let toolTimer = null, lastCur = null;
+function overlayFor(d){
+  let w = overlays.get(d.id);
+  if (!w || w.isDestroyed()){
+    w = new BrowserWindow({
+      ...d.bounds, frame: false, transparent: true, backgroundColor: '#00000000', resizable: false, movable: false,
+      minimizable: false, maximizable: false, fullscreenable: false, focusable: false, hasShadow: false, skipTaskbar: true, show: false,
+      alwaysOnTop: true, type: process.platform === 'darwin' ? 'panel' : undefined, thickFrame: false, enableLargerThanScreen: true,
+      webPreferences: SECURE('overlay-preload.cjs'),
+    });
+    w.setAlwaysOnTop(true, 'screen-saver');
+    w.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+    lockDown(w);
+    w.loadFile(path.join(HERE, 'renderer', 'overlay.html'));
+    // 다 읽히면 상태를 보내고, 커서도 다시 보낸다 (읽히기 전에 보낸 위치는 버려져서, 마우스를 움직이기 전까지 원이 안 보였다)
+    w.webContents.on('did-finish-load', () => { w.webContents.send('overlay:state', tools); lastCur = null; });
+    overlays.set(d.id, w);
+  }
+  w.setBounds(d.bounds);
+  return w;
+}
+function syncTools(){
+  const on = tools.pointer || tools.spot;
+  clearInterval(toolTimer); toolTimer = null;
+  if (!on){
+    for (const w of overlays.values()) if (!w.isDestroyed()) w.hide();
+    globalShortcut.unregister('Escape');
+    push();
+    return;
+  }
+  for (const d of screen.getAllDisplays()){
+    const w = overlayFor(d);
+    w.setIgnoreMouseEvents(!tools.spot, { forward: true });   // 스포트라이트만 마우스(휠)를 받는다
+    w.webContents.send('overlay:state', tools);
+    if (!w.isVisible()) w.showInactive();
+  }
+  // 사이드바·조절 바는 겹침 창보다 위에
+  win?.setAlwaysOnTop(true, 'screen-saver', 1);
+  for (const dw of Object.values(divWins)) dw?.setAlwaysOnTop(true, 'screen-saver', 1);
+  if (tools.spot && !globalShortcut.isRegistered('Escape')) globalShortcut.register('Escape', () => setTool('spot', false));
+  if (!tools.spot) globalShortcut.unregister('Escape');
+  lastCur = null;
+  toolTimer = setInterval(sendCursor, 16);
+  push();
+}
+function sendCursor(){
+  const p = screen.getCursorScreenPoint();
+  if (lastCur && lastCur.x === p.x && lastCur.y === p.y) return;
+  lastCur = p;
+  for (const d of screen.getAllDisplays()){
+    const w = overlays.get(d.id); if (!w || w.isDestroyed()) continue;
+    const b = d.bounds, inside = p.x >= b.x && p.x < b.x + b.width && p.y >= b.y && p.y < b.y + b.height;
+    w.webContents.send('overlay:cursor', { x: p.x - b.x, y: p.y - b.y, in: inside });
+  }
+}
+function setTool(name, v){
+  if (!(name in tools) || name === 'r') return;
+  tools[name] = !!v;
+  if (name === 'spot' && tools.spot) tools.pointer = false;      // 둘 중 하나만
+  if (name === 'pointer' && tools.pointer) tools.spot = false;
+  syncTools();
+  session.say(tools.spot ? '스포트라이트: 커서 주변만 밝게 · 휠로 크기 · Esc나 두 번 눌러 끕니다'
+    : tools.pointer ? '포인터 강조: 커서 주변에 노란 원 · 클릭은 그대로 아래 프로그램에 갑니다' : '발표 도구를 껐습니다');
+}
+const fromOverlay = e => [...overlays.values()].some(w => !w.isDestroyed() && w.webContents === e.sender);
+ipcMain.on('overlay:wheel', (e, dy) => {
+  if (!fromOverlay(e) || !Number.isFinite(dy)) return;
+  tools.r = Math.max(60, Math.min(500, Math.round(tools.r - dy * 0.4)));
+  for (const w of overlays.values()) if (!w.isDestroyed()) w.webContents.send('overlay:state', { r: tools.r });
+});
+ipcMain.on('overlay:close', e => { if (fromOverlay(e)) setTool('spot', false); });
 
 // ---------- 배치 저장 (lesson.json layouts) ----------
 function editLayouts(root, fn){
@@ -627,6 +706,8 @@ const ACTIONS = {
   opacity: v => setOpacity(v),
   aside: v => setAside(v === true || v === 'true'),
   prep: () => openPrep(),
+  pointer: v => setTool('pointer', v === true || v === 'true'),
+  spot: v => setTool('spot', v === true || v === 'true'),
   quit: () => app.quit(),
 };
 
@@ -747,7 +828,7 @@ app.whenReady().then(async () => {
   if (trusted) syncAsideWatch();
 
   let t = null;
-  const onDisplays = () => { clearTimeout(t); t = setTimeout(async () => { await session.onDisplaysChanged(); placeSidebar(); }, 800); };
+  const onDisplays = () => { clearTimeout(t); t = setTimeout(async () => { await session.onDisplaysChanged(); placeSidebar(); for (const [id, w] of overlays){ if (!screen.getAllDisplays().some(d => d.id === id)){ w.destroy(); overlays.delete(id); } } syncTools(); }, 800); };
   screen.on('display-added', onDisplays);
   screen.on('display-removed', onDisplays);
   screen.on('display-metrics-changed', onDisplays);
@@ -760,6 +841,7 @@ app.whenReady().then(async () => {
 
 app.on('window-all-closed', () => app.quit());
 let restoringOnQuit = false;
+app.on('will-quit', () => globalShortcut.unregisterAll());
 app.on('before-quit', e => {
   clearInterval(asideTimer);
   // 끝낼 때 옆으로 옮겼던 창을 먼저 돌려놓는다 (오래 걸려도 5초까지만 기다림)
