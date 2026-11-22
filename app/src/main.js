@@ -445,6 +445,16 @@ async function setCover(mode){
     : session.dual ? "학생 화면을 가렸습니다 ('잠시 후 계속합니다') · 다시 누르면 보입니다" : "화면을 가렸습니다 ('잠시 후 계속합니다') · 사이드바의 '화면 가리기'를 다시 누르면 보입니다");
   push();
 }
+async function composeStudent(bg){
+  const st = session.student;
+  let wins = [];
+  try { wins = (await helper.call('list')).windows; } catch { return bg; }
+  wins = wins.filter(w => w.display === st.index && !w.minimized && w.pid !== process.pid).sort((a, b) => (b.z ?? 0) - (a.z ?? 0));   // 뒤에서 앞으로
+  if (!wins.length) return { bg, w: st.width, h: st.height, wins: [] };
+  const srcs = await desktopCapturer.getSources({ types: ['window'], thumbnailSize: { width: 480, height: 480 } });
+  const byWid = new Map(srcs.map(x => [Number(String(x.id).split(':')[1]), x]));
+  return { bg, w: st.width, h: st.height, wins: wins.map(w => ({ x: w.x - st.x, y: w.y - st.y, width: w.width, height: w.height, src: byWid.get(w.wid)?.thumbnail.toDataURL() })).filter(x => x.src) };
+}
 function syncPreview(){
   const want = previewOn && session?.dual && screenAccess() === 'granted' && !!win;
   if (!want){ clearInterval(previewTimer); previewTimer = null; win?.webContents.send('preview', null); return; }
@@ -457,7 +467,12 @@ function syncPreview(){
       const d = studentElectronDisplay(); if (!d) return;
       const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 264, height: Math.round(264 * d.bounds.height / d.bounds.width) } });
       const src = sources.find(x => String(x.display_id) === String(d.id));
-      if (src) win?.webContents.send('preview', src.thumbnail.toDataURL());
+      if (!src) return;
+      if (cover.mode === 'freeze' && process.platform === 'darwin'){
+        // 맥은 가림 창 아래 창들이 화면 찍기에서 빠진다(가려진 것으로 봄). 창을 하나씩 찍어 앞뒤 순서대로 쌓아 실제 상태를 보인다 (mac.md 41)
+        return win?.webContents.send('preview', await composeStudent(src.thumbnail.toDataURL()));
+      }
+      win?.webContents.send('preview', src.thumbnail.toDataURL());
     } catch { /* 다음에 다시 */ } finally { busy = false; }
   }, 500);
 }

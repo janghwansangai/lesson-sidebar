@@ -125,5 +125,5 @@ body.collapsed{background:transparent}
 .stu-b:hover{border-color:var(--chalk)}
 .stu-b[aria-pressed="true"]{border-color:var(--chalk);color:var(--chalk);background:rgba(242,205,92,.12)}
 .preview{position:relative;margin:8px 0 0;border-radius:8px;overflow:hidden;border:1px solid var(--sb-line);background:#000}
-.preview img{display:block;width:100%;height:auto;min-height:40px}
+.preview img,.preview canvas{display:block;width:100%;height:auto;min-height:40px}
 .ptag{position:absolute;left:6px;bottom:6px;padding:2px 7px;border-radius:999px;background:rgba(20,30,27,.85);color:#f2cd5c;font-size:10.5px}

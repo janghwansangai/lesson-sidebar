@@ -137,7 +137,19 @@ $('#screens').addEventListener('click', e => {
   const c = e.target.closest('[data-cover]'); if (c) return api.act(c.dataset.cover);
   const p = e.target.closest('[data-preview]'); if (p) return api.act('preview', p.dataset.preview);
 });
-api.onPreview?.(src => { if (src) $('#preview-img').src = src; });
+// 미리보기: 보통은 학생 화면 그림 한 장. 맥에서 정지 중이면 바탕 + 창 그림들을 앞뒤 순서대로 쌓아 그린다
+const loadImg = src => new Promise(r => { const i = new Image(); i.onload = () => r(i); i.onerror = () => r(null); i.src = src; });
+api.onPreview?.(async p => {
+  if (!p) return;
+  const img = $('#preview-img'), cv = $('#preview-canvas');
+  if (typeof p === 'string'){ img.src = p; img.hidden = false; cv.hidden = true; return; }
+  const W = 264, k = W / p.w;
+  cv.width = W; cv.height = Math.round(p.h * k);
+  const g = cv.getContext('2d');
+  const bg = await loadImg(p.bg); if (bg) g.drawImage(bg, 0, 0, cv.width, cv.height);
+  for (const w of p.wins){ const im = await loadImg(w.src); if (im) g.drawImage(im, w.x * k, w.y * k, w.width * k, w.height * k); }
+  img.hidden = true; cv.hidden = false;
+});
 $('#dock').addEventListener('click', e => {
   const ap = e.target.closest('[data-apply]'); if (ap) return api.act('applyLayout', ap.dataset.apply);
   const un = e.target.closest('[data-unsave]'); if (un) return api.act('removeLayout', un.dataset.unsave);
