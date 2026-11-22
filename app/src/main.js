@@ -1,7 +1,7 @@
 // 수업 사이드바 체험판 — Electron 시작점 (맥·윈도우)
 // 사이드바 창(교사 화면 왼쪽)과 수업 준비 창을 띄우고, 수업 진행 로직(Session)·수업 편집(LessonDoc)과 잇는다.
-import { app, BrowserWindow, ipcMain, screen, dialog, shell } from 'electron';
-import { readFileSync, writeFileSync, mkdirSync, existsSync, statSync, cpSync } from 'node:fs';
+import { app, BrowserWindow, ipcMain, screen, dialog, shell, net } from 'electron';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, statSync, cpSync, createReadStream, statfsSync } from 'node:fs';
 import path from 'node:path';
 import http from 'node:http';
 import { randomBytes } from 'node:crypto';
@@ -14,6 +14,7 @@ import { LessonDoc } from './core/editor.js';
 import { listLessons, suggestRoots, LIB_NAME } from './core/library.js';
 import { writeLock, clearLock, otherLock, deviceName } from './core/lock.js';
 import { exportBundle, inspectBundle, importBundle, findExisting, fmtBytes } from './core/bundle.js';
+import { precheck, checkLink, cloudOf } from './core/precheck.js';
 import * as L from './core/launcher.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -266,6 +267,7 @@ function prepSnapshot(){
     library: { root, lessons: root ? listLessons(root) : [], suggestions: root ? [] : suggestRoots(), libName: LIB_NAME },
     doc: doc ? { ...doc.snapshot(), lockedBy } : null,
     running: session.lesson?.root ?? null, openIds, device: DEVICE, msg: prepMsg, platform: process.platform,
+    check: doc && lastCheck?.root === doc.root ? lastCheck : null,
   };
 }
 function prepPush(){ prepWin?.webContents.send('prep:state', prepSnapshot()); }
@@ -291,6 +293,35 @@ function afterEdit(msg){
 
 const str = (v, max = 500) => typeof v === 'string' ? v.slice(0, max) : undefined;
 const absPath = v => { const s = str(v, 4096); return s && path.isAbsolute(s) ? s : null; };
+
+// ---------- 사전 점검 (core/precheck.js가 판단, 여기서는 실제 확인 방법을 넣어 준다) ----------
+let lastCheck = null;   // { root, at, rows, counts, summary }
+async function readThrough(abs){
+  // 끝까지 한 번 읽는다: 구글 드라이브 스트리밍 폴더면 이때 이 PC로 내려받아 수업 중에 바로 열린다
+  const t0 = Date.now(); let bytes = 0;
+  for await (const chunk of createReadStream(abs, { highWaterMark: 1 << 20 })) bytes += chunk.length;
+  return { bytes, ms: Date.now() - t0 };
+}
+async function runCheck(root, { quiet = false } = {}){
+  const lesson = loadLesson(root);
+  await session.refreshDisplays();
+  let trusted = true;
+  try { trusted = (await helper.call('trusted')).trusted; } catch { trusted = false; }
+  let freeBytes = null;
+  try { const f = statfsSync(root); freeBytes = f.bavail * f.bsize; } catch { /* 모름 */ }
+  const st = session.student;
+  if (!quiet) note('사전 점검 중… 링크와 파일을 확인합니다');
+  const r = await precheck(lesson, {
+    apps: L.APPS, browser: L.pickBrowser(), appInstalled: L.appInstalled, readThrough,
+    checkLink: (url, type) => checkLink(url, type, { fetchFn: (u, o) => net.fetch(u, o) }),
+    screens: { count: session.displays?.length ?? 1, student: st ? { name: st.name, width: Math.round(st.width), height: Math.round(st.height) } : null },
+    trusted, freeBytes, lockedBy: otherLock(root, DEVICE)?.device ?? null, cloud: cloudOf(root),
+    onProgress: quiet ? undefined : (phase, n, total) => note(`사전 점검 중… ${phase} ${n}/${total}`),
+  });
+  lastCheck = { root, at: Date.now(), ...r };
+  if (!quiet) note(`사전 점검: ${r.summary}`);
+  return r;
+}
 
 const DEBUG = process.env.SIDEBAR_DEBUG === '1';   // 시험용 원격 조작: 꾸러미 저장·열기 창 대신 경로를 받는다
 let busy = false;
@@ -359,6 +390,13 @@ const PREP_ACTIONS = {
       ? `파일 ${r.renamed.length}개 이름을 순서에 맞췄습니다${r.skipped.length ? ` · ${r.skipped.length}개는 건너뜀 (${r.skipped.map(s => `${s.title}: ${s.reason}`).join(', ')})` : ''}`
       : '이미 순서대로 정리되어 있습니다');
   },
+  // ---------- 사전 점검 ----------
+  async precheck(){
+    const d = needDoc();
+    return oneAtATime(() => runCheck(d.root));
+  },
+  closeCheck(){ lastCheck = null; },
+
   // ---------- 수업 꾸러미(.zip) ----------
   async exportBundle(p){
     const d = needDoc();
@@ -416,7 +454,8 @@ const PREP_ACTIONS = {
       if (mode === 'overwrite' && doc?.root === existing){ clearLock(existing, DEVICE); doc = null; }   // 푸는 동안 이 창이 저장하지 않게
       const r = await importBundle(info, lib, { mode, existing });
       openDoc(r.root);
-      note(`'${info.lesson.title}' 수업을 가져왔습니다 (파일 ${r.count}개)`
+      const c = await runCheck(r.root, { quiet: true });   // 가져오면 이 PC에 맞는지 바로 한 번 점검 (docs/PLAN.md 9.4)
+      note(`'${info.lesson.title}' 수업을 가져왔습니다 (파일 ${r.count}개) · 사전 점검: ${c.summary}`
         + (r.backup ? ' · 예전 수업은 .sidebar/덮어쓰기 전에 있습니다' : '')
         + (r.skipped.length ? ` · ${r.skipped.length}개 뺌 (${r.skipped.map(x => `${x.name}: ${x.reason}`).join(', ')})` : '')
         + (r.damaged.length ? ` · 손상된 파일 ${r.damaged.length}개는 가져오지 못했습니다 (${r.damaged.join(', ')})` : ''));

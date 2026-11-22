@@ -42,12 +42,19 @@
         </div>
         <div class="ed-act">
           <button id="run" class="btn primary" type="button">이 수업으로 진행</button>
+          <button id="check" class="btn" type="button" title="수업 전에 자료 파일·여는 프로그램·링크·모니터·권한을 한 번에 확인합니다">사전 점검</button>
           <button id="tidy" class="btn" type="button" title="파일 이름 앞 순번과 구간 폴더를 지금 순서에 맞춥니다">정리하기</button>
           <button id="reveal" class="btn" type="button">Finder에서 보기</button>
           <button id="export" class="btn" type="button" title="이 수업을 zip 파일 하나로 묶습니다 (USB·메일로 옮기거나 동료에게 줄 때)">꾸러미로 내보내기</button>
         </div>
         <p id="summary" class="sum"></p>
       </header>
+      <section id="checks" class="checks" hidden aria-label="사전 점검 결과">
+        <div class="ck-h"><b>사전 점검</b><span id="ck-sum" class="ck-sum"></span>
+          <button id="ck-again" class="btn sm" type="button">다시 점검</button>
+          <button id="ck-close" class="x" type="button" title="결과 닫기" aria-label="사전 점검 결과 닫기">✕</button></div>
+        <ul id="ck-list" class="ck-list"></ul>
+      </section>
       <div class="add">
         <div class="add-row">
           <select id="add-sec" aria-label="넣을 구간"></select>
