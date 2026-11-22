@@ -175,6 +175,7 @@ $('#screens').addEventListener('click', e => {
 });
 // 미리보기: 보통은 학생 화면 그림 한 장. 맥에서 정지 중이면 바탕 + 창 그림들을 앞뒤 순서대로 쌓아 그린다
 const loadImg = src => new Promise(r => { const i = new Image(); i.onload = () => r(i); i.onerror = () => r(null); i.src = src; });
+$('#preview').addEventListener('click', () => api.act('previewNow'));   // 5초를 기다리지 않고 지금 다시 찍기
 api.onPreview?.(async p => {
   if (!p) return;
   const img = $('#preview-img'), cv = $('#preview-canvas');
@@ -220,8 +221,9 @@ setInterval(() => {
 $('#tool-pointer').addEventListener('click', () => api.act('pointer', !S.tools?.pointer));
 $('#tool-spot').addEventListener('click', () => api.act('spot', !S.tools?.spot));
 $('#tool-pen').addEventListener('click', () => api.act('pen', !S.tools?.pen));
-$('#tool-zoom').addEventListener('click', () => api.act('zoom'));
-$('#tool-pin').addEventListener('click', () => api.act('pin'));
+// 사이드바 단추로 켜면 학생 화면(듀얼일 때)을, 단축키로 켜면 마우스가 있는 화면을 찍는다
+$('#tool-zoom').addEventListener('click', () => api.act('zoom', 'student'));
+$('#tool-pin').addEventListener('click', () => api.act('pin', 'student'));
 $('#pins-close').addEventListener('click', () => api.act('closePins'));
 $('#ax-open').addEventListener('click', () => api.act('axSettings'));
 // 모두 닫기는 한 번 더 눌러야 한다 (실수로 수업 중 창을 다 닫지 않게)

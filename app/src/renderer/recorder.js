@@ -2,27 +2,44 @@
 // (변수 이름을 rec으로 하면 contextBridge가 만든 window.rec과 겹쳐 문법 오류가 난다)
 let recorder = null, streams = [], mixer = null;
 const TYPES = ['video/mp4;codecs=avc1.640028,mp4a.40.2', 'video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm'];
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+/**
+ * 처음 녹화할 때 맥이 화면·소리 허락 창을 띄우면 화면 받기가 한 번 실패할 수 있다.
+ * 선생님이 녹화를 다시 누르지 않아도 되게, 허락을 기다리며 3초마다 몇 번 더 해 본다 (메인이 "허용을 눌러 주세요"를 띄움).
+ */
+async function retrying(get){
+  for (let i = 0; ; i++){
+    try { return await get(); }
+    catch (e){
+      if (i >= 4 || !/NotAllowed|NotReadable|Abort|NotFound/.test(e?.name ?? '')) throw e;
+      if (i === 0) window.rec.waiting();
+      await sleep(3000);
+    }
+  }
+}
 window.rec.onStart(async o => {
   try {
     const light = !!o.light;
-    const video = await navigator.mediaDevices.getUserMedia({ audio: false, video: { mandatory: {
-      chromeMediaSource: 'desktop', chromeMediaSourceId: o.sourceId,
-      maxWidth: light ? 1280 : 1920, maxHeight: light ? 720 : 1080, maxFrameRate: light ? 15 : 30 } } });
-    streams = [video];
-    const tracks = [...video.getVideoTracks()];
+    const W = light ? 1280 : 1920, H = light ? 720 : 1080, F = light ? 15 : 30;
     const audios = [];
-    // 컴퓨터 소리: getDisplayMedia로 같은 화면 + 소리를 받아 소리만 쓴다 (메인이 'loopback'으로 답함). 소리 줄이 바로 끝나면 못 받은 것
-    let sys = false;
+    let video = null, sys = false;
+    // 컴퓨터 소리를 켜면: getDisplayMedia 한 번으로 화면 + 소리를 함께 받는다 (메인이 같은 화면 + 'loopback'으로 답함).
+    // 전에는 화면(getUserMedia)과 소리(getDisplayMedia)를 따로 받아 같은 화면을 두 번 찍었다. 소리 줄이 바로 끝나면 못 받은 것
     if (o.sys){
       try {
-        const d = await navigator.mediaDevices.getDisplayMedia({ video: { width: 320, height: 180, frameRate: 1 }, audio: true });
-        streams.push(d);
-        for (const t of d.getVideoTracks()) t.stop();
-        const a = d.getAudioTracks().filter(t => t.readyState === 'live');
-        await new Promise(r => setTimeout(r, 300));
+        const d = await navigator.mediaDevices.getDisplayMedia({ video: { width: { max: W }, height: { max: H }, frameRate: { max: F } }, audio: true });   // 안 되면 한 번에 포기하고 화면만 (기다리지 않음)
+        if (d.getVideoTracks().length) video = d; else for (const t of d.getTracks()) t.stop();
+        const a = video ? d.getAudioTracks().filter(t => t.readyState === 'live') : [];
+        await sleep(300);
         if (a.length && a[0].readyState === 'live'){ audios.push(new MediaStream(a)); sys = true; }
-      } catch { /* 컴퓨터 소리를 못 받으면 빼고 */ }
+      } catch { /* 컴퓨터 소리를 못 받으면 화면만 아래에서 */ }
     }
+    if (!video){
+      video = await retrying(() => navigator.mediaDevices.getUserMedia({ audio: false, video: { mandatory: {
+        chromeMediaSource: 'desktop', chromeMediaSourceId: o.sourceId, maxWidth: W, maxHeight: H, maxFrameRate: F } } }));
+    }
+    streams = [video];
+    const tracks = [...video.getVideoTracks()];
     let mic = false;
     if (o.mic){
       try { const a = await navigator.mediaDevices.getUserMedia({ audio: true, video: false }); streams.push(a); audios.push(a); mic = true; }
