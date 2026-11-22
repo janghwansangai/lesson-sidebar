@@ -19,6 +19,7 @@ function drawGrab(){
   if ($('frozen').src !== g.src) $('frozen').src = g.src;
   $('grab').className = `grab ${g.mode}`;
   zoom = 2; root.setProperty('--z', g.mode === 'zoom' ? zoom : 1);
+  root.setProperty('--ox', '50%'); root.setProperty('--oy', '50%');   // 마우스가 이 화면에 오기 전에는 가운데를 확대
   $('hint').textContent = g.mode === 'zoom' ? '확대 · 마우스로 옮기기 · 휠로 배율 · 클릭이나 Esc로 끝' : '캡처 핀 · 끌어서 영역 고르기 · Esc로 취소';
   $('hint').hidden = false;
 }
@@ -48,10 +49,14 @@ grabEl.addEventListener('mouseup', () => {
   const r = drag.r; drag = null; $('sel').hidden = true;
   window.overlay.pick(r ?? { x: 0, y: 0, width: 0, height: 0 });
 });
+// 커서 위치: 이 창이 받는 마우스 움직임(포인터는 forward로 넘겨받음)을 바로 쓰고,
+// 메인이 보내는 위치(주기적으로 읽음)는 마우스 움직임이 없을 때와 화면을 벗어났을 때만 쓴다 — 메인을 거치면 한두 장면 늦다
+let localAt = 0;
+const place = (x, y) => { root.setProperty('--x', `${x}px`); root.setProperty('--y', `${y}px`); };
+addEventListener('mousemove', e => { if (S.pointer || S.spot){ localAt = performance.now(); place(e.clientX, e.clientY); } }, { passive: true });
 window.overlay.onCursor(p => {
-  // 이 화면 밖이면 원을 화면 밖으로 (스포트라이트는 마지막 자리 유지)
-  const x = p.in ? p.x : -500, y = p.in ? p.y : -500;
-  root.setProperty('--x', `${x}px`); root.setProperty('--y', `${y}px`);
+  if (!p.in) return place(-500, -500);   // 이 화면 밖이면 원을 화면 밖으로
+  if (performance.now() - localAt > 150) place(p.x, p.y);
 });
 // 스포트라이트: 휠로 크기, 두 번 누르면 끄기 (이 화면이 마우스를 받을 때만)
 $('spot').addEventListener('wheel', e => { e.preventDefault(); window.overlay.wheel(e.deltaY); }, { passive: false });

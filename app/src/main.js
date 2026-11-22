@@ -176,7 +176,7 @@ function createSidebar(){
   win.on('closed', () => { win = null; });
 }
 
-const fullState = () => ({ ...session.snapshot(), collapsed, trusted: session.trusted !== false, tools: { pointer: tools.pointer, spot: tools.spot, grab: grab?.mode ?? null, pins: pins.size }, cover: cover.mode, preview: previewOn && screenAccess() === 'granted', rec: rec ? { since: rec.startedAt, mic: !!rec.mic, stopping: !!rec.stopping, where: rec.where } : null, prefs: { ...prefs, steps: OPACITY_STEPS, asideAvailable: ASIDE_OK }, update: update && !update.dismissed ? { version: update.version, notes: update.notes, size: update.size } : null, version: app.getVersion(), presenter: !!presWin, remote: remote ? { url: remote.url, qr: remote.qr, showQr: remote.showQr, phones: liveSrv.clients('lan') } : null });
+const fullState = () => ({ ...session.snapshot(), collapsed, trusted: session.trusted !== false, tools: { pointer: tools.pointer, spot: tools.spot, grab: grab?.mode ?? null, pins: pins.size }, cover: cover.mode, preview: previewOn && screenAccess() === 'granted', rec: rec ? { since: rec.startedAt, mic: !!rec.mic, sys: !!rec.sys, stopping: !!rec.stopping, where: rec.where } : null, prefs: { ...prefs, steps: OPACITY_STEPS, asideAvailable: ASIDE_OK }, update: update && !update.dismissed ? { version: update.version, notes: update.notes, size: update.size } : null, version: app.getVersion(), presenter: !!presWin, remote: remote ? { url: remote.url, qr: remote.qr, showQr: remote.showQr, phones: liveSrv.clients('lan') } : null });
 function push(){ noteChapter(); win?.webContents.send('state', fullState()); syncDivider(); syncPreview(); syncLive(); }
 
 // ---------- 나란히 보기 조절 바 ----------
@@ -256,7 +256,7 @@ ipcMain.on('divider:end', (e, x, y) => { const dir = divDir(e); if (dir && Numbe
 // - 스포트라이트: 겹침 창이 마우스를 받아 휠로 크기를 바꾼다. Esc(이때만 등록)·두 번 누르기·사이드바 단추로 끈다
 const tools = { pointer: false, spot: false, r: 150 };
 const overlays = new Map();   // display.id → BrowserWindow
-let toolTimer = null, lastCur = null;
+let toolTimer = null, lastCur = null, curIn = null;   // curIn: 커서가 있던 화면 (원을 치울 화면을 알려고)
 function overlayFor(d){
   let w = overlays.get(d.id);
   if (!w || w.isDestroyed()){
@@ -273,7 +273,7 @@ function overlayFor(d){
     // 다 읽히면 상태를 보내고, 커서도 다시 보낸다 (읽히기 전에 보낸 위치는 버려져서, 마우스를 움직이기 전까지 원이 안 보였다)
     w.webContents.on('did-finish-load', () => {
       w.webContents.send('overlay:state', { ...tools, grab: grab && grab.display.id === d.id ? grab.payload : null });
-      lastCur = null;
+      lastCur = null; curIn = null;
     });
     overlays.set(d.id, w);
   }
@@ -300,19 +300,23 @@ function syncTools(){
   for (const dw of Object.values(divWins)) dw?.setAlwaysOnTop(true, 'screen-saver', 1);
   if (tools.spot && !globalShortcut.isRegistered('Escape')) globalShortcut.register('Escape', () => setTool('spot', false));
   if (!tools.spot) globalShortcut.unregister('Escape');
-  lastCur = null;
+  lastCur = null; curIn = null;
   toolTimer = setInterval(sendCursor, 16);
   push();
 }
+// 겹침 창은 자기 화면 안의 마우스 움직임을 직접 받아 원을 옮긴다. 여기서는 어느 화면에 있는지와
+// 마우스 움직임이 오지 않을 때(사이드바 위 등)의 위치만 알린다 — 커서가 있는 화면과 방금 떠난 화면에만 보낸다
 function sendCursor(){
   const p = screen.getCursorScreenPoint();
   if (lastCur && lastCur.x === p.x && lastCur.y === p.y) return;
   lastCur = p;
-  for (const d of screen.getAllDisplays()){
-    const w = overlays.get(d.id); if (!w || w.isDestroyed()) continue;
-    const b = d.bounds, inside = p.x >= b.x && p.x < b.x + b.width && p.y >= b.y && p.y < b.y + b.height;
-    w.webContents.send('overlay:cursor', { x: p.x - b.x, y: p.y - b.y, in: inside });
+  const d = screen.getDisplayNearestPoint(p), b = d.bounds;
+  if (curIn !== d.id){   // 처음(null)이면 다른 화면 모두, 화면을 옮겼으면 떠난 화면의 원을 치운다
+    for (const [id, o] of overlays) if (id !== d.id && (curIn == null || id === curIn) && !o.isDestroyed()) o.webContents.send('overlay:cursor', { in: false });
   }
+  curIn = d.id;
+  const w = overlays.get(d.id);
+  if (w && !w.isDestroyed()) w.webContents.send('overlay:cursor', { x: p.x - b.x, y: p.y - b.y, in: true });
 }
 function setTool(name, v){
   if (!(name in tools) || name === 'r') return;
@@ -344,7 +348,12 @@ async function startGrab(mode){
     return;
   }
   tools.pointer = false; tools.spot = false; syncTools();
-  const d = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+  // 커서가 있는 화면을 찍는다. 단, 사이드바 단추를 눌렀으면 커서는 교사 화면의 사이드바 위에 있으므로
+  // 학생 화면이 있으면 학생 화면을 찍는다 (그대로 두면 확대·캡처가 늘 교사 화면에서만 됐다)
+  const cur = screen.getCursorScreenPoint(), sb = win && !win.isDestroyed() ? win.getBounds() : null;
+  const onSidebar = !!sb && cur.x >= sb.x && cur.x < sb.x + sb.width && cur.y >= sb.y && cur.y < sb.y + sb.height;
+  const student = onSidebar ? studentElectronDisplay() : null;
+  const d = student ?? screen.getDisplayNearestPoint(cur);
   for (const w of overlays.values()) if (!w.isDestroyed()) w.hide();
   await new Promise(r => setTimeout(r, 120));   // 겹침 창이 사라진 뒤에 찍는다
   const image = await captureDisplay(d).catch(() => null);
@@ -357,7 +366,8 @@ async function startGrab(mode){
   win?.setAlwaysOnTop(true, 'screen-saver', 1);
   if (!globalShortcut.isRegistered('Escape')) globalShortcut.register('Escape', () => endGrab());
   push();
-  session.say(mode === 'zoom' ? '확대: 마우스로 옮기고 휠로 배율(1.5~4배) · 클릭이나 Esc로 끝' : '캡처 핀: 끌어서 영역을 고르세요 · Esc로 취소');
+  const where = student ? '학생 화면에서 ' : '';
+  session.say(mode === 'zoom' ? `확대: ${where}마우스로 옮기고 휠로 배율(1.5~4배) · 클릭이나 Esc로 끝` : `캡처 핀: ${where}끌어서 영역을 고르세요 · Esc로 취소`);
 }
 function endGrab(){
   if (!grab) return;
@@ -523,10 +533,11 @@ async function startRecording(){
   rec = { fd: openSync(file, 'w'), file, meta, name, root, title, startedAt, chapters: new Chapters(startedAt), lastHi: null, where: session.dual ? '학생 화면' : '이 화면' };
   writeFileSync(meta, JSON.stringify({ root, title, name, chapters: rec.chapters }));
   noteChapter();
-  rec.recWin = new BrowserWindow({ show: false, webPreferences: SECURE('recorder-preload.cjs') });
+  // 소리 섞기(AudioContext)가 보이지 않는 창에서도 멈추지 않게 자동 재생 제한을 푼다
+  rec.recWin = new BrowserWindow({ show: false, webPreferences: { ...SECURE('recorder-preload.cjs'), autoplayPolicy: 'no-user-gesture-required', backgroundThrottling: false } });
   lockDown(rec.recWin);
   await rec.recWin.loadFile(path.join(HERE, 'renderer', 'recorder.html'));
-  rec.recWin.webContents.send('rec:start', { sourceId: src.id, mic: prefs.recMic !== false, light: !!prefs.recLight });
+  rec.recWin.webContents.send('rec:start', { sourceId: src.id, sys: prefs.recSys !== false, mic: prefs.recMic !== false, micId: prefs.recMicId || '', light: !!prefs.recLight });
   rec.spaceTimer = setInterval(() => {
     const f = freeAt(recDir());
     if (f != null && f < 1024 ** 3){ session.say(`남은 공간이 ${fmtBytes(f)}라 녹화를 멈춥니다`); stopRecording(); }
@@ -596,8 +607,9 @@ const fromRec = e => rec?.recWin && !rec.recWin.isDestroyed() && e.sender === re
 ipcMain.on('rec:chunk', (e, buf) => { if (fromRec(e)) try { writeSync(rec.fd, Buffer.from(buf)); } catch { /* 디스크 문제 */ } });
 ipcMain.on('rec:started', (e, info) => {
   if (!fromRec(e)) return;
-  rec.mic = !!info?.mic;
-  session.say(`녹화를 시작했습니다 · ${rec.where}${rec.mic ? ' + 마이크' : ''} · 학생 얼굴·목소리·이름이 담길 수 있으니 공유하기 전에 확인하세요`);
+  rec.mic = !!info?.mic; rec.sys = !!info?.sys;
+  const missed = [info?.wantSys && !rec.sys && '컴퓨터 소리', info?.wantMic && !rec.mic && '마이크'].filter(Boolean);
+  session.say(`녹화를 시작했습니다 · ${rec.where}${rec.sys ? ' + 컴퓨터 소리' : ''}${rec.mic ? ' + 마이크' : ''}${missed.length ? ` · ${missed.join('·')}는 이 PC에서 녹음하지 못해 빼고 녹화합니다` : ''} · 학생 얼굴·목소리·이름이 담길 수 있으니 공유하기 전에 확인하세요`);
   push();
 });
 ipcMain.on('rec:stopped', e => { if (fromRec(e)) finishRecording(); });
@@ -1171,6 +1183,8 @@ const ACTIONS = {
   record: () => startRecording(),
   recMic: v => { prefs.recMic = v === true || v === 'true'; saveSettings({ recMic: prefs.recMic }); push(); },
   recLight: v => { prefs.recLight = v === true || v === 'true'; saveSettings({ recLight: prefs.recLight }); push(); },
+  recSys: v => { prefs.recSys = v === true || v === 'true'; saveSettings({ recSys: prefs.recSys }); push(); },
+  recMicId: v => { prefs.recMicId = typeof v === 'string' ? v.slice(0, 200) : ''; saveSettings({ recMicId: prefs.recMicId }); push(); },
   revealRec: v => { if (typeof v === 'string' && /_녹화[\\/]/.test(v) && existsSync(v)) shell.showItemInFolder(v); },
   freeze: () => setCover('freeze'),
   blank: () => setCover('blank'),
@@ -1282,7 +1296,7 @@ app.whenReady().then(async () => {
   await session.refreshDisplays();
 
   const settings = readSettings();
-  prefs = { opacity: OPACITY_STEPS.includes(settings.opacity) ? settings.opacity : 100, aside: ASIDE_OK && !!settings.aside, recMic: settings.recMic !== false, recLight: !!settings.recLight, updateCheck: settings.updateCheck !== false };
+  prefs = { opacity: OPACITY_STEPS.includes(settings.opacity) ? settings.opacity : 100, aside: ASIDE_OK && !!settings.aside, recMic: settings.recMic !== false, recSys: settings.recSys !== false, recMicId: typeof settings.recMicId === 'string' ? settings.recMicId : '', recLight: !!settings.recLight, updateCheck: settings.updateCheck !== false };
   createSidebar();
   if (!(settings.lastFolder && existsSync(settings.lastFolder) && runLesson(settings.lastFolder))) runLesson(sampleLesson());
   if (settings.lastPrepFolder && existsSync(path.join(settings.lastPrepFolder, 'lesson.json'))){

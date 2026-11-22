@@ -48,8 +48,11 @@ function render(){
   $('#record').dataset.tip = S.rec ? '녹화 끝내기|지금까지 녹화한 것을 수업 폴더 _녹화에 저장합니다' : '녹화|학생 화면(모니터 한 대면 이 화면)을 녹화합니다. 자료를 바꿀 때마다 목차를 남깁니다';
   $('#record').setAttribute('aria-label', S.rec ? '녹화 끝내기' : '녹화');
   $('#record').setAttribute('aria-pressed', String(!!S.rec));
-  if (S.rec){ $('#rec-where').textContent = `${S.rec.where}${S.rec.mic ? ' + 마이크' : ''}`; $('#rec-stop').disabled = !!S.rec.stopping; }
+  if (S.rec){ $('#rec-where').textContent = `${S.rec.where}${S.rec.sys ? ' + 컴퓨터 소리' : ''}${S.rec.mic ? ' + 마이크' : ''}`; $('#rec-stop').disabled = !!S.rec.stopping; }
+  $('#rec-sys').checked = S.prefs?.recSys !== false;
   $('#rec-mic').checked = S.prefs?.recMic !== false;
+  $('#rec-mic-dev').disabled = S.prefs?.recMic === false;
+  if ($('#rec-mic-dev').value !== (S.prefs?.recMicId ?? '')) fillMics();
   $('#rec-light').checked = !!S.prefs?.recLight;
 
   $('#screens').innerHTML = S.dual
@@ -199,7 +202,25 @@ $('#openall').addEventListener('click', () => api.act('openAll'));
 $('#hideothers').addEventListener('click', () => api.act('hideOthers'));
 $('#record').addEventListener('click', () => api.act('record'));
 $('#rec-stop').addEventListener('click', () => api.act('record'));
+$('#rec-sys').addEventListener('change', e => api.act('recSys', e.target.checked));
 $('#rec-mic').addEventListener('change', e => api.act('recMic', e.target.checked));
+$('#rec-mic-dev').addEventListener('change', e => api.act('recMicId', e.target.value));
+// 녹음할 마이크 목록: 설정을 열 때와 장치가 바뀔 때 다시 읽는다. 고른 마이크가 빠져 있으면 "(연결 안 됨)"으로 남겨 둔다
+let micsBusy = false;
+async function fillMics(){
+  if (micsBusy) return;
+  micsBusy = true;
+  const sel = $('#rec-mic-dev'), want = S?.prefs?.recMicId ?? '';
+  let mics = [];
+  try { mics = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'audioinput' && d.deviceId !== 'default' && d.deviceId !== 'communications'); } catch { /* 목록 없이 기본 마이크만 */ }
+  const opts = [['', '기본 마이크'], ...mics.map((d, i) => [d.deviceId, d.label || `마이크 ${i + 1}`])];
+  if (want && !mics.some(d => d.deviceId === want)) opts.push([want, '고른 마이크 (연결 안 됨)']);
+  sel.innerHTML = opts.map(([v, t]) => `<option value="${esc(v)}">${esc(t)}</option>`).join('');
+  sel.value = want;
+  micsBusy = false;
+}
+navigator.mediaDevices?.addEventListener?.('devicechange', () => fillMics());
+$('#btn-prefs').addEventListener('click', () => fillMics());
 $('#rec-light').addEventListener('change', e => api.act('recLight', e.target.checked));
 setInterval(() => {
   if (!S?.rec) return;
