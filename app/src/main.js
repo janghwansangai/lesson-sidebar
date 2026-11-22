@@ -837,10 +837,23 @@ async function setPresenter(on){
   push();
 }
 
-async function setRemote(on){
+// 와이파이가 바뀌면(핫스팟으로 옮김 등) 이 PC 주소도 바뀐다. 옛 주소의 QR은 휴대폰에서 "연결 거부"가 나므로 주소를 새로 만든다
+let netWatch = null;
+function watchNet(){
+  clearInterval(netWatch); netWatch = null;
+  if (!remote) return;
+  netWatch = setInterval(() => {
+    if (!remote) return watchNet();
+    const l = liveSrv.ls.get('lan'); if (!l) return;   // 주소를 만드는 중
+    const a = lanAddress(os.networkInterfaces());
+    if (a && a.address !== l.host) setRemote(true, true);   // 잠깐 끊긴 동안(a 없음)은 기다린다
+  }, 3000);
+}
+async function setRemote(on, moved = false){
   liveSrv.close('lan');
   if (!on){
     if (remote){ remote = null; session.say('휴대폰 리모컨을 껐습니다 · 연결했던 휴대폰은 더 이상 조작할 수 없습니다'); }
+    watchNet();
     return push();
   }
   const a = lanAddress(os.networkInterfaces());
@@ -850,6 +863,8 @@ async function setRemote(on){
   const url = liveSrv.url('lan');
   const q = qrcode(0, 'M'); q.addData(url); q.make();
   remote = { url, qr: q.createSvgTag({ cellSize: 4, margin: 2, scalable: true }), showQr: true };
+  watchNet();
+  if (moved){ session.say('와이파이가 바뀌어 리모컨 주소를 새로 만들었습니다 · 휴대폰으로 QR을 다시 찍어 주세요 (휴대폰도 같은 와이파이)'); return push(); }
   session.say(`휴대폰 카메라로 QR을 찍어 주세요 (이 PC와 같은 와이파이) · 처음이면 '들어오는 연결 허용'을 물을 수 있습니다${session.dual ? '' : ' · 모니터가 한 대라 QR이 학생에게도 보입니다. 연결한 뒤 QR을 닫아 주세요'}`);
   push();
 }
