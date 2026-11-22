@@ -26,6 +26,9 @@ func fail(_ msg: String) -> Never {
     exit(1)
 }
 
+/// 명령 하나의 실패. 한 번 실행이면 출력하고 끝내고, 'serve'(계속 실행)면 답으로 돌려주고 다음 명령을 받는다.
+struct HelperFail: Error { let msg: String }
+
 func settle(_ seconds: Double) {
     RunLoop.current.run(until: Date().addingTimeInterval(seconds))
 }
@@ -163,9 +166,10 @@ func waitingFor(_ w: Win) -> Any {
     return NSNull()
 }
 
-func allWindows(appFilter: String?) -> [Win] {
+func allWindows(appFilter: String?, onlyPid: pid_t? = nil) -> [Win] {
     var out: [Win] = []
     for app in NSWorkspace.shared.runningApplications where app.activationPolicy == .regular {
+        if let p = onlyPid, app.processIdentifier != p { continue }
         let name = app.localizedName ?? ""
         let bundle = app.bundleIdentifier ?? ""
         if let f = appFilter, !(name.localizedCaseInsensitiveContains(f) || bundle.localizedCaseInsensitiveContains(f)) { continue }
@@ -199,14 +203,14 @@ func frame(_ w: Win) -> CGRect {
 
 /// 창 앞뒤 순서 (0이 맨 앞). 화면에 있는 창 목록(CGWindowList)은 앞에서 뒤 순서로 나온다.
 /// 가려진 창을 따로 찍어 쌓을 때 쓴다 (학생 화면 정지 중 미리보기, docs/poc/mac.md 41)
-let zOrder: [CGWindowID: Int] = {
+func zOrderMap() -> [CGWindowID: Int] {
     var m: [CGWindowID: Int] = [:]
     let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
     for (i, w) in list.enumerated() { if let n = w[kCGWindowNumber as String] as? Int { m[CGWindowID(n)] = i } }
     return m
-}()
+}
 
-func winJSON(_ w: Win, _ displays: [[String: Any]]) -> [String: Any] {
+func winJSON(_ w: Win, _ displays: [[String: Any]], _ zOrder: [CGWindowID: Int]) -> [String: Any] {
     let f = frame(w)
     var d = rectJSON(f)
     d["wid"] = Int(w.wid)
@@ -247,9 +251,19 @@ func frontInfo() -> [String: Any] {
     return info
 }
 
-func findWin(_ arg: String?) -> Win {
-    guard let arg, let id = UInt32(arg) else { fail("창 번호(wid)가 필요합니다") }
-    guard let w = allWindows(appFilter: nil).first(where: { $0.wid == id }) else { fail("창 \(id)을(를) 찾지 못했습니다") }
+/// 창 번호의 주인 프로그램 (창 목록 서버에 묻기 — 다른 프로그램을 깨우지 않아 빠르다)
+func ownerPid(_ wid: CGWindowID) -> pid_t? {
+    guard let list = CGWindowListCopyWindowInfo([.optionIncludingWindow], wid) as? [[String: Any]],
+          let p = list.first?[kCGWindowOwnerPID as String] as? Int else { return nil }
+    return pid_t(p)
+}
+
+/// 창 번호로 창 찾기. 주인 프로그램 하나만 먼저 보고, 없으면 전체를 본다
+/// (전에는 늘 모든 프로그램에 물어 0.5초 넘게 걸리고, 응답이 느린 프로그램이 있으면 더 늦었다)
+func findWin(_ arg: String?) throws -> Win {
+    guard let arg, let id = UInt32(arg) else { throw HelperFail(msg: "창 번호(wid)가 필요합니다") }
+    if let p = ownerPid(id), let w = allWindows(appFilter: nil, onlyPid: p).first(where: { $0.wid == id }) { return w }
+    guard let w = allWindows(appFilter: nil).first(where: { $0.wid == id }) else { throw HelperFail(msg: "창 \(id)을(를) 찾지 못했습니다") }
     return w
 }
 
@@ -291,14 +305,14 @@ func raise(_ w: Win) -> [String: Any] {
                        "waiting": waitingFor(w)]]
 }
 
-func move(_ w: Win, _ r: CGRect) -> [String: Any] {
+func move(_ w: Win, _ r: CGRect) throws -> [String: Any] {
     if bool(w.el, "AXFullScreen") == true {
         AXUIElementSetAttributeValue(w.el, "AXFullScreen" as CFString, kCFBooleanFalse)
         settle(1.0)
     }
     unminimize(w)
     var pos = r.origin, sz = r.size
-    guard let pv = AXValueCreate(.cgPoint, &pos), let sv = AXValueCreate(.cgSize, &sz) else { fail("좌표 변환 실패") }
+    guard let pv = AXValueCreate(.cgPoint, &pos), let sv = AXValueCreate(.cgSize, &sz) else { throw HelperFail(msg: "좌표 변환 실패") }
     // 다른 모니터로 옮길 때 크기 제한에 걸리지 않도록 크기 → 위치 → 크기 순서로 지정한다
     AXUIElementSetAttributeValue(w.el, kAXSizeAttribute as CFString, sv)
     let ePos = AXUIElementSetAttributeValue(w.el, kAXPositionAttribute as CFString, pv)
@@ -325,57 +339,121 @@ func close(_ w: Win) -> [String: Any] {
 var clickTap: CFMachPort? = nil   // 'clicks' 감시 (시간 초과로 꺼지면 다시 켜려고 들고 있음)
 
 
+/// 창 목록 서버에서 본 보통 창들의 (번호, 화면에 있는지). 프로그램들에 묻지 않아(접근성 아님) 싸다.
+/// 'watch'가 이것이 바뀌었을 때만 프로그램마다 묻는 전체 목록을 다시 만든다.
+func cgWindowSignature() -> [Int] {
+    guard let list = CGWindowListCopyWindowInfo([.optionAll, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else { return [] }
+    var out: [Int] = []
+    for w in list {
+        guard (w[kCGWindowLayer as String] as? Int) == 0, let n = w[kCGWindowNumber as String] as? Int else { continue }
+        out.append(n * 2 + (((w[kCGWindowIsOnscreen as String] as? Bool) ?? false) ? 1 : 0))
+    }
+    return out.sorted()
+}
+
+/// 맨 앞 프로그램과 그 프로그램의 맨 위 창 번호. 바뀌었을 때만 접근성으로 맨 앞 창을 자세히 본다.
+func frontSignature() -> [Int] {
+    guard let app = NSWorkspace.shared.frontmostApplication else { return [] }
+    let pid = Int(app.processIdentifier)
+    let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
+    let top = list.first { ($0[kCGWindowOwnerPID as String] as? Int) == pid && ($0[kCGWindowLayer as String] as? Int) == 0 }
+    return [pid, (top?[kCGWindowNumber as String] as? Int) ?? 0]
+}
+
+/// 한 번에 답하는 명령 (한 번 실행과 'serve'가 함께 쓴다)
+func run(_ args: [String]) throws -> [String: Any] {
+    switch args.first ?? "" {
+    case "trusted":
+        // --prompt: 권한이 없으면 macOS의 "손쉬운 사용 권한 요청" 창을 띄운다 (켜는 것은 사용자가 직접)
+        if args.contains("--prompt") {
+            let key = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
+            return ["ok": true, "trusted": AXIsProcessTrustedWithOptions([key: true] as CFDictionary)]
+        }
+        return ["ok": true, "trusted": AXIsProcessTrusted()]
+    case "displays":
+        return ["ok": true, "displays": displayList()]
+    case "list":
+        var filter: String? = nil
+        if let i = args.firstIndex(of: "--app"), i + 1 < args.count { filter = args[i + 1] }
+        let ds = displayList(), z = zOrderMap()
+        return ["ok": true, "windows": allWindows(appFilter: filter).map { winJSON($0, ds, z) }]
+    case "front":
+        return ["ok": true, "front": frontInfo()]
+    case "raise":
+        return raise(try findWin(args.dropFirst().first))
+    case "move":
+        guard args.count >= 6, let x = Double(args[2]), let y = Double(args[3]),
+              let w = Double(args[4]), let h = Double(args[5]) else { throw HelperFail(msg: "사용법: winctl move <wid> <x> <y> <width> <height>") }
+        return try move(try findWin(args[1]), CGRect(x: x, y: y, width: w, height: h))
+    case "minimize":
+        let w = try findWin(args.dropFirst().first)
+        let e = AXUIElementSetAttributeValue(w.el, kAXMinimizedAttribute as CFString, kCFBooleanTrue)
+        return ["ok": e == .success]
+    case "close":
+        return close(try findWin(args.dropFirst().first))
+    default:
+        throw HelperFail(msg: "모르는 명령: \(args.first ?? "")")
+    }
+}
+
 let args = Array(CommandLine.arguments.dropFirst())
 guard let cmd = args.first else {
-    fail("사용법: winctl <trusted|displays|list|front|raise|move|minimize|close|watch|clicks> ...")
+    fail("사용법: winctl <trusted|displays|list|front|raise|move|minimize|close|watch|clicks|serve> ...")
 }
 
 switch cmd {
-case "trusted":
-    // --prompt: 권한이 없으면 macOS의 "손쉬운 사용 권한 요청" 창을 띄운다 (켜는 것은 사용자가 직접)
-    if args.contains("--prompt") {
-        let key = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
-        emit(["ok": true, "trusted": AXIsProcessTrustedWithOptions([key: true] as CFDictionary)])
-    } else {
-        emit(["ok": true, "trusted": AXIsProcessTrusted()])
-    }
-case "displays":
-    emit(["ok": true, "displays": displayList()])
-case "list":
-    var filter: String? = nil
-    if let i = args.firstIndex(of: "--app"), i + 1 < args.count { filter = args[i + 1] }
-    let ds = displayList()
-    emit(["ok": true, "windows": allWindows(appFilter: filter).map { winJSON($0, ds) }])
-case "front":
-    emit(["ok": true, "front": frontInfo()])
-case "raise":
-    emit(raise(findWin(args.dropFirst().first)))
-case "move":
-    guard args.count >= 6, let x = Double(args[2]), let y = Double(args[3]),
-          let w = Double(args[4]), let h = Double(args[5]) else { fail("사용법: winctl move <wid> <x> <y> <width> <height>") }
-    emit(move(findWin(args[1]), CGRect(x: x, y: y, width: w, height: h)))
-case "minimize":
-    let w = findWin(args.dropFirst().first)
-    let e = AXUIElementSetAttributeValue(w.el, kAXMinimizedAttribute as CFString, kCFBooleanTrue)
-    emit(["ok": e == .success])
-case "close":
-    emit(close(findWin(args.dropFirst().first)))
+case "serve":
+    // 계속 실행하며 명령을 한 줄씩 받는다: 받는 줄 = 인자 배열 JSON (["raise","123"]), 답 = 한 번 실행과 같은 JSON 한 줄.
+    // 명령마다 새 프로세스를 띄우면 시작에만 0.3초쯤 걸려서 (AppKit 읽기), 사이드바가 이것 하나를 켜 두고 쓴다.
+    // 처음에 {"ok":true,"serve":1}을 알린다 (이 줄이 없으면 사이드바는 예전처럼 명령마다 실행한다). 입력이 끝나면 끝난다.
+    setvbuf(stdout, nil, _IOLBF, 0)
+    emit(["ok": true, "serve": 1])
+    Thread {
+        while let line = readLine() {
+            // 명령은 메인 스레드에서 하나씩 (메인은 실행 고리를 돌려 프로그램 목록·맨 앞 프로그램이 새로 고쳐진다)
+            DispatchQueue.main.sync {
+                var res: [String: Any]
+                if let d = line.data(using: .utf8), let a = (try? JSONSerialization.jsonObject(with: d)) as? [Any] {
+                    do { res = try run(a.map { "\($0)" }) }
+                    catch let f as HelperFail { res = ["ok": false, "error": f.msg] }
+                    catch { res = ["ok": false, "error": "\(error)"] }
+                } else { res = ["ok": false, "error": "명령을 읽지 못했습니다"] }
+                emit(res)
+            }
+        }
+        exit(0)
+    }.start()
+    _ = Timer.scheduledTimer(withTimeInterval: 3600, repeats: true) { _ in }
+    RunLoop.main.run()
 case "watch":
     // 계속 실행하며 바뀐 것만 한 줄씩 알린다 (사이드바가 0.3초마다 새 프로세스를 띄우지 않도록)
     //   {"event":"front", "front":{...}}   맨 앞 창이 바뀔 때
-    //   {"event":"alive", "wids":[...]}    1.5초마다 살아 있는 창 번호 목록
+    //   {"event":"alive", "wids":[...]}    살아 있는 창 번호 목록 — 창이 생기거나 닫히거나 숨으면, 그리고 6초마다
+    // 0.3초마다 창 목록 서버(싸다)만 보고, 바뀌었을 때만 프로그램마다 접근성으로 묻는다.
+    // (전에는 0.3초마다 맨 앞 프로그램에, 1.5초마다 모든 프로그램에 물어 다른 프로그램들까지 계속 깨웠다)
     setvbuf(stdout, nil, _IOLBF, 0)
-    var lastFront = -1
+    var lastFront = -1, lastFrontSig: [Int] = [], lastFrontAt = Date.distantPast
+    var lastCG: [Int] = [], lastScanAt = Date.distantPast, recheck = false
     var tick = 0
     while true {
-        let f = frontInfo()
-        let wid = (f["wid"] as? Int) ?? 0
-        if wid != lastFront {
-            lastFront = wid
-            emit(["event": "front", "front": f])
+        let fs = frontSignature()
+        if fs != lastFrontSig || Date().timeIntervalSince(lastFrontAt) >= 1.5 {
+            lastFrontSig = fs; lastFrontAt = Date()
+            let f = frontInfo()
+            let wid = (f["wid"] as? Int) ?? 0
+            if wid != lastFront {
+                lastFront = wid
+                emit(["event": "front", "front": f])
+            }
         }
         if tick % 5 == 0 {
-            emit(["event": "alive", "wids": allWindows(appFilter: nil).map { Int($0.wid) }])
+            let sig = cgWindowSignature()
+            // 바뀐 직후 한 번 더 본다 (닫는 중인 창이 접근성 목록에서 조금 늦게 빠지는 프로그램이 있어서)
+            if sig != lastCG || recheck || Date().timeIntervalSince(lastScanAt) >= 6 {
+                recheck = sig != lastCG
+                lastCG = sig; lastScanAt = Date()
+                emit(["event": "alive", "wids": allWindows(appFilter: nil).map { Int($0.wid) }])
+            }
         }
         tick += 1
         settle(0.3)
@@ -406,5 +484,7 @@ case "clicks":
     emit(["event": "ready"])
     CFRunLoopRun()
 default:
-    fail("모르는 명령: \(cmd)")
+    do { emit(try run(args)) }
+    catch let f as HelperFail { fail(f.msg) }
+    catch { fail("\(error)") }
 }

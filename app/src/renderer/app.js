@@ -190,13 +190,16 @@ async function startPreviewStream(p){
     pvStream = s;
     const v = $('#preview-vid'); v.srcObject = s; v.play().catch(() => {});
     v.hidden = false; $('#preview-img').hidden = true; $('#preview-canvas').hidden = true;
+    $('#preview').title = '학생 화면 미리보기';
   } catch { /* 다음 켤 때 다시 */ }
 }
+$('#preview').addEventListener('click', () => api.act('previewNow'));   // 5초를 기다리지 않고 지금 다시 찍기
 api.onPreview?.(async p => {
   if (!p){ stopPreviewStream(); return; }
   if (p.stream) return startPreviewStream(p);
   const img = $('#preview-img'), cv = $('#preview-canvas');
   $('#preview-vid').hidden = true;
+  $('#preview').title = '학생 화면 · 5초마다 새로 찍습니다 (누르면 지금)';   // 맥: 5초마다 + 바뀐 뒤 바로 (main.js takePreview)
   if (typeof p === 'string'){ img.src = p; img.hidden = false; cv.hidden = true; return; }
   const W = 264, k = W / p.w;
   cv.width = W; cv.height = Math.round(p.h * k);
@@ -256,8 +259,9 @@ setInterval(() => {
 $('#tool-pointer').addEventListener('click', () => api.act('pointer', !S.tools?.pointer));
 $('#tool-spot').addEventListener('click', () => api.act('spot', !S.tools?.spot));
 $('#tool-pen').addEventListener('click', () => api.act('pen', !S.tools?.pen));
-$('#tool-zoom').addEventListener('click', () => api.act('zoom'));
-$('#tool-pin').addEventListener('click', () => api.act('pin'));
+// 사이드바 단추로 켜면 학생 화면(듀얼일 때)을, 단축키로 켜면 마우스가 있는 화면을 찍는다
+$('#tool-zoom').addEventListener('click', () => api.act('zoom', 'student'));
+$('#tool-pin').addEventListener('click', () => api.act('pin', 'student'));
 $('#pins-close').addEventListener('click', () => api.act('closePins'));
 $('#ax-open').addEventListener('click', () => api.act('axSettings'));
 // 모두 닫기는 한 번 더 눌러야 한다 (실수로 수업 중 창을 다 닫지 않게)
