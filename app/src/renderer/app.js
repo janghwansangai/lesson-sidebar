@@ -43,6 +43,13 @@ function render(){
   $('#tool-zoom').setAttribute('aria-pressed', String(S.tools?.grab === 'zoom'));
   $('#tool-pin').setAttribute('aria-pressed', String(S.tools?.grab === 'pick'));
   $('#pins-close').hidden = !S.tools?.pins;
+  // 녹화: 위쪽 빨간 막대(REC)와 경과 시간, 아래 단추
+  $('#recbar').hidden = !S.rec;
+  $('#record').textContent = S.rec ? '■ 녹화 끝내기' : '● 녹화';
+  $('#record').setAttribute('aria-pressed', String(!!S.rec));
+  if (S.rec){ $('#rec-where').textContent = `${S.rec.where}${S.rec.mic ? ' + 마이크' : ''}`; $('#rec-stop').disabled = !!S.rec.stopping; }
+  $('#rec-mic').checked = S.prefs?.recMic !== false;
+  $('#rec-light').checked = !!S.prefs?.recLight;
 
   $('#screens').innerHTML = S.dual
     ? `<div class="scr-line"><i class="scr-dot"></i>학생 화면: ${esc(S.studentName)}</div>
@@ -169,6 +176,15 @@ $('#aside').addEventListener('change', e => api.act('aside', e.target.checked));
 $('#offer').addEventListener('click', () => { if (S.offer) api.act(S.offer.act, S.offer.id); });
 $('#openall').addEventListener('click', () => api.act('openAll'));
 $('#hideothers').addEventListener('click', () => api.act('hideOthers'));
+$('#record').addEventListener('click', () => api.act('record'));
+$('#rec-stop').addEventListener('click', () => api.act('record'));
+$('#rec-mic').addEventListener('change', e => api.act('recMic', e.target.checked));
+$('#rec-light').addEventListener('change', e => api.act('recLight', e.target.checked));
+setInterval(() => {
+  if (!S?.rec) return;
+  const s = Math.floor((Date.now() - S.rec.since) / 1000), p = n => String(n).padStart(2, '0');
+  $('#rec-time').textContent = s >= 3600 ? `${Math.floor(s / 3600)}:${p(Math.floor(s % 3600 / 60))}:${p(s % 60)}` : `${p(Math.floor(s / 60))}:${p(s % 60)}`;
+}, 500);
 $('#tool-pointer').addEventListener('click', () => api.act('pointer', !S.tools?.pointer));
 $('#tool-spot').addEventListener('click', () => api.act('spot', !S.tools?.spot));
 $('#tool-zoom').addEventListener('click', () => api.act('zoom'));
