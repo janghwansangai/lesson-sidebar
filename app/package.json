@@ -1,7 +1,7 @@
 {
   "name": "lesson-sidebar",
   "productName": "수업 사이드바",
-  "version": "0.3.2",
+  "version": "0.3.4",
   "private": true,
   "description": "수업 사이드바 — 수업 자료를 원래 프로그램으로 열고 사이드바 하나로 창을 관리하는 프로그램",
   "type": "module",
@@ -136,6 +136,11 @@
     },
     "portable": {
       "artifactName": "lesson-sidebar-${version}-win-portable.${ext}"
+    },
+    "afterPack": "build/after-pack.cjs",
+    "electronFuses": {
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false
     },
     "afterSign": "build/sign-local.cjs"
   },
