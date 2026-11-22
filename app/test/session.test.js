@@ -586,3 +586,37 @@ test('손쉬운 사용 권한이 없으면 30초 기다리지 않고 바로 알�
   assert.ok(await s.keepAside() >= 1);            // 권한이 켜지면 바로 비킨다 (앞에서 연 PPT 창도 사이드바 아래라 함께)
   assert.equal(helper.wins.find(w => w.app === 'Finder').x, 280);
 });
+
+test('나란히 보기: 2개 7:3·3:7, 3개 3분할·큰 화면+2, 4개 4분할, 조절 바로 경계 옮기기', async () => {
+  const { s, helper } = makeSession();
+  let n = 0;
+  s.launcher.openInBrowser = async () => { helper.spawn('Chrome', `웹 ${n++}`); };
+  await s.refreshDisplays(); s.load(makeLesson());
+  const W = STUDENT.visible;   // 학생 화면 사용 영역 x=-1280, 폭 1280
+  const winOf = id => helper.wins.find(w => w.wid === s.state.get(id).wid);
+  // 2개 7:3
+  s.toggleSel('ppt'); s.toggleSel('web');
+  await s.split('7:3');
+  assert.deepEqual([winOf('ppt').x, winOf('ppt').width, winOf('web').x, winOf('web').width], [W.x, 896, W.x + 896, 384]);
+  assert.equal(s.tileDivider().x, W.x + 896);
+  // 조절 바로 경계를 가운데로
+  const r = await s.setTileRatio(0.5);
+  assert.equal(r, 0.5);
+  assert.equal(winOf('ppt').width, 640);
+  assert.equal(s.tileDivider().x, W.x + 640);
+  assert.equal(await s.setTileRatio(0.99), 0.85);     // 너무 끝으로는 안 간다
+  // 같은 창으로 배치만 3:7로
+  await s.relayout('3:7');
+  assert.equal(winOf('ppt').width, 384);
+  // 3개·4개
+  await s.untile();
+  s.toggleSel('ppt'); s.toggleSel('web'); s.toggleSel('memo');
+  await s.split('main2');
+  assert.equal(winOf('ppt').width, 768);              // 큰 화면 60%
+  assert.equal(winOf('web').height + winOf('memo').height, W.height);
+  await s.untile();
+  assert.equal(s.tileDivider(), null);
+  s.toggleSel('ppt'); s.toggleSel('web'); s.toggleSel('memo');
+  await s.split('thirds');
+  assert.deepEqual(s.tile.ids.length, 3);
+});

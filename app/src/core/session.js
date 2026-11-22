@@ -8,6 +8,13 @@ import { planAside } from './aside.js';
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const OPEN_TIMEOUT = 30000;
+// 나란히 보기 배치 (창 수별). key·c는 poc/lib/match.js tileRects
+const LAYOUTS = {
+  2: { half: { key: 'half', c: [0.5], label: '반반' }, '7:3': { key: 'half', c: [0.7], label: '7:3' }, '3:7': { key: 'half', c: [0.3], label: '3:7' } },
+  3: { thirds: { key: 'thirds', c: [1 / 3, 2 / 3], label: '3분할' }, main2: { key: 'main2', c: [0.6], label: '큰 화면 + 작은 2개' } },
+  4: { grid: { key: 'grid', c: [0.5], label: '4분할' } },
+};
+export const TILE_LAYOUTS = Object.fromEntries(Object.entries(LAYOUTS).map(([n, L]) => [n, Object.entries(L).map(([id, v]) => ({ id, label: v.label }))]));
 const ALIVE_GRACE = 4000;   // 막 연결한 창은 잠시 "사라짐" 판단에서 뺀다 (목록이 늦게 도착할 수 있어서)
 // 닫기 요청 뒤 저장 여부를 묻는 창이 뜰 때까지 기다리는 시간. 윈도우 엑셀은 2.5초 넘게 걸렸다 (docs/poc/windows.md 12)
 const CLOSE_WAIT = 6000;
@@ -424,14 +431,22 @@ export class Session extends EventEmitter {
   toggleSel(id){
     if (!this.state.has(id)) return;
     if (this.sel.includes(id)) this.sel = this.sel.filter(x => x !== id);
-    else if (this.sel.length >= 2) return this.say('체험판에서는 두 개까지 나란히 놓을 수 있습니다');
+    else if (this.sel.length >= 4) return this.say('네 개까지 나란히 놓을 수 있습니다');
     else this.sel = [...this.sel, id];
     this.changed();
   }
 
-  async split(){
-    const ids = this.sel.slice(0, 2);
-    if (ids.length < 2) return this.say('나란히 놓을 자료 두 개를 고르세요');
+  /**
+   * 고른 창 2~4개를 한 화면(듀얼이면 학생 화면)에 나란히 놓는다.
+   * layout: 2개 'half'(반반)·'7:3'·'3:7', 3개 'thirds'(3분할)·'main2'(큰 화면+작은 2개), 4개 'grid'(4분할)
+   * 첫 번째 세로 경계 비율(c[0])은 조절 바로 바꿀 수 있다 (setTileRatio).
+   */
+  async split(layout){
+    const ids = this.sel.slice(0, 4);
+    const n = ids.length;
+    if (n < 2) return this.say('나란히 놓을 자료를 두 개 이상 고르세요');
+    const L = LAYOUTS[n];
+    if (!L[layout]) layout = Object.keys(L)[0];
     for (const id of ids){
       if (this.state.get(id).status !== 'open') await this.open(id, { raise: false, quiet: true });
     }
@@ -439,26 +454,56 @@ export class Session extends EventEmitter {
     if (wids.some(w => !w)) return this.say('나란히 놓을 창을 열지 못했습니다');
     const where = this.dual ? 'student' : 'teacher';
     const area = this.area(where);
-    let [ra, rb] = M.tileRects(area, 'half');
-    let a = await this.moveWid(wids[0], ra), b = await this.moveWid(wids[1], rb);
-    let note = '';
-    if (!(M.rectClose(a, ra, 24) && M.rectClose(b, rb, 24))){
-      // 프로그램 최소 폭보다 좁게는 안 줄어든다 → 그 폭에서 멈추게 비율 조정
-      const minA = a.width > ra.width + 24 ? a.width : 0, minB = b.width > rb.width + 24 ? b.width : 0;
-      const f = M.fitRatio(area.width, 0.5, minA, minB);
-      if (f !== null){
-        [ra, rb] = M.tileRects(area, 'half', [f]);
-        await this.moveWid(wids[0], ra); await this.moveWid(wids[1], rb);
-        note = ' (프로그램 최소 폭 때문에 비율을 조정)';
-      }
-    }
+    const { key, c } = L[layout];
+    this.tile = { ids, wids, where, layout, key, c: [...c], area };
+    const note = await this.applyTile(true);
     for (const id of ids){ const st = this.state.get(id); st.disp = where; st.home = where; }
-    await this.raiseWid(wids[1]);
-    await this.raiseWid(wids[0]);
-    this.tile = { ids, where };
+    for (const w of [...wids].reverse()) await this.raiseWid(w);
     this.sel = [];
     this.highlight = ids[0];
-    this.say(`두 창을 ${this.dual ? '학생 화면에 ' : ''}나란히 놓았습니다${note}`);
+    this.say(`${n}개 창을 ${this.dual ? '학생 화면에 ' : ''}${L[layout].label} 배치로 놓았습니다${note} · 창 사이 막대를 끌면 폭을 바꿀 수 있습니다`);
+  }
+
+  /** 나란히 보는 중에 배치만 바꾼다 (같은 창들로) */
+  async relayout(layout){
+    if (!this.tile) return;
+    this.sel = [...this.tile.ids];
+    return this.split(layout);
+  }
+
+  /** this.tile대로 창을 옮긴다. fit이면 프로그램 최소 폭 때문에 안 맞을 때 첫 경계 비율을 조정한다 (2개 배치). */
+  async applyTile(fit = false){
+    const t = this.tile; if (!t) return '';
+    let rects = M.tileRects(t.area, t.key, t.c);
+    const got = [];
+    for (let i = 0; i < t.wids.length; i++) got.push(await this.moveWid(t.wids[i], rects[i]).catch(() => null));
+    if (!fit || t.wids.length !== 2 || got.every((g, i) => !g || M.rectClose(g, rects[i], 24))) return '';
+    // 프로그램 최소 폭보다 좁게는 안 줄어든다 → 그 폭에서 멈추게 비율 조정
+    const minA = got[0] && got[0].width > rects[0].width + 24 ? got[0].width : 0;
+    const minB = got[1] && got[1].width > rects[1].width + 24 ? got[1].width : 0;
+    const f = M.fitRatio(t.area.width, t.c[0], minA, minB);
+    if (f === null) return '';
+    t.c[0] = f; t.minA = minA; t.minB = minB;
+    rects = M.tileRects(t.area, t.key, t.c);
+    for (let i = 0; i < 2; i++) await this.moveWid(t.wids[i], rects[i]).catch(() => null);
+    return ' (프로그램 최소 폭 때문에 비율을 조정)';
+  }
+
+  /** 조절 바로 첫 세로 경계를 옮긴다. ratio: 0~1 (화면 왼쪽부터). 실제로 쓴 비율을 돌려준다. */
+  async setTileRatio(ratio){
+    const t = this.tile; if (!t) return null;
+    let r = Math.min(0.85, Math.max(0.15, ratio));
+    if (t.key === 'thirds') r = Math.min(r, t.c[1] - 0.1);
+    if (t.wids.length === 2) r = M.fitRatio(t.area.width, r, t.minA ?? 0, t.minB ?? 0) ?? r;
+    t.c[0] = r;
+    await this.applyTile();
+    return r;
+  }
+
+  /** 조절 바를 놓을 곳: 첫 세로 경계 (도우미 좌표). 나란히 보는 중이 아니면 null */
+  tileDivider(){
+    const t = this.tile; if (!t) return null;
+    return { x: Math.round(t.area.x + t.area.width * t.c[0]), y: t.area.y, height: t.area.height, area: t.area };
   }
 
   async untile(){
@@ -679,7 +724,7 @@ export class Session extends EventEmitter {
           items: s.items.map(it => ({ id: it.id, title: it.title, type: it.type, start: it.start, app: this.appLabel(it), home: this.home(it), problem: it.problem })) })),
       } : null,
       state: Object.fromEntries([...this.state].map(([id, st]) => [id, { status: st.status, disp: st.disp, note: st.note }])),
-      highlight: this.highlight, sel: this.sel, tile: this.tile ? { ids: this.tile.ids } : null,
+      highlight: this.highlight, sel: this.sel, tile: this.tile ? { ids: this.tile.ids, layout: this.tile.layout } : null, layouts: TILE_LAYOUTS,
       dual: this.dual, studentName: this.student?.name ?? null, teacherName: this.teacher?.name ?? null,
       openTo: this.openTo, autoHide: this.autoHide, msg: this.msg,
       offer: this.offer ? { act: this.offer.act, id: this.offer.id, label: this.offer.label } : null,
