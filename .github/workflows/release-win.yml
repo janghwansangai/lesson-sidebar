@@ -26,11 +26,14 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 45
     env:
-      GH_TOKEN: ${{ github.token }}
       TAG: ${{ inputs.tag }}
+      # GH_TOKEN은 gh를 쓰는 두 단계에만 준다 — 만드는 단계에 있으면 electron-builder가 GitHub로 올릴 것으로 보고
+      # 업데이트 정보를 만들다 'Cannot read properties of null (reading 'channel')'로 멈췄다 (2026-11-23 첫 실행)
     steps:
       - name: 초안 Release와 그 코드 확인
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -e
           draft=$(gh release view "$TAG" -R "$GITHUB_REPOSITORY" --json isDraft -q .isDraft)
@@ -96,6 +99,8 @@ jobs:
       - name: 초안 Release에 올리기
         shell: bash
         working-directory: app
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -e
           v=${TAG#v}
