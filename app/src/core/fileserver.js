@@ -41,11 +41,12 @@ export async function startFileServer(getRoot){
       start = Math.max(0, start); end = Math.min(st.size - 1, end);
       if (start > end){ res.writeHead(416, { 'Content-Range': `bytes */${st.size}` }); res.end(); return; }
       res.writeHead(206, { ...head, 'Content-Range': `bytes ${start}-${end}/${st.size}`, 'Content-Length': end - start + 1 });
-      createReadStream(abs, { start, end }).pipe(res);
+      // 읽는 도중 파일이 사라지거나 잠기면(동기화 중 등) 연결만 끊는다 — 오류를 그냥 두면 메인 프로세스 오류가 된다
+      createReadStream(abs, { start, end }).on('error', () => res.destroy()).pipe(res);
       return;
     }
     res.writeHead(200, { ...head, 'Content-Length': st.size });
-    createReadStream(abs).pipe(res);
+    createReadStream(abs).on('error', () => res.destroy()).pipe(res);
   });
   await new Promise((resolve, reject) => {
     server.once('error', reject);

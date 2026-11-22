@@ -32,6 +32,12 @@ test('새 버전이면 내려받을 주소, 같거나 없거나 미리보기판�
   const rel = { tag_name: 'v0.2.0', html_url: 'https://github.com/janghwansangai/lesson-sidebar/releases/tag/v0.2.0', body: '발표자 화면', assets };
   const u = await checkUpdate('0.1.0', { fetchFn: fake(200, rel), platform: 'darwin', arch: 'arm64' });
   assert.equal(u.version, '0.2.0'); assert.match(u.url, /mac-arm64\.dmg$/); assert.equal(u.notes, '발표자 화면');
+  assert.equal(u.sha256, null);   // 지문이 없으면 크기만 확인
+  const dg = 'sha256:' + 'Ab'.repeat(32);
+  const withDigest = await checkUpdate('0.1.0', { fetchFn: fake(200, { ...rel, assets: assets.map(a => ({ ...a, digest: dg })) }), platform: 'darwin', arch: 'arm64' });
+  assert.equal(withDigest.sha256, 'ab'.repeat(32));
+  const badDigest = await checkUpdate('0.1.0', { fetchFn: fake(200, { ...rel, assets: assets.map(a => ({ ...a, digest: 'md5:xyz' })) }), platform: 'darwin', arch: 'arm64' });
+  assert.equal(badDigest.sha256, null);
   assert.equal(await checkUpdate('0.2.0', { fetchFn: fake(200, rel) }), null);
   assert.equal(await checkUpdate('0.1.0', { fetchFn: fake(404, {}) }), null);
   assert.equal(await checkUpdate('0.1.0', { fetchFn: fake(200, { ...rel, prerelease: true }) }), null);

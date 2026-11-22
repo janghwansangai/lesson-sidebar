@@ -50,3 +50,19 @@ test('갈아 끼우기: 사이드바가 끝나면 새 앱으로 바꾸고 옛 �
   assert.equal(readFileSync(path.join(old[0], 'v'), 'utf8'), '0.3.1');
   rmSync(dir, { recursive: true, force: true });
 });
+
+test('받기: SHA-256 지문이 다르면 오류 (깨지거나 바뀐 설치 파일을 실행하지 않게)', async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'upd-'));
+  const good = 'bef57ec7f53a6d40beb640a780a639c83bc29ac8a9816f1fc6c5c6dcd93c4721';   // sha256('abcdef')
+  assert.equal(await download('https://x/a.exe', path.join(dir, 'a.exe'), { fetchFn: fakeFetch(['abc', 'def']), sha256: good }), 6);
+  assert.equal(await download('https://x/b.exe', path.join(dir, 'b.exe'), { fetchFn: fakeFetch(['abcdef']), sha256: good.toUpperCase() }), 6);
+  await assert.rejects(download('https://x/c.exe', path.join(dir, 'c.exe'), { fetchFn: fakeFetch(['abcdeX']), sha256: good }), /지문/);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('윈도우 설치 실행: cmd에서 풀리는 % · 따옴표가 든 경로와 .exe가 아닌 파일은 거절', async () => {
+  const { startWinInstaller } = await import('../src/core/selfupdate.js');
+  assert.throws(() => startWinInstaller('C:\Temp\%PATH%\setup.exe'), /쓸 수 없습니다/);
+  assert.throws(() => startWinInstaller('C:\Temp\a"b\setup.exe'), /쓸 수 없습니다/);
+  assert.throws(() => startWinInstaller('C:\Temp\setup.bat'), /쓸 수 없습니다/);
+});

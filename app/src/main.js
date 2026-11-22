@@ -1,7 +1,7 @@
 // 수업 사이드바 체험판 — Electron 시작점 (맥·윈도우)
 // 사이드바 창(교사 화면 왼쪽)과 수업 준비 창을 띄우고, 수업 진행 로직(Session)·수업 편집(LessonDoc)과 잇는다.
 import { app, BrowserWindow, ipcMain, screen, dialog, shell, net, globalShortcut, desktopCapturer, systemPreferences, session as eSession } from 'electron';
-import { mkdtempSync, rmSync, readFileSync, writeFileSync, mkdirSync, existsSync, statSync, cpSync, createReadStream, statfsSync, openSync, writeSync, closeSync, renameSync, copyFileSync, unlinkSync, readdirSync } from 'node:fs';
+import { appendFileSync, mkdtempSync, rmSync, readFileSync, writeFileSync, mkdirSync, existsSync, statSync, cpSync, createReadStream, statfsSync, openSync, writeSync, closeSync, renameSync, copyFileSync, unlinkSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import http from 'node:http';
@@ -74,6 +74,7 @@ function sampleLesson(){
 let trustTimer = null;
 function watchTrust(){
   clearInterval(trustTimer);
+  if (IS_WIN) return;   // 윈도우는 창을 다루는 데 권한이 필요 없다 (도우미 'trusted'는 늘 true) — 5초마다 묻지 않는다
   trustTimer = setInterval(async () => {
     let ok = session.trusted;
     try { ok = (await helper.call('trusted')).trusted; } catch { /* 다음에 다시 */ }
@@ -180,6 +181,8 @@ function createSidebar(){
   lockDown(win);
   win.loadFile(path.join(HERE, 'renderer', 'index.html'));
   win.once('ready-to-show', () => win.show());
+  // 화면(렌더러)이 죽으면 사이드바가 빈 창으로 남는다 → 기록하고 다시 읽는다
+  win.webContents.on('render-process-gone', (_e, d) => { logError('sidebar-gone', d.reason); if (d.reason !== 'clean-exit' && win && !win.isDestroyed()) setTimeout(() => win?.webContents.reload(), 500); });
   win.on('closed', () => { win = null; });
 }
 
@@ -285,18 +288,34 @@ function overlayFor(d){
       w.webContents.send('overlay:state', { ...tools, grab: grab && grab.display.id === d.id ? grab.payload : null });
       lastCur = null; curIn = null;
     });
+    // 겹침 창 화면이 죽으면 버린다 (다음에 도구를 켜면 새로 만든다)
+    w.webContents.on('render-process-gone', (_e, info) => { logError('overlay-gone', info.reason); if (overlays.get(d.id) === w) overlays.delete(d.id); if (!w.isDestroyed()) w.destroy(); });
     overlays.set(d.id, w);
   }
   w.setBounds(d.bounds);
   return w;
+}
+// 도구를 다 끄고 1분이 지나면 겹침 창을 닫아 메모리를 돌려준다 (화면마다 화면 크기 투명 창이라 윈도우에서 약 260MB).
+// 다시 켜면 새로 만든다 (0.3초쯤)
+let overlayFree = null;
+function freeOverlaysLater(){
+  clearTimeout(overlayFree);
+  overlayFree = setTimeout(() => {
+    overlayFree = null;
+    if (tools.pointer || tools.spot || tools.pen || grab) return;
+    for (const w of overlays.values()) if (!w.isDestroyed()) w.destroy();
+    overlays.clear();
+  }, 60000);
 }
 function syncTools(){
   const on = tools.pointer || tools.spot || tools.pen;
   const grabsMouse = tools.spot || tools.pen;
   clearInterval(toolTimer); toolTimer = null;
   syncClicks();
+  if (on || grab){ clearTimeout(overlayFree); overlayFree = null; }
   if (!on){
     for (const w of overlays.values()) if (!w.isDestroyed()){ w.webContents.send('overlay:state', tools); w.hide(); }   // 끈 것을 알려 판서도 지운다
+    if (!grab) freeOverlaysLater();
     globalShortcut.unregister('Escape');
     push();
     return;
@@ -315,7 +334,8 @@ function syncTools(){
   if (tools.pen && inkFor === null) inkFor = session.highlight ?? '';
   if (!tools.pen) inkFor = null;
   lastCur = null; curIn = null;
-  toolTimer = setInterval(sendCursor, 16);
+  // 겹침 창이 자기 화면의 마우스 움직임을 직접 받으므로, 여기는 화면을 옮겼는지·사이드바 위인지만 보면 된다 → 30번/초면 충분 (60번/초는 메인 CPU 1%)
+  toolTimer = setInterval(sendCursor, 33);
   push();
 }
 // 겹침 창은 자기 화면 안의 마우스 움직임을 직접 받아 원을 옮긴다. 여기서는 어느 화면에 있는지와
@@ -567,7 +587,9 @@ async function syncPreviewStream(want){
 }
 function syncPreview(){
   const want = previewOn && session?.dual && screenAccess() === 'granted' && !!win;
-  if (IS_WIN) return syncPreviewStream(want);   // 윈도우는 영상으로 (windows.md) — 맥은 아래처럼 5초마다 찍기
+  // 윈도우는 영상(초당 1장)으로 — 찍을 때마다 화면 복제(DXGI)를 새로 시작해 5초마다 한 장 찍기가 오히려 무겁다
+  // (코어 하나 기준 5초마다 찍기 7.5%, 영상 초당 1장 2.2%, 0.2장도 2.7% — windows.md "최종 점검"). 사이드바가 접혀 있으면 영상을 끈다
+  if (IS_WIN) return syncPreviewStream(want && !collapsed);   // 맥은 아래처럼 5초마다 찍기
   if (!want){
     if (previewLive){ previewLive = false; clearTimeout(previewT); previewT = null; win?.webContents.send('preview', null); }
     return;
@@ -648,6 +670,14 @@ async function startRecording(){
   // 소리 섞기(AudioContext)가 보이지 않는 창에서도 멈추지 않게 자동 재생 제한을 푼다
   rec.recWin = new BrowserWindow({ show: false, webPreferences: { ...SECURE('recorder-preload.cjs'), autoplayPolicy: 'no-user-gesture-required', backgroundThrottling: false } });
   lockDown(rec.recWin);
+  // 녹화 창이 죽으면 녹화가 멈춘 채 "녹화 중"으로 남는다 → 그때까지 받은 부분을 저장하고 알린다
+  const thisRec = rec;
+  rec.recWin.webContents.on('render-process-gone', (_e, d) => {
+    logError('recorder-gone', d.reason);
+    if (rec !== thisRec) return;
+    session.say('녹화가 예기치 않게 멈췄습니다 · 그때까지 녹화된 부분을 저장합니다');
+    setImmediate(finishRecording);
+  });
   await rec.recWin.loadFile(path.join(HERE, 'renderer', 'recorder.html'));
   // 컴퓨터 소리: 녹화 창이 getDisplayMedia로 소리만 받는다 (이 창의 요청에만 같은 화면 + 'loopback'을 준다)
   const recWc = rec.recWin.webContents;
@@ -1053,7 +1083,7 @@ async function installUpdate(){
     const file = path.join(dir, path.basename(new URL(u.url).pathname));
     u.phase = 'downloading'; u.pct = 0; push();
     let shown = 0;
-    await download(u.url, file, { fetchFn: net.fetch, expected: u.size, onProgress: pct => { u.pct = pct; if (Date.now() - shown > 400){ shown = Date.now(); push(); } } });
+    await download(u.url, file, { fetchFn: net.fetch, expected: u.size, sha256: u.sha256 ?? null, onProgress: pct => { u.pct = pct; if (Date.now() - shown > 400){ shown = Date.now(); push(); } } });
     u.phase = 'installing'; push();
     if (process.platform === 'darwin'){
       const staged = await stageMacUpdate(file, { currentApp: macApp, version: u.version, workDir: dir });
@@ -1556,7 +1586,7 @@ async function act(action, arg){
   return true;
 }
 
-ipcMain.handle('state', () => fullState());
+ipcMain.handle('state', e => (e.sender === win?.webContents ? fullState() : null));   // 사이드바 화면에만 (휴대폰 열쇠가 든 주소도 담겨 있다)
 ipcMain.handle('act', (e, action, arg) => {
   if (e.sender !== win?.webContents) return false;
   act(action, arg).catch(err => session.say(err.message));
@@ -1641,6 +1671,21 @@ async function startDebugServer(){
 }
 
 // ---------- 시작 ----------
+// ---------- 예상하지 못한 오류 ----------
+// 수업 중에 "JavaScript 오류" 창이 뜨지 않게, 잡지 못한 오류는 설정 폴더 logs/errors.log에 남기고 계속 동작한다 (파일은 1MB까지)
+function logError(kind, e){
+  try {
+    const dir = app.getPath('logs'); mkdirSync(dir, { recursive: true });
+    const f = path.join(dir, 'errors.log');
+    if (mtimeOf(f) && statSync(f).size > 1 << 20) writeFileSync(f, '');
+    appendFileSync(f, `${new Date().toISOString()} ${app.getVersion()} ${kind}: ${e?.stack ?? e}
+`);
+  } catch { /* 기록도 못 하면 그냥 넘어감 */ }
+}
+process.on('uncaughtException', e => logError('uncaught', e));
+process.on('unhandledRejection', e => logError('unhandled', e));
+app.on('child-process-gone', (_e, d) => { if (d.reason !== 'clean-exit') logError('child-gone', `${d.type} ${d.reason} ${d.exitCode}`); });
+
 app.on('second-instance', () => { if (!win) return; collapsed = false; placeSidebar(); win.showInactive(); push(); });
 
 app.whenReady().then(async () => {
