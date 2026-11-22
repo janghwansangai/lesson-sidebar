@@ -45,7 +45,8 @@ function render(){
   $('#pins-close').hidden = !S.tools?.pins;
   // 녹화: 위쪽 빨간 막대(REC)와 경과 시간, 아래 단추
   $('#recbar').hidden = !S.rec;
-  $('#record').textContent = S.rec ? '■ 녹화 끝내기' : '● 녹화';
+  $('#record').dataset.tip = S.rec ? '녹화 끝내기|지금까지 녹화한 것을 수업 폴더 _녹화에 저장합니다' : '녹화|학생 화면(모니터 한 대면 이 화면)을 녹화합니다. 자료를 바꿀 때마다 목차를 남깁니다';
+  $('#record').setAttribute('aria-label', S.rec ? '녹화 끝내기' : '녹화');
   $('#record').setAttribute('aria-pressed', String(!!S.rec));
   if (S.rec){ $('#rec-where').textContent = `${S.rec.where}${S.rec.mic ? ' + 마이크' : ''}`; $('#rec-stop').disabled = !!S.rec.stopping; }
   $('#rec-mic').checked = S.prefs?.recMic !== false;
@@ -215,9 +216,9 @@ $('#ax-open').addEventListener('click', () => api.act('axSettings'));
 let closeArm = 0;
 $('#closeall').addEventListener('click', e => {
   const b = e.currentTarget;
-  if (Date.now() - closeArm < 4000){ closeArm = 0; b.textContent = '사이드바가 연 창 모두 닫기'; b.classList.remove('arm'); return api.act('closeAll'); }
-  closeArm = Date.now(); b.textContent = '한 번 더 누르면 모두 닫습니다'; b.classList.add('arm');
-  setTimeout(() => { if (Date.now() - closeArm >= 3900){ b.textContent = '사이드바가 연 창 모두 닫기'; b.classList.remove('arm'); } }, 4000);
+  if (Date.now() - closeArm < 4000){ closeArm = 0; b.textContent = '모두 닫기'; b.classList.remove('arm'); return api.act('closeAll'); }
+  closeArm = Date.now(); b.textContent = '한 번 더'; b.classList.add('arm');
+  setTimeout(() => { if (Date.now() - closeArm >= 3900){ b.textContent = '모두 닫기'; b.classList.remove('arm'); } }, 4000);
 });
 $('#upd-get').addEventListener('click', () => api.act('getUpdate'));
 $('#upd-later').addEventListener('click', () => api.act('dismissUpdate'));
@@ -229,6 +230,31 @@ $('#rm-toggleqr').addEventListener('click', () => api.act('remoteQr', !S.remote?
 $('#rm-new').addEventListener('click', () => api.act('remoteNew'));
 $('#folder').addEventListener('click', () => api.act('prep'));
 $('#quit').addEventListener('click', () => api.act('quit'));
+
+// 마우스를 올리면 이름과 설명 (아이콘 단추용). 사이드바 창 밖으로 나가지 않게 위·아래·좌우를 맞춘다
+const tip = $('#tip');
+let tipFor = null, tipTimer = 0;
+function showTip(el){
+  const [name, desc] = (el.dataset.tip ?? '').split('|');
+  tip.querySelector('b').textContent = name; tip.querySelector('span').textContent = desc ?? '';
+  tip.hidden = false;
+  const r = el.getBoundingClientRect(), w = tip.offsetWidth, h = tip.offsetHeight;
+  const x = Math.max(6, Math.min(window.innerWidth - w - 6, r.left + r.width / 2 - w / 2));
+  const y = r.top - h - 8 >= 4 ? r.top - h - 8 : r.bottom + 8;
+  tip.style.left = `${x}px`; tip.style.top = `${y}px`;
+}
+function hideTip(){ clearTimeout(tipTimer); tipFor = null; tip.hidden = true; }
+document.addEventListener('mouseover', e => {
+  const el = e.target.closest('[data-tip]');
+  if (el === tipFor) return;
+  hideTip();
+  if (!el) return;
+  tipFor = el; tipTimer = setTimeout(() => showTip(el), 350);
+});
+document.addEventListener('mouseleave', hideTip);
+document.addEventListener('mousedown', hideTip);
+document.addEventListener('focusin', e => { const el = e.target.closest('[data-tip]'); if (el?.matches(':focus-visible')){ tipFor = el; showTip(el); } });
+document.addEventListener('focusout', hideTip);
 
 api.onState(s => { S = s; render(); });
 api.state().then(s => { S = s; render(); });

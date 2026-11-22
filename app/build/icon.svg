@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!-- 수업 사이드바 앱 아이콘: 칠판 + 왼쪽 노란 사이드바(자료 목록) + 분필로 그린 수업 화면 + 분필 받침
+       맥 아이콘 격자(1024 안에 824 둥근 사각형)에 맞춤. 이 파일을 고친 뒤 npm run icon -->
+  <defs>
+    <linearGradient id="board" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2f5248"/>
+      <stop offset="1" stop-color="#1b2f2a"/>
+    </linearGradient>
+    <linearGradient id="frame" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#c99a62"/>
+      <stop offset="1" stop-color="#9a6d3c"/>
+    </linearGradient>
+    <linearGradient id="strip" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#f6d877"/>
+      <stop offset="1" stop-color="#eec24a"/>
+    </linearGradient>
+    <filter id="soft" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="14" stdDeviation="16" flood-color="#000" flood-opacity=".28"/>
+    </filter>
+  </defs>
+
+  <!-- 나무 테두리 -->
+  <rect x="100" y="100" width="824" height="824" rx="186" fill="url(#frame)" filter="url(#soft)"/>
+  <!-- 칠판 -->
+  <rect x="136" y="136" width="752" height="680" rx="150" fill="url(#board)"/>
+  <!-- 분필 자국(희미한 지운 흔적) -->
+  <path d="M560 250c80-18 170-10 230 20M520 700c90 10 180-4 250-36" stroke="#edf3ee" stroke-opacity=".07" stroke-width="34" stroke-linecap="round" fill="none"/>
+
+  <!-- 왼쪽 사이드바: 노란 띠 + 자료 목록 -->
+  <path d="M136 286a150 150 0 0 1 150-150h80v680h-80a150 150 0 0 1-150-150z" fill="url(#strip)"/>
+  <g fill="#1b2f2a">
+    <circle cx="214" cy="286" r="19"/><rect x="248" y="275" width="78" height="22" rx="11"/>
+    <circle cx="214" cy="380" r="19"/><rect x="248" y="369" width="62" height="22" rx="11"/>
+    <circle cx="214" cy="566" r="19"/><rect x="248" y="555" width="70" height="22" rx="11"/>
+    <circle cx="214" cy="660" r="19"/><rect x="248" y="649" width="54" height="22" rx="11"/>
+  </g>
+  <!-- 지금 보는 자료 (강조) -->
+  <rect x="176" y="436" width="214" height="88" rx="26" fill="#1b2f2a"/>
+  <path d="M214 456l34 24-34 24z" fill="#f2cd5c"/>
+  <rect x="268" y="469" width="96" height="22" rx="11" fill="#f2cd5c"/>
+
+  <!-- 분필로 그린 수업 화면: 슬라이드 + 막대그래프 + 체크 -->
+  <g fill="none" stroke="#edf3ee" stroke-width="20" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="452" y="248" width="352" height="248" rx="26"/>
+    <path d="M512 440v-56M584 440v-104M656 440v-76M728 440v-132" stroke="#f2cd5c" stroke-width="30"/>
+    <path d="M474 590h220M474 662h150" stroke-opacity=".85"/>
+    <path d="M716 640l36 36 66-84" stroke="#6fd39b" stroke-width="26"/>
+  </g>
+
+  <!-- 분필 받침과 분필 -->
+  <rect x="190" y="826" width="644" height="34" rx="17" fill="#7d552d"/>
+  <rect x="596" y="808" width="132" height="30" rx="15" fill="#f7f4ea" transform="rotate(-6 662 823)"/>
+  <rect x="430" y="814" width="92" height="26" rx="13" fill="#f2cd5c" transform="rotate(4 476 827)"/>
+</svg>
