@@ -17,6 +17,28 @@ npm run smoke:mac           # 만든 앱을 켜서 예시 수업·준비 화면�
 - 지금은 Apple Silicon(M 칩) 맥용만 만들고, 개발자 등록 없이 임시 서명합니다. 그래서 **새 버전을 설치할 때마다 손쉬운 사용 권한을 다시 켜야** 할 수 있습니다. 목록에서 "수업 사이드바"를 끄고 다시 켜거나, −로 지운 뒤 다시 추가합니다. 다른 맥에 옮겨 처음 열 때는 "확인되지 않은 개발자" 경고가 뜹니다. 그때는 앱을 오른쪽 클릭 → 열기를 누릅니다.
 - 앱 안쪽 실행 파일 이름은 영어(`LessonSidebar`)입니다. 한글이면 Electron이 켜지다 멈추기 때문입니다. 화면에 보이는 이름은 `build/ko.lproj/InfoPlist.strings`의 "수업 사이드바"입니다.
 
+## 설치판 (윈도우, 더블클릭으로 설치·켜기)
+```powershell
+cd app
+npm install                 # 처음 한 번
+npm run dist:win            # 도우미 준비 + dist\lesson-sidebar-<버전>-win-setup.exe (설치 파일)
+                            #              + dist\lesson-sidebar-<버전>-win-portable.exe (설치 없이 켜는 파일)
+npm run dist:win:dir        # 설치 파일 없이 앱 폴더만 (dist\win-unpacked\LessonSidebar.exe)
+npm run smoke:win           # 만든 앱을 켜서 도우미·예시 수업·준비 화면이 되는지 확인
+```
+설치하기: `lesson-sidebar-<버전>-win-setup.exe`를 더블클릭합니다. 물어보는 것 없이 바로 설치되고 사이드바가 켜집니다.
+- **관리자 권한이 필요 없습니다.** 내 사용자 폴더(`%LOCALAPPDATA%\Programs\lesson-sidebar`)에 설치되고, 바탕 화면과 시작 메뉴에 "수업 사이드바" 바로 가기가 생깁니다.
+- 다른 PC로 옮긴 설치 파일(인터넷·메신저·USB로 받은 파일)을 처음 열면 **"Windows의 PC 보호"**(파란 창, SmartScreen) 경고가 뜰 수 있습니다. 코드 서명(회사 인증서)을 하지 않았기 때문입니다. **"추가 정보"**를 누르면 나오는 **"실행"** 단추를 누릅니다. 보안 설정은 바꾸지 않아도 됩니다. 학교 PC가 이 단추를 막아 두었으면 정보 담당 선생님께 문의하거나 아래 "설치 없이 켜는 파일"을 씁니다 (같은 경고가 뜰 수 있음).
+- **설치 없이 켜는 파일** `lesson-sidebar-<버전>-win-portable.exe`: 설치하지 않고 더블클릭으로 바로 켭니다 (USB에 넣어 다니거나 설치가 막힌 PC용). 켤 때마다 임시 폴더에 풀어서 설치판보다 늦게 뜹니다 (이 노트북에서 설치판 약 1초, 설치 없이 켜는 파일 약 9초). 설정은 설치판과 같은 곳에 저장됩니다.
+- 설정은 `%APPDATA%\수업 사이드바\`에 저장됩니다. 예시 수업은 그 안의 `체험용 수업` 폴더로 복사해서 씁니다. 개발용(`npm start`, `app\.userdata\`)과 따로라서 **둘을 함께 켜면 사이드바가 두 개** 뜹니다.
+- 작업 표시줄에는 보이지 않습니다. 끄려면 사이드바 아래 "끝내기"를 누릅니다. 바로 가기를 다시 눌러도 사이드바는 하나만 뜹니다 (접혀 있으면 펼침).
+- 지우기: 설정 → 앱 → 설치된 앱 → "수업 사이드바" → ⋯ → 제거. "LessonSidebar을(를) 제거 하시겠습니까?"(설치 프로그램은 안쪽 영어 이름을 씀)에 확인을 누릅니다. 수업 폴더와 `%APPDATA%\수업 사이드바\`(설정)는 지우지 않으므로 다시 설치하면 그대로 이어집니다.
+- 새 버전 설치: 사이드바를 "끝내기"로 끈 뒤 새 설치 파일을 더블클릭합니다. 켜 둔 채 설치하면 "LessonSidebar이(가) 실행 중입니다. OK을 클릭하면 종료됩니다."가 뜨고, OK를 누르면 설치 프로그램이 사이드바에 끄기를 요청하고 1초 뒤에도 남아 있으면 강제로 끕니다. 그러면 "창 비키기"로 옮겼던 창이 제자리로 돌아가지 않을 수 있습니다.
+- 창 관리 도우미(`poc/win-helper/winctl.js`와 `koffi`)는 앱 안 `resources\win-helper`에 들어 있고, 앱 실행 파일(`LessonSidebar.exe`)을 Node로 돌려서(`ELECTRON_RUN_AS_NODE`) 실행합니다. 그래서 Electron fuses(실행 파일의 기능 끄기 설정)의 `RunAsNode`를 끄면 안 됩니다 (`package.json`의 `build`에 `electronFuses`를 넣지 않음). `npm run smoke:win`이 이것까지 확인합니다.
+- 실행 파일 이름은 맥처럼 영어(`LessonSidebar.exe`)이고, 바로 가기·제거 목록에 보이는 이름은 "수업 사이드바"(`nsis.shortcutName`·`uninstallDisplayName`)입니다. 작업 관리자에는 `LessonSidebar`로 보입니다. 아이콘은 아직 Electron 기본 아이콘입니다.
+- 지금은 64비트(x64) 윈도우용만 만듭니다 (ARM 윈도우 노트북에서도 에뮬레이션으로 돌아갈 수 있지만 확인하지 않음).
+- `npm install` 때 "allow-scripts" 경고가 나와도 괜찮습니다: `electron-winstaller`(쓰지 않는 다른 설치 방식 Squirrel용)와 `koffi`(미리 만든 파일이 이미 들어 있음)의 설치 스크립트가 막힌 것인데, 이 설치판에는 둘 다 필요 없어 허용하지 않았습니다 (`npm approve-scripts --allow-scripts-pending`으로 목록 확인).
+
 ## 실행 (개발용, 맥)
 ```bash
 cd poc && npm run build:mac      # 창 관리 도우미 (처음 한 번)

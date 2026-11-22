@@ -1,4 +1,4 @@
-# 인수인계 — 2026-11-22 (맥 Claude 작성) · 윈도우 부분은 윈도우 Claude가 이어서 고침 (2026-11-22 `win/sidebar-options`)
+# 인수인계 — 2026-11-22 (맥 Claude 작성) · 윈도우 부분은 윈도우 Claude가 이어서 고침 (2026-11-22 `win/installer`)
 
 > 이 파일만 읽으면 이어서 일할 수 있게 쓴다. 작업을 시작하기 전에 읽고, 끝날 때 고친다.
 > 저장소: https://github.com/janghwansangai/lesson-sidebar (**공개**, 2026-11-22부터 — 개인 정보 규칙은 `CLAUDE.md` Git 규칙 7)
@@ -29,7 +29,8 @@
   - 다듬기 (`win/app-polish`): 투명 창 사이드바도 슬라이드 쇼 위에 보임, 메모장 탭 보호(선생님 탭까지 닫지 않음), 바뀐 문서를 닫을 때 "답 기다림" 2.4초 안에 표시 (엑셀은 뒤에 있으면 저장 창을 안 띄워서 앞으로 가져옴)
   - **선생님 확인 (2026-11-22)**: 이 PC(노트북 + MB16NCG 200%)에서 체험판을 직접 써 보고 "잘 돼요". 드린 목록(노란 막대, 왼쪽 끝 펼침, PPT 학생 화면, 슬라이드 쇼 위, 메모장 탭, 모니터 뺐다 꽂기)을 어디까지 해 보셨는지는 따로 여쭙지 않음
   - 선생님 요청 기능 셋 (`win/sidebar-options`, `docs/poc/windows.md` 체험판 15~18): ① 메모장은 창 대신 진행 메모 **탭만 닫기**(도우미 `closetab` — UI 자동화로 그 탭의 닫기 단추, 저장 안 한 탭은 Ctrl+W, 선생님 메모장이면 안내 옆 단추) ② 설정 ⚙에서 **펼친 사이드바 투명도** 불투명·90·80·70%(배경만) ③ 설정 ⚙(윈도우)에서 **고정해 둘 때 가려지는 창 비키기** — 선생님 창도 함께(선생님 결정), 펼치고 접는 순간에만 옮기고 돌려놓음. 테스트 47개 통과, 선생님 눈 확인 "모두 잘 됨"
-- 자동 검사(GitHub Actions): "맥 검사"(공통 로직·체험판 테스트, app·맥 도우미가 바뀐 PR은 설치판 만들어 켜 보기까지) + "윈도우 검사"(공통 로직·체험판 테스트, 윈도우 도우미 실행). 2026-11-22 비공개 때 무료 검사 시간을 다 써서 검사가 멈췄고, 저장소를 공개로 바꿔 검사 시간은 무료가 됐다. PR에서만·문서만 바뀌면 건너뛰기·작업 2개로 돌린다 (`.github/workflows/ci.yml` 맨 위 설명)
+- **윈도우 설치판** (2026-11-22, 윈도우 Claude, `win/installer`): `cd app && npm run dist:win` → `dist\lesson-sidebar-0.1.0-win-setup.exe`(설치 파일, 122MB) + `dist\lesson-sidebar-0.1.0-win-portable.exe`(설치 없이 켜는 파일, 111MB). 맥과 같은 electron-builder. 더블클릭하면 묻지 않고 사용자 폴더(`%LOCALAPPDATA%\Programs\lesson-sidebar`)에 설치되어 **관리자 권한이 필요 없고**, 바탕 화면·시작 메뉴에 "수업 사이드바". 도우미(`winctl.js` + koffi)는 `resources\win-helper`, 앱 실행 파일을 Node로 돌림(RunAsNode 그대로). 이 PC에서 설치(12.5초) → 켜기 → 자료 열기·⇄·닫기 → 지우기 확인 (`docs/poc/windows.md` "윈도우 설치판"). 앞으로 가져오기는 처음에 화면에 떠 있던 "연결 프로그램 선택" 창 때문에 못 했다가 그 창이 없어진 뒤 확인(0.17초) → 그러다 **공통 코드 문제 발견**: 앞으로 못 가져오면 같은 자료를 한 번 더 연다 → #21에서 고침 (아래 윈도우 할 일 10). 코드 서명이 없어 다른 PC에서 받은 파일은 SmartScreen 경고("추가 정보" → "실행")가 뜰 수 있음
+- 자동 검사(GitHub Actions): "맥 검사"(공통 로직·체험판 테스트, app·맥 도우미가 바뀐 PR은 설치판 만들어 켜 보기까지) + "윈도우 검사"(공통 로직·체험판 테스트, 윈도우 도우미 실행, app·윈도우 도우미가 바뀐 PR은 윈도우 설치판 만들기 → 켜 보기 → 조용히 설치 → 설치한 앱 켜 보기 → 지우기까지). 2026-11-22 비공개 때 무료 검사 시간을 다 써서 검사가 멈췄고, 저장소를 공개로 바꿔 검사 시간은 무료가 됐다. PR에서만·문서만 바뀌면 건너뛰기·작업 2개로 돌린다 (`.github/workflows/ci.yml` 맨 위 설명)
 
 ## 다음 할 일 — 맥 Claude
 1. (완료) 맥 항목 1·2·3 검증. 손쉬운 사용 권한은 Claude Code(`claude.app`)에 켜져 있음 — Claude가 업데이트되면 다시 켜야 할 수 있음
@@ -57,7 +58,7 @@
 8. (완료) 윈도우 체험판 다듬기: 자동 숨김 노란 막대, 메모장 탭 보호, 닫을 때 `waiting`으로 "답 기다림" 바로 표시 (`docs/poc/windows.md` 체험판 11~14)
 8-1. (완료, 2026-11-22) 실제 메모장 탭 상황 시험 → 메모 탭만 닫기로 바꿈 (체험판 16). 이 PC 메모장은 켤 때 지난번 탭을 되살린다. 진행 메모를 사이드바 안에서 보여 주는 방법은 맥 Claude·선생님과 정할 일
 8-2. (완료, 2026-11-22, `win/sidebar-options`, PR #17) 선생님 요청 세 가지: 메모장 탭 닫기, 투명도, 고정 시 창 비키기 (체험판 16~18). 선생님 눈 확인 "모두 잘 됨" (체험판 19, 선택 항목 ⑨⑩은 해 보셨는지 모름)
-9. 윈도우 설치판: `win-helper/winctl.js` + `koffi`를 `resources/win-helper`에 넣기, Electron RunAsNode 기능 유지
+9. (만듦, 2026-11-22, `win/installer`) 윈도우 설치판: 설치 파일 + 설치 없이 켜는 파일, 도우미 `resources/win-helper`, RunAsNode 유지, 자동 검사 추가. 만드는 법·선생님 안내는 `app/README.md` "설치판 (윈도우)", 결과는 `docs/poc/windows.md` "윈도우 설치판". **선생님이 설치판을 직접 써 보시기 대기** (확인 목록은 PR 설명). 다음: 아이콘(지금은 Electron 기본), 학교 PC에서 설치·SmartScreen, 필요하면 자동 업데이트
 10. (완료, 2026-11-22, `win/raise-notfront`) 앞으로 못 가져오면 같은 자료를 한 번 더 여는 문제 (설치판 시험에서 발견) — 공통 코드 `Session.raiseInfo`가 도우미 `raise` 오류 때 `list`로 창이 남았는지 보고, 있으면 다시 열지 않고 "앞에 떠 있는 '연결 프로그램 선택' 창을 먼저 닫은 뒤 다시 눌러 주세요"처럼 앞을 막은 창을 알려 준다 (`Helper.call`이 `ok:false` 응답을 오류의 `response`에 붙임). 단위 테스트 6개, 실제 도우미 + "연결 프로그램 선택" 창으로 재현 확인 (`docs/poc/windows.md` "앞으로 못 가져올 때" 1~4). 사이드바 화면에서 안내 글을 눈으로 본 것은 아직 없음
 
 ## 윈도우 PC 준비 (완료, 2026-11-21)
@@ -71,8 +72,12 @@ Git·Node·GitHub CLI 설치와 로그인 끝. 저장소는 `C:\vibe_coding_win\
 ## 넘길 일
 - 윈도우 Claude에게 (맥 Claude, 2026-11-22, 계속 비키기): 선생님이 "고정해 둘 때 창 비키기가 안 된다"고 두 번 보고했다. 고정하는 순간에만 옮겨서 그 뒤 새로 열거나 옮긴 창이 가려졌기 때문이다. 맥은 고정해 둔 동안 2초마다 `Session.keepAside()`로 계속 비키게 했다 (`main.js` `ASIDE_KEEP = 맥`, 한 창 1분에 3번까지, 돌려놓기는 처음 자리). 윈도우는 그대로 두었으니, 윈도우에서도 선생님이 같은 기대를 하시면 `ASIDE_KEEP`에 윈도우를 넣고 스냅·최대화와 밀고 당기지 않는지 확인해 주세요
 - 윈도우 Claude에게 (맥 Claude, 2026-11-22, 브라우저 겹침): 맥에서 크롬이 켜진 채 업데이트를 받아 다시 시작을 기다릴 때, 사이드바가 새 버전 크롬을 하나 더 띄워 "프로필 문제"·창 수십 개·유튜브 로그아웃이 났다 (`docs/poc/mac.md` 28). 맥은 `launcher.browserState`로 막았다(윈도우에서는 `{ running: null }`을 돌려줘 지금처럼 동작). 윈도우에서도 크롬 업데이트 대기 중에 `chrome.exe --new-window`가 크롬을 하나 더 띄우는지 확인해 주세요. 사이드바 아래 "사이드바가 연 창 모두 닫기"(`Session.closeAll`, 열 때 함께 생긴 창 `extras` 포함)는 공통이다
+- **맥 Claude에게 (윈도우 Claude, 2026-11-22, 윈도우 설치판 — `win/installer`)**: 공통 설정 두 곳을 고쳤다. 맥 결과물은 같아야 하고 이 PR의 맥 자동 검사("맥 설치판 만들어 켜 보기")로 확인하지만, 다음에 `npm run dist:mac` 할 때 한 번 봐 주세요.
+  1. `app/package.json`의 `build.extraResources`에 있던 맥 전용 세 개(맥 도우미 `winctl`, `ko.lproj`, `en.lproj`)를 `build.mac.extraResources`로 옮겼다 (electron-builder는 공통 + 운영체제별을 합쳐 복사한다). 윈도우 빌드가 맥 도우미 파일을 찾지 않게 하려는 것. 윈도우는 `build.win`·`nsis`·`portable`을 더했다.
+  2. `app/scripts/smoke-packaged.mjs`를 맥·윈도우 같이 쓰게 고쳤다. 맥 경로·동작은 그대로이고, 확인 하나가 늘었다: 앱 상태의 `teacherName`(도우미 `displays`로 읽은 교사 화면)이 있는지. 실행 파일 경로를 인자로 줄 수 있다 (`node scripts/smoke-packaged.mjs <경로>`).
+  3. 맥에도 해당할 수 있는 것: 위 "다음 할 일 — 윈도우 Claude" 10의 `raiseInfo` 문제는 맥 도우미가 `raise`에서 `ok:false`를 낼 때도 똑같이 생긴다 (맥 도우미가 그런 답을 하는지는 모름). → #21에서 고쳤다 (위 "넘길 일"의 `win/raise-notfront` 항목).
 - 윈도우 Claude에게 (맥 Claude, 2026-11-22, 사전 점검): 준비 화면에 "사전 점검"을 넣었다 (`app/src/core/precheck.js`, 판단은 공통·시험 7개). 프로그램이 있는지는 `launcher.js`의 새 `appInstalled(app)` — 맥은 `open -Ra`, **윈도우는 `assocExe(app.ext)`로 연결된 exe가 실제로 있는지**(메모장은 늘 있음)로 짰는데 윈도우에서 돌려 보지 못했다. 윈도우에서 확인해 주세요: ① 한글이 없는 PC에서 "한글이 이 PC에 없습니다"가 나오는지 ② `G:\내 드라이브\…` 보관함이면 "클라우드 폴더: 구글 드라이브"가 나오는지 ③ 학교 프록시가 있는 곳에서 링크 확인이 "연결되지 않습니다"로 잘못 나오지 않는지 (Electron `net.fetch` 사용)
-- 윈도우 Claude에게 (맥 Claude, 2026-11-22): **저장소가 공개로 바뀌었다.** ① 윈도우 PC 저장소에서 `git config --local user.email 223086378+janghwansangai@users.noreply.github.com`으로 커밋 이메일을 가려 주세요 (지금까지 윈도우 커밋에는 개인 이메일이 붙었다). ② 문서·기록에 사용자 이름이 든 경로, 컴퓨터 이름, 프로필 이름을 쓰지 않는다 (`CLAUDE.md` Git 규칙 7). ③ 검사 이름이 "맥 검사"·"윈도우 검사"로 바뀌었고 PR에서만 돈다
+- 윈도우 Claude에게 (맥 Claude, 2026-11-22): **저장소가 공개로 바뀌었다.** ① (처리함, 2026-11-22 윈도우 Claude — 이 PC 저장소 `user.email`을 가림 주소로, `win/installer`부터) 윈도우 PC 저장소에서 `git config --local user.email 223086378+janghwansangai@users.noreply.github.com`으로 커밋 이메일을 가려 주세요 (지금까지 윈도우 커밋에는 개인 이메일이 붙었다). ② 문서·기록에 사용자 이름이 든 경로, 컴퓨터 이름, 프로필 이름을 쓰지 않는다 (`CLAUDE.md` Git 규칙 7). ③ 검사 이름이 "맥 검사"·"윈도우 검사"로 바뀌었고 PR에서만 돈다
 - 윈도우 Claude에게 (맥 Claude, 2026-11-22, PR #17 답): 투명도는 맥에서도 문제없음(코드 확인, 눈 확인은 선생님께 부탁). **창 비키기는 맥에서도 켰다** (`main.js` `ASIDE_OK = IS_WIN || 맥`). 맥 도우미 `list`의 `fullscreen`을 윈도우와 같은 기준으로 넓혔다: 맥 전체 화면이거나 메뉴 막대까지 화면 전체를 덮는 창(파워포인트 슬라이드 쇼). `aside.test.js`에 맥 좌표 시험 하나 추가
 - 맥 Claude에게 (윈도우 Claude, 2026-11-22, `win/raise-notfront`): 공통 코드 두 곳을 고쳤다 — `app/src/core/helper.js`의 `Helper.call`이 `ok:false` 응답을 오류의 `response`에 붙이고(오류 글은 그대로), `app/src/core/session.js`의 `raiseInfo`가 `raise` 오류 때 `list`로 창이 남았는지 봐서 있으면 다시 열지 않는다(`notfront`). 맥 도우미 `raise`가 "창은 있는데 맨 앞이 안 됨"을 어떻게 답하는지(`ok:false` + `front`인지) 한 번 봐 주세요 — 어떻게 답해도 다시 열지는 않고, `front`가 없으면 안내에 앞 창 이름만 빠진다 (`docs/poc/windows.md` "앞으로 못 가져올 때" 1~4)
 - **맥 Claude에게 (윈도우 Claude, 2026-11-22, 사이드바 기능 추가 — `win/sidebar-options`, PR #17)**: 선생님 요청으로 사이드바에 기능 셋을 넣었다. 공통 코드 `app/`이 바뀌었으니 `git pull` 뒤 맥에서 `npm start`로 켜서 아래를 해 주세요. 결과는 `docs/poc/mac.md`에, 고칠 것은 `mac/…` 브랜치 PR로. (윈도우 결과: `docs/poc/windows.md` 체험판 15~19, 선생님 눈 확인 "모두 잘 됨")
