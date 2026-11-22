@@ -40,6 +40,7 @@ function render(){
   $('#btn-hide').setAttribute('aria-pressed', String(!!S.autoHide));
   $('#tool-pointer').setAttribute('aria-pressed', String(!!S.tools?.pointer));
   $('#tool-spot').setAttribute('aria-pressed', String(!!S.tools?.spot));
+  $('#tool-pen').setAttribute('aria-pressed', String(!!S.tools?.pen));
   $('#tool-zoom').setAttribute('aria-pressed', String(S.tools?.grab === 'zoom'));
   $('#tool-pin').setAttribute('aria-pressed', String(S.tools?.grab === 'pick'));
   $('#pins-close').hidden = !S.tools?.pins;
@@ -208,6 +209,7 @@ setInterval(() => {
 }, 500);
 $('#tool-pointer').addEventListener('click', () => api.act('pointer', !S.tools?.pointer));
 $('#tool-spot').addEventListener('click', () => api.act('spot', !S.tools?.spot));
+$('#tool-pen').addEventListener('click', () => api.act('pen', !S.tools?.pen));
 $('#tool-zoom').addEventListener('click', () => api.act('zoom'));
 $('#tool-pin').addEventListener('click', () => api.act('pin'));
 $('#pins-close').addEventListener('click', () => api.act('closePins'));
