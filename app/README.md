@@ -20,8 +20,10 @@ npm run smoke:mac           # 만든 앱을 켜서 예시 수업·준비 화면�
 
 ## 새 버전 올리기 (새 버전 알림이 보는 곳)
 1. `app/package.json`의 `version`을 올린다 (예: 0.1.0 → 0.2.0). 맥·윈도우가 같은 번호
-2. 맥에서 `npm run dist:mac` (이 맥의 "LessonSidebar Signing"으로 서명해야 설치한 맥들의 권한이 유지된다), 윈도우에서 `npm run dist:win`
-3. `gh release create v0.2.0 <dmg> <setup.exe> <portable.exe> --title "0.2.0" --notes "바뀐 것 한 줄"` — 공개 저장소라 누구나 받을 수 있으니 **선생님께 확인받고** 올린다. 맥이 먼저 올리면 윈도우는 `gh release upload v0.2.0 <setup.exe> <portable.exe>`로 더한다
+2. 버전 PR을 main에 합친 뒤, 맥에서 `npm run dist:mac` (이 맥의 "LessonSidebar Signing"으로 서명해야 설치한 맥들의 권한이 유지된다)
+3. 초안 Release: `gh release create v0.2.0 <dmg> --draft --target main --title "수업 사이드바 0.2.0" --notes-file <바뀐 것>`
+4. 윈도우 설치판: `gh workflow run release-win.yml -f tag=v0.2.0` — GitHub의 윈도우 기계가 시험용으로 만들어 켜 보기·조용히 설치→켜기→지우기를 한 뒤, 배포용을 만들어 그 초안에 올린다 (`.github/workflows/release-win.yml`)
+5. 세 파일의 지문(SHA-256)을 확인하고 **선생님께 확인받아** 공개: `gh release edit v0.2.0 --draft=false --latest` (공개 저장소라 누구나 받는다)
 - 0.3.2부터 사이드바의 **업데이트**가 받아서 바꿔 깐다 (`core/selfupdate.js`). 맥은 새 앱의 서명이 지금 앱과 **같은 인증서**일 때만 바꾼다 → 맥 설치판은 반드시 이 맥(키체인 "LessonSidebar Signing")에서 만든 것을 올린다. 자동 검사(GitHub)가 만든 설치판은 서명이 달라 거절되고 브라우저 내려받기로 넘어간다
 - 맥 설치판(DMG)은 APFS로 만든다 (`build.dmg.filesystem`). 예전 HFS+ DMG는 체험용 수업의 한글 파일 이름을 다른 방식(NFD)으로 적어 서명 검사가 "파일이 바뀜"으로 실패했다 (docs/poc/mac.md 64)
 - 설치판에는 예시 수업만 들어 있다 (선생님 수업·녹화·캡처는 들어가지 않음)

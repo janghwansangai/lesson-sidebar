@@ -1,0 +1,106 @@
+name: 윈도우 설치판 만들기 (Release)
+
+# 맥에서는 윈도우 설치판을 켜 볼 수 없어, GitHub의 윈도우 기계가 만들어 초안 Release에 올린다 (선생님 결정 2026-11-23).
+# Actions 탭(또는 `gh workflow run release-win.yml -f tag=v0.3.5`)에서 손으로 돌린다:
+#  1) 초안 Release가 가리키는 코드로 시험용 설치판(SIDEBAR_SMOKE_BUILD=1)을 만들어 자동 검사와 같은
+#     켜 보기 · 조용히 설치 → 켜 보기 → 지우기를 한다
+#  2) 통과하면 같은 코드로 배포용 설치판(시험 모드 없음)을 다시 만들어 그 **초안** Release에 올린다 (같은 이름이면 바꿈)
+# 공개(초안 → 공개)는 하지 않는다 — 선생님 확인 뒤 사람이 한다. 공개된 Release에는 올리지 않는다.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '초안 Release 태그 (예: v0.3.5)'
+        required: true
+
+permissions:
+  contents: write   # 초안 Release에 파일 올리기
+
+concurrency:
+  group: release-win-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: 윈도우 설치판
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ inputs.tag }}
+    steps:
+      - name: 초안 Release와 그 코드 확인
+        shell: bash
+        run: |
+          set -e
+          draft=$(gh release view "$TAG" -R "$GITHUB_REPOSITORY" --json isDraft -q .isDraft)
+          if [ "$draft" != "true" ]; then echo "초안 Release $TAG가 아닙니다 (공개된 Release에는 올리지 않음)"; exit 1; fi
+          echo "TARGET=$(gh release view "$TAG" -R "$GITHUB_REPOSITORY" --json targetCommitish -q .targetCommitish)" >> "$GITHUB_ENV"
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TARGET }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            app/package-lock.json
+            poc/win-helper/package-lock.json
+      - name: 버전이 태그와 같은지
+        shell: bash
+        run: |
+          v=$(node -p "require('./app/package.json').version")
+          if [ "v$v" != "$TAG" ]; then echo "app/package.json 버전 $v 가 태그 $TAG 와 다릅니다"; exit 1; fi
+      - name: 도구·도우미 설치
+        shell: bash
+        run: |
+          (cd app && npm ci)
+          (cd poc/win-helper && npm ci)
+      - name: 테스트
+        run: npm test
+        working-directory: app
+      - name: 시험용 설치판 만들기
+        run: npm run dist:win
+        working-directory: app
+        env:
+          SIDEBAR_SMOKE_BUILD: '1'
+      - name: 시험용 설치판 켜 보기 (도우미·예시 수업·준비 화면)
+        run: npm run smoke:win
+        working-directory: app
+      - name: 조용히 설치 → 설치된 앱 켜 보기 → 지우기
+        shell: pwsh
+        working-directory: app
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $setup = Get-ChildItem dist -Filter '*-win-setup.exe' | Select-Object -First 1
+          if (-not $setup) { throw '설치 파일이 없습니다' }
+          Start-Process $setup.FullName -ArgumentList '/S' -Wait
+          $dir = Join-Path $env:LOCALAPPDATA 'Programs\lesson-sidebar'
+          $exe = Join-Path $dir 'LessonSidebar.exe'
+          if (-not (Test-Path $exe)) { throw "설치되지 않았습니다: $exe" }
+          node scripts/smoke-packaged.mjs $exe
+          if ($LASTEXITCODE -ne 0) { throw '설치된 앱 켜 보기 실패' }
+          Start-Process (Join-Path $dir 'Uninstall LessonSidebar.exe') -ArgumentList '/S' -Wait
+          for ($i = 0; $i -lt 60 -and (Test-Path $exe); $i++) { Start-Sleep -Milliseconds 500 }
+          if (Test-Path $exe) { throw '지워지지 않았습니다' }
+      - name: 배포용 설치판 만들기 (시험 모드 없음)
+        shell: pwsh
+        working-directory: app
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Remove-Item dist -Recurse -Force
+          Remove-Item Env:SIDEBAR_SMOKE_BUILD -ErrorAction SilentlyContinue
+          npm run dist:win
+          if ($LASTEXITCODE -ne 0) { throw '배포용 설치판을 만들지 못했습니다' }
+          if (Test-Path 'dist/win-unpacked/resources/test-mode') { throw '배포용에 시험 모드 표시가 들어 있습니다' }
+      - name: 초안 Release에 올리기
+        shell: bash
+        working-directory: app
+        run: |
+          set -e
+          v=${TAG#v}
+          setup="dist/lesson-sidebar-$v-win-setup.exe"; portable="dist/lesson-sidebar-$v-win-portable.exe"
+          ls -l "$setup" "$portable"
+          sha256sum "$setup" "$portable"
+          gh release upload "$TAG" "$setup" "$portable" --clobber -R "$GITHUB_REPOSITORY"
+          echo "올렸습니다 — GitHub에 보이는 지문(digest)이 위 sha256과 같은지 확인한 뒤 공개하세요"
