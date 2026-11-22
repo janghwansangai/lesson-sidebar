@@ -48,8 +48,15 @@ function render(){
     ? `<div class="scr-line"><i class="scr-dot"></i>학생 화면: ${esc(S.studentName)}</div>
        <div class="seg" role="group" aria-label="새로 여는 자료를 띄울 곳"><span>여는 곳</span>
          <button data-to="student" aria-pressed="${S.openTo === 'student'}">학생 화면</button>
-         <button data-to="teacher" aria-pressed="${S.openTo === 'teacher'}">교사 화면에서 먼저</button></div>`
-    : `<div class="scr-line"><i class="scr-dot off"></i>모니터 1개 · 학생도 이 화면을 봅니다</div>`;
+         <button data-to="teacher" aria-pressed="${S.openTo === 'teacher'}">교사 화면에서 먼저</button></div>
+       <div class="stu" role="group" aria-label="학생 화면">
+         <button class="stu-b" data-cover="freeze" aria-pressed="${S.cover === 'freeze'}" title="학생 화면을 지금 장면으로 멈춥니다 (그동안 창을 정리해도 학생에게 안 보임)">정지</button>
+         <button class="stu-b" data-cover="blank" aria-pressed="${S.cover === 'blank'}" title="학생 화면을 '잠시 후 계속합니다'로 가립니다">가리기</button>
+         <button class="stu-b" data-preview="${!S.preview}" aria-pressed="${!!S.preview}" title="학생 화면을 작게 미리 봅니다">미리보기</button></div>`
+    : `<div class="scr-line"><i class="scr-dot off"></i>모니터 1개 · 학생도 이 화면을 봅니다</div>
+       <div class="stu"><button class="stu-b" data-cover="blank" aria-pressed="${S.cover === 'blank'}" title="화면을 '잠시 후 계속합니다'로 가립니다 (사이드바는 보임)">화면 가리기</button></div>`;
+  $('#preview').hidden = !(S.dual && S.preview);
+  $('#preview-tag').textContent = S.cover === 'freeze' ? '정지 중 · 학생에게는 멈춘 장면' : S.cover === 'blank' ? '가리는 중 · 학생에게는 검은 화면' : '학생 화면';
 
   const flat = L ? L.sections.flatMap(s => s.items) : [];
   const i = flat.findIndex(it => it.id === S.highlight);
@@ -125,7 +132,24 @@ $('#list').addEventListener('click', e => {
 $('#list').addEventListener('keydown', e => {
   if ((e.key === 'Enter' || e.key === ' ') && e.target.classList.contains('it')){ e.preventDefault(); api.act('activate', e.target.dataset.id); }
 });
-$('#screens').addEventListener('click', e => { const b = e.target.closest('[data-to]'); if (b) api.act('openTo', b.dataset.to); });
+$('#screens').addEventListener('click', e => {
+  const b = e.target.closest('[data-to]'); if (b) return api.act('openTo', b.dataset.to);
+  const c = e.target.closest('[data-cover]'); if (c) return api.act(c.dataset.cover);
+  const p = e.target.closest('[data-preview]'); if (p) return api.act('preview', p.dataset.preview);
+});
+// 미리보기: 보통은 학생 화면 그림 한 장. 맥에서 정지 중이면 바탕 + 창 그림들을 앞뒤 순서대로 쌓아 그린다
+const loadImg = src => new Promise(r => { const i = new Image(); i.onload = () => r(i); i.onerror = () => r(null); i.src = src; });
+api.onPreview?.(async p => {
+  if (!p) return;
+  const img = $('#preview-img'), cv = $('#preview-canvas');
+  if (typeof p === 'string'){ img.src = p; img.hidden = false; cv.hidden = true; return; }
+  const W = 264, k = W / p.w;
+  cv.width = W; cv.height = Math.round(p.h * k);
+  const g = cv.getContext('2d');
+  const bg = await loadImg(p.bg); if (bg) g.drawImage(bg, 0, 0, cv.width, cv.height);
+  for (const w of p.wins){ const im = await loadImg(w.src); if (im) g.drawImage(im, w.x * k, w.y * k, w.width * k, w.height * k); }
+  img.hidden = true; cv.hidden = false;
+});
 $('#dock').addEventListener('click', e => {
   const ap = e.target.closest('[data-apply]'); if (ap) return api.act('applyLayout', ap.dataset.apply);
   const un = e.target.closest('[data-unsave]'); if (un) return api.act('removeLayout', un.dataset.unsave);

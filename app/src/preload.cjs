@@ -4,6 +4,8 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('sidebar', {
   state: () => ipcRenderer.invoke('state'),
   act: (action, arg) => ipcRenderer.invoke('act', action, arg),
+  // 학생 화면 미리보기 그림 (0.5초마다, 저장하지 않음)
+  onPreview: cb => ipcRenderer.on('preview', (_e, src) => cb(src)),
   onState: cb => {
     const h = (_e, s) => cb(s);
     ipcRenderer.on('state', h);

@@ -168,8 +168,8 @@ function createSidebar(){
   win.on('closed', () => { win = null; });
 }
 
-const fullState = () => ({ ...session.snapshot(), collapsed, trusted: session.trusted !== false, tools: { pointer: tools.pointer, spot: tools.spot, grab: grab?.mode ?? null, pins: pins.size }, prefs: { ...prefs, steps: OPACITY_STEPS, asideAvailable: ASIDE_OK } });
-function push(){ win?.webContents.send('state', fullState()); syncDivider(); }
+const fullState = () => ({ ...session.snapshot(), collapsed, trusted: session.trusted !== false, tools: { pointer: tools.pointer, spot: tools.spot, grab: grab?.mode ?? null, pins: pins.size }, cover: cover.mode, preview: previewOn && screenAccess() === 'granted', prefs: { ...prefs, steps: OPACITY_STEPS, asideAvailable: ASIDE_OK } });
+function push(){ win?.webContents.send('state', fullState()); syncDivider(); syncPreview(); }
 
 // ---------- 나란히 보기 조절 바 ----------
 // 나란히 놓은 창의 경계에 가는 막대 창을 띄운다: 세로 경계(v) 하나 + 큰 화면+2·4분할이면 가로 경계(h) 하나.
@@ -388,6 +388,94 @@ ipcMain.on('overlay:pick', (e, rect) => {
 });
 ipcMain.on('overlay:end', e => { if (fromOverlay(e)) endGrab(); });
 ipcMain.on('pin:close', e => { for (const p of pins) if (p.webContents === e.sender) p.close(); });
+
+// ---------- 학생 화면 관리: 미리보기·정지·가리기 (docs/PLAN.md 6.3) ----------
+// 가림 창은 학생 화면 전체를 덮는다 (모니터 한 대면 그 화면 — 가리기만). 화면 찍기에서 빠지게(setContentProtection) 해서
+// 미리보기·확대·캡처 핀에는 가림 창 뒤의 실제 화면이 보인다 ("정지 중에도 미리보기에는 실제 상태").
+// 미리보기는 듀얼일 때 0.5초마다 작게 찍어 사이드바에 보낸다 (저장하지 않음).
+const cover = { mode: null };   // 'freeze' | 'blank' | null
+let coverWin = null, previewTimer = null, previewOn = true;
+function studentElectronDisplay(){
+  const st = session?.student;
+  if (!st) return null;
+  return screen.getDisplayMatching(toDipRect({ x: st.x, y: st.y, width: st.width, height: st.height }));
+}
+function coverDisplay(){ return studentElectronDisplay() ?? screen.getPrimaryDisplay(); }
+function ensureCover(d){
+  if (!coverWin || coverWin.isDestroyed()){
+    coverWin = new BrowserWindow({
+      ...d.bounds, frame: false, resizable: false, movable: false, minimizable: false, maximizable: false, fullscreenable: false,
+      focusable: false, hasShadow: false, skipTaskbar: true, show: false, backgroundColor: '#000000', enableLargerThanScreen: true,
+      alwaysOnTop: true, type: process.platform === 'darwin' ? 'panel' : undefined, thickFrame: false,
+      webPreferences: SECURE('cover-preload.cjs'),
+    });
+    coverWin.setAlwaysOnTop(true, 'screen-saver');
+    coverWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+    coverWin.setContentProtection(true);   // 화면 찍기(미리보기·확대·핀·녹화)에서 빠진다
+    lockDown(coverWin);
+    coverWin.loadFile(path.join(HERE, 'renderer', 'cover.html'));
+    coverWin.webContents.on('did-finish-load', () => coverWin?.webContents.send('cover:state', cover.payload ?? null));
+  }
+  coverWin.setBounds(d.bounds);
+  return coverWin;
+}
+async function setCover(mode){
+  if (!mode || cover.mode === mode){
+    cover.mode = null; cover.payload = null;
+    coverWin?.hide();
+    session.say(session.dual ? '학생 화면을 다시 보여 줍니다' : '화면을 다시 보여 줍니다');
+    return push();
+  }
+  if (mode === 'freeze'){
+    if (!session.dual) return session.say('정지는 학생 화면(두 번째 모니터)이 있을 때 씁니다');
+    if (screenAccess() !== 'granted') return session.say(SCREEN_PERM, { act: 'screenSettings', label: '화면 기록 설정 열기' });
+    const d = coverDisplay();
+    const img = await captureDisplay(d).catch(() => null);
+    if (!img || img.isEmpty()) return session.say('학생 화면을 찍지 못했습니다');
+    cover.payload = { mode, src: img.toJPEG(90).toString('base64') };
+  } else cover.payload = { mode };
+  cover.mode = mode;
+  const w = ensureCover(coverDisplay());
+  w.webContents.send('cover:state', cover.payload);
+  w.showInactive();
+  // 사이드바·조절 바·발표 도구는 가림 창보다 위
+  win?.setAlwaysOnTop(true, 'screen-saver', 1);
+  for (const o of overlays.values()) if (!o.isDestroyed() && o.isVisible()) o.moveTop();
+  session.say(mode === 'freeze' ? '학생 화면을 지금 장면으로 멈췄습니다 · 그동안 창을 정리해도 학생에게는 보이지 않습니다 · 다시 누르면 풀립니다'
+    : session.dual ? "학생 화면을 가렸습니다 ('잠시 후 계속합니다') · 다시 누르면 보입니다" : "화면을 가렸습니다 ('잠시 후 계속합니다') · 사이드바의 '화면 가리기'를 다시 누르면 보입니다");
+  push();
+}
+async function composeStudent(bg){
+  const st = session.student;
+  let wins = [];
+  try { wins = (await helper.call('list')).windows; } catch { return bg; }
+  wins = wins.filter(w => w.display === st.index && !w.minimized && w.pid !== process.pid).sort((a, b) => (b.z ?? 0) - (a.z ?? 0));   // 뒤에서 앞으로
+  if (!wins.length) return { bg, w: st.width, h: st.height, wins: [] };
+  const srcs = await desktopCapturer.getSources({ types: ['window'], thumbnailSize: { width: 480, height: 480 } });
+  const byWid = new Map(srcs.map(x => [Number(String(x.id).split(':')[1]), x]));
+  return { bg, w: st.width, h: st.height, wins: wins.map(w => ({ x: w.x - st.x, y: w.y - st.y, width: w.width, height: w.height, src: byWid.get(w.wid)?.thumbnail.toDataURL() })).filter(x => x.src) };
+}
+function syncPreview(){
+  const want = previewOn && session?.dual && screenAccess() === 'granted' && !!win;
+  if (!want){ clearInterval(previewTimer); previewTimer = null; win?.webContents.send('preview', null); return; }
+  if (previewTimer) return;
+  let busy = false;
+  previewTimer = setInterval(async () => {
+    if (busy || collapsed) return;
+    busy = true;
+    try {
+      const d = studentElectronDisplay(); if (!d) return;
+      const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 264, height: Math.round(264 * d.bounds.height / d.bounds.width) } });
+      const src = sources.find(x => String(x.display_id) === String(d.id));
+      if (!src) return;
+      if (cover.mode === 'freeze' && process.platform === 'darwin'){
+        // 맥은 가림 창 아래 창들이 화면 찍기에서 빠진다(가려진 것으로 봄). 창을 하나씩 찍어 앞뒤 순서대로 쌓아 실제 상태를 보인다 (mac.md 41)
+        return win?.webContents.send('preview', await composeStudent(src.thumbnail.toDataURL()));
+      }
+      win?.webContents.send('preview', src.thumbnail.toDataURL());
+    } catch { /* 다음에 다시 */ } finally { busy = false; }
+  }, 500);
+}
 
 const fromOverlay = e => [...overlays.values()].some(w => !w.isDestroyed() && w.webContents === e.sender);
 ipcMain.on('overlay:wheel', (e, dy) => {
@@ -788,6 +876,9 @@ const ACTIONS = {
   axSettings: () => shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility'),
   closeAll: () => session.closeAll(),
   openTo: v => session.setOpenTo(v),
+  freeze: () => setCover('freeze'),
+  blank: () => setCover('blank'),
+  preview: v => { previewOn = v === true || v === 'true'; syncPreview(); push(); },
   autoHide: v => setAutoHide(v === true || v === 'true'),
   opacity: v => setOpacity(v),
   aside: v => setAside(v === true || v === 'true'),
@@ -918,7 +1009,7 @@ app.whenReady().then(async () => {
   if (trusted) syncAsideWatch();
 
   let t = null;
-  const onDisplays = () => { clearTimeout(t); t = setTimeout(async () => { await session.onDisplaysChanged(); placeSidebar(); for (const [id, w] of overlays){ if (!screen.getAllDisplays().some(d => d.id === id)){ w.destroy(); overlays.delete(id); } } syncTools(); }, 800); };
+  const onDisplays = () => { clearTimeout(t); t = setTimeout(async () => { await session.onDisplaysChanged(); placeSidebar(); for (const [id, w] of overlays){ if (!screen.getAllDisplays().some(d => d.id === id)){ w.destroy(); overlays.delete(id); } } syncTools(); if (cover.mode === 'freeze' && !session.dual) setCover(null); else if (cover.mode) ensureCover(coverDisplay()); syncPreview(); }, 800); };
   screen.on('display-added', onDisplays);
   screen.on('display-removed', onDisplays);
   screen.on('display-metrics-changed', onDisplays);
