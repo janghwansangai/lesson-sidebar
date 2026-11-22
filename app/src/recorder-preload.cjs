@@ -4,6 +4,7 @@ contextBridge.exposeInMainWorld('rec', {
   onStart: cb => ipcRenderer.on('rec:start', (_e, o) => cb(o)),
   onStop: cb => ipcRenderer.on('rec:stop', () => cb()),
   onSplit: cb => ipcRenderer.on('rec:split', (_e, n) => cb(Number(n))),
+  onCover: cb => ipcRenderer.on('rec:cover', (_e, c) => cb(c ?? null)),
   chunk: (buf, n) => ipcRenderer.send('rec:chunk', buf, Number(n) || 1),
   partDone: n => ipcRenderer.send('rec:partDone', Number(n)),
   started: info => ipcRenderer.send('rec:started', info),

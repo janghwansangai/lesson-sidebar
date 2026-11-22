@@ -13,7 +13,59 @@ function makeRecorder(n){
   r.start(2000);
   return r;
 }
-function stopAll(){ for (const s of streams) for (const t of s.getTracks()) t.stop(); mixer?.close().catch(() => {}); mixer = null; }
+/**
+ * 가림 문: 학생 화면을 가리거나 멈춘 동안에는 녹화에도 학생이 보는 화면(가림 · 멈춘 장면)을 담는다.
+ * 가림 창은 미리보기에서 실제 화면이 보이도록 화면 찍기에서 빠지게 해 두어서(setContentProtection), 그냥 두면 녹화에는
+ * 가린 내용이 그대로 담겼다 (2026-11-23 영상 만들다 찾음 — 성적 화면을 가려도 녹화에는 남음).
+ * 평소에는 화면 조각을 그대로 넘기고, 가리는 동안에는 받은 조각을 버리고 가림 그림을 0.2초마다 넣는다.
+ * MediaStreamTrackProcessor가 없으면 예전처럼 그대로 녹화한다.
+ */
+function coverGate(track){
+  if (typeof MediaStreamTrackProcessor !== 'function' || typeof MediaStreamTrackGenerator !== 'function') return { track, set(){} };
+  const proc = new MediaStreamTrackProcessor({ track });
+  const gen = new MediaStreamTrackGenerator({ kind: 'video' });
+  const w = gen.writable.getWriter();
+  let card = null, want = null, timer = null, lastTs = 0, lastWall = 0, lastOut = -1, size = { w: 1920, h: 1080 };
+  const put = async f => { if (f.timestamp <= lastOut){ f.close(); return; } lastOut = f.timestamp; try { await w.write(f); } catch { f.close(); } };
+  (async () => {
+    const r = proc.readable.getReader();
+    for (;;){
+      const { value, done } = await r.read();
+      if (done) break;
+      lastTs = value.timestamp; lastWall = performance.now();
+      if (value.displayWidth !== size.w || value.displayHeight !== size.h){ size = { w: value.displayWidth, h: value.displayHeight }; if (want) build(want); }
+      if (card){ value.close(); continue; }
+      await put(value);
+    }
+  })().catch(() => {});
+  const tick = () => { if (card) put(new VideoFrame(card, { timestamp: lastTs + Math.round((performance.now() - lastWall) * 1000) })); };
+  async function build(c){
+    const cv = new OffscreenCanvas(size.w, size.h), g = cv.getContext('2d');
+    g.fillStyle = '#000'; g.fillRect(0, 0, size.w, size.h);
+    if (c.mode === 'freeze' && c.src){
+      try { const bmp = await createImageBitmap(await (await fetch(`data:image/jpeg;base64,${c.src}`)).blob()); g.drawImage(bmp, 0, 0, size.w, size.h); bmp.close(); } catch { /* 검은 화면 */ }
+    } else {
+      g.fillStyle = '#f2cd5c'; g.globalAlpha = 0.9; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.font = `700 ${Math.round(size.h * 0.041)}px -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif`;
+      g.fillText('잠시 후 계속합니다', size.w / 2, size.h / 2);
+    }
+    if (want === c) card = cv.transferToImageBitmap();
+  }
+  return {
+    track: gen,
+    async set(c){
+      want = c?.mode ? c : null;
+      clearInterval(timer); timer = null;
+      if (!want){ card = null; return; }
+      await build(want);
+      tick(); timer = setInterval(tick, 200);
+    },
+  };
+}
+let gate = null, pendingCover = null;
+window.rec.onCover(c => { pendingCover = c; gate?.set(c); });
+
+function stopAll(){ gate?.set(null); gate?.track?.stop?.(); for (const s of streams) for (const t of s.getTracks()) t.stop(); mixer?.close().catch(() => {}); mixer = null; }
 const TYPES = ['video/mp4;codecs=avc1.640028,mp4a.40.2', 'video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm'];
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 /**
@@ -61,7 +113,9 @@ window.rec.onStart(async o => {
         chromeMediaSource: 'desktop', chromeMediaSourceId: o.sourceId, maxWidth: W, maxHeight: H, maxFrameRate: F } } }));
     }
     streams = [video, ...extra];
-    const tracks = [...video.getVideoTracks()];
+    gate = coverGate(video.getVideoTracks()[0]);
+    if (pendingCover) gate.set(pendingCover);
+    const tracks = [gate.track];
     let mic = false;
     if (o.mic){
       try { const a = await micStream(o.micId); streams.push(a); audios.push(a); mic = true; }

@@ -578,7 +578,7 @@ function ensureCover(d){
     const cw = coverWin;
     onGone(cw, '가림 화면', () => {
       cw.destroy(); if (coverWin === cw) coverWin = null;
-      if (cover.mode){ cover.mode = null; cover.payload = null; session.say('정지·가리기 화면에 문제가 생겨 걷었습니다 · 다시 눌러 주세요'); push(); }
+      if (cover.mode){ cover.mode = null; cover.payload = null; syncRecCover(); session.say('정지·가리기 화면에 문제가 생겨 걷었습니다 · 다시 눌러 주세요'); push(); }
     });
     coverWin.loadFile(path.join(HERE, 'renderer', 'cover.html'));
     coverWin.webContents.on('did-finish-load', () => coverWin?.webContents.send('cover:state', cover.payload ?? null));
@@ -590,6 +590,7 @@ async function setCover(mode){
   if (!mode || cover.mode === mode){
     cover.mode = null; cover.payload = null;
     coverWin?.hide();
+    syncRecCover();
     session.say(session.dual ? '학생 화면을 다시 보여 줍니다' : '화면을 다시 보여 줍니다');
     return push();
   }
@@ -602,6 +603,7 @@ async function setCover(mode){
     cover.payload = { mode, src: img.toJPEG(90).toString('base64') };
   } else cover.payload = { mode };
   cover.mode = mode;
+  syncRecCover();
   const w = ensureCover(coverDisplay());
   w.webContents.send('cover:state', cover.payload);
   w.showInactive();
@@ -715,7 +717,7 @@ async function startRecording(){
   mkdirSync(recDir(), { recursive: true });
   const name = `${stamp()}_${safeName(title, 40)}`;
   const startedAt = Date.now();
-  rec = { name, root, title, startedAt, parts: [], cur: null, split: false, lastHi: null, where: !session.dual ? '이 화면' : prefs.recScreen === 'teacher' ? '교사 화면' : '학생 화면' };
+  rec = { name, root, title, startedAt, displayId: d.id, parts: [], cur: null, split: false, lastHi: null, where: !session.dual ? '이 화면' : prefs.recScreen === 'teacher' ? '교사 화면' : '학생 화면' };
   newPart(1, startedAt);
   noteChapter();
   // 소리 섞기(AudioContext)가 보이지 않는 창에서도 멈추지 않게 자동 재생 제한을 푼다
@@ -731,6 +733,7 @@ async function startRecording(){
   });
   rec.micAsked = prefs.recMic !== false && !micOk;   // 마이크를 켰는데 맥에서 막혀 있음 → 시작 안내에 알림
   // one: 컴퓨터 소리를 받는 화면을 그대로 녹화에도 쓴다 (맥 — 같은 화면을 두 번 찍지 않게). 윈도우는 확인된 방식 그대로 (HANDOFF 넘길 일)
+  setTimeout(syncRecCover, 0);   // 이미 가리거나 멈춘 채 녹화를 시작하면 처음부터 그 화면으로
   recWc.send('rec:start', { sourceId: src.id, mic: micOk, micId: prefs.recMicId || '', sys: !!prefs.recSys, light: !!prefs.recLight, one: !IS_WIN });
   rec.splitTimer = setInterval(splitRecording, REC_SPLIT_MS);
   rec.spaceTimer = setInterval(() => {
@@ -738,6 +741,12 @@ async function startRecording(){
     if (f != null && f < 1024 ** 3){ session.say(`남은 공간이 ${fmtBytes(f)}라 녹화를 멈춥니다`); stopRecording(); }
   }, 60000);
   push();
+}
+/** 녹화 중인 화면을 가리거나 멈추면 녹화에도 그 화면(가림 · 멈춘 장면)을 담게 녹화 창에 알린다 (recorder.js coverGate) */
+function syncRecCover(){
+  if (!rec?.recWin || rec.recWin.isDestroyed()) return;
+  const same = !!cover.mode && coverDisplay()?.id === rec.displayId;
+  rec.recWin.webContents.send('rec:cover', same ? cover.payload : null);
 }
 /** 새 부: 임시 파일(1부는 이름 그대로, 2부부터 _p2…)과 그 부의 목차 */
 function newPart(n, at){
