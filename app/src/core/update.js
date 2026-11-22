@@ -43,7 +43,9 @@ export async function checkUpdate(current, { fetchFn = fetch, platform, arch } =
   if (!version || compareVersions(version, current) <= 0) return null;
   const asset = pickAsset(rel.assets, platform, arch);
   const page = typeof rel.html_url === 'string' && rel.html_url.startsWith(`${RELEASES}/`) ? rel.html_url : RELEASES;
-  return { version, url: asset?.browser_download_url ?? page, page, size: asset?.size ?? null, notes: String(rel.body ?? '').trim().slice(0, 400) };
+  // GitHub가 올린 파일마다 SHA-256 지문(digest)을 알려 준다 → 받은 파일이 그대로인지 확인할 때 쓴다 (없으면 null: 크기만 확인)
+  const sha256 = /^sha256:[0-9a-f]{64}$/i.test(asset?.digest ?? '') ? asset.digest.slice(7).toLowerCase() : null;
+  return { version, url: asset?.browser_download_url ?? page, page, size: asset?.size ?? null, sha256, notes: String(rel.body ?? '').trim().slice(0, 400) };
 }
 
 /** 열어도 되는 주소인지 (이 저장소의 Releases만) */

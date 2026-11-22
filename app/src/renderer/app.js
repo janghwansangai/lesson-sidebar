@@ -193,7 +193,7 @@ async function startPreviewStream(p){
   const W = 528;   // 사이드바 폭 264 × 배율 2까지
   try {
     const s = await navigator.mediaDevices.getUserMedia({ audio: false, video: { mandatory: {
-      chromeMediaSource: 'desktop', chromeMediaSourceId: p.stream, maxWidth: W, maxHeight: Math.round(W * (p.ratio || 0.5625)), maxFrameRate: 2 } } });
+      chromeMediaSource: 'desktop', chromeMediaSourceId: p.stream, maxWidth: W, maxHeight: Math.round(W * (p.ratio || 0.5625)), maxFrameRate: 1 } } });
     pvStream = s;
     const v = $('#preview-vid'); v.srcObject = s; v.play().catch(() => {});
     v.hidden = false; $('#preview-img').hidden = true; $('#preview-canvas').hidden = true;

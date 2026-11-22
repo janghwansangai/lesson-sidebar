@@ -5,6 +5,7 @@
 //   같은 인증서라 손쉬운 사용·화면 기록 권한이 그대로 남는다 (docs/poc/mac.md 33). 다른 서명이면 깔지 않는다.
 // - 윈도우: 설치 .exe를 받아 사이드바가 끝난 뒤 실행한다 (설치 프로그램이 바꿔 깔고 다시 켬). 설치 없이 켜는 판은 예전처럼 브라우저로.
 import { execFile, spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { createWriteStream, existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
 
@@ -13,7 +14,8 @@ const run = (cmd, args, opts = {}) => new Promise((resolve, reject) =>
 
 /**
  * 파일 하나를 받는다. onProgress(퍼센트 또는 null, 받은 바이트, 전체 바이트).
- * expected(바이트)를 주면 크기가 다를 때 오류.
+ * expected(바이트)를 주면 크기가 다를 때 오류. sha256(16진수 64자)을 주면 받은 내용의 지문이 다를 때 오류
+ * (중간에 깨지거나 바뀐 설치 파일을 실행하지 않게 — 다르면 다시 받고, 그래도 다르면 깔지 않는다).
  * 실패하면 잠시 기다렸다가 다시 받는다 (waits: 기다릴 초) — GitHub는 설치판을 막 올린 뒤 몇 분 동안 HTTP 400을 주기도 했다 (docs/poc/mac.md 75)
  */
 export async function download(url, file, { waits = [10, 30], sleep = s => new Promise(r => setTimeout(r, s * 1000)), onRetry, ...o } = {}){
@@ -26,7 +28,7 @@ export async function download(url, file, { waits = [10, 30], sleep = s => new P
     }
   }
 }
-async function downloadOnce(url, file, { fetchFn = fetch, onProgress, expected = null, timeoutMs = 20 * 60000 } = {}){
+async function downloadOnce(url, file, { fetchFn = fetch, onProgress, expected = null, sha256 = null, timeoutMs = 20 * 60000 } = {}){
   // cache 'no-store': 120MB 설치판을 브라우저 캐시에 남기지 않고, 예전에 받은 것을 다시 쓰지도 않는다 (시험에서 옛 파일이 나왔다)
   const r = await fetchFn(url, { signal: AbortSignal.timeout(timeoutMs), cache: 'no-store' });
   if (!r.ok){
@@ -38,18 +40,21 @@ async function downloadOnce(url, file, { fetchFn = fetch, onProgress, expected =
   const out = createWriteStream(file);
   const closed = new Promise((res, rej) => { out.on('close', res); out.on('error', rej); });
   let got = 0, last = -1;
+  const hash = sha256 ? createHash('sha256') : null;
   try {
     const reader = r.body.getReader();
     for (;;){
       const { done, value } = await reader.read();
       if (done) break;
       got += value.length;
+      hash?.update(value);
       if (!out.write(value)) await new Promise(res => out.once('drain', res));
       const pct = total ? Math.min(100, Math.floor(got * 100 / total)) : null;
       if (pct !== last){ last = pct; onProgress?.(pct, got, total); }
     }
   } finally { out.end(); await closed; }
   if (expected && got !== expected) throw new Error(`받은 크기가 맞지 않습니다 (${got} / ${expected})`);
+  if (hash && hash.digest('hex') !== String(sha256).toLowerCase()) throw new Error('받은 파일의 지문(SHA-256)이 GitHub에 올린 것과 다릅니다');
   return got;
 }
 
@@ -126,6 +131,8 @@ export function startMacSwap({ pid, staged, dest, relaunch = true }){
 // ---------- 윈도우 ----------
 /** 사이드바가 끝날 시간(약 3초)을 둔 뒤 설치 프로그램을 실행한다 (한 번에 설치판은 앱이 켜져 있으면 멈추므로) */
 export function startWinInstaller(exe){
+  // cmd 줄에 넣으므로 %(환경 변수로 풀림)·따옴표가 든 경로는 쓰지 않는다 (부르는 쪽이 브라우저 내려받기로 돌림)
+  if (/[%"\r\n]/.test(exe) || !/\.exe$/i.test(exe)) throw new Error('설치 파일 경로를 쓸 수 없습니다');
   spawn('cmd.exe', ['/d', '/c', `ping -n 4 127.0.0.1 >nul & start "" "${exe}"`], { detached: true, stdio: 'ignore', windowsHide: true, windowsVerbatimArguments: true }).unref();
 }
 

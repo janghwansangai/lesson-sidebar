@@ -83,6 +83,7 @@ function sampleLesson(){
 let trustTimer = null;
 function watchTrust(){
   clearInterval(trustTimer);
+  if (IS_WIN) return;   // 윈도우는 창을 다루는 데 권한이 필요 없다 (도우미 'trusted'는 늘 true) — 5초마다 묻지 않는다
   trustTimer = setInterval(async () => {
     let ok = session.trusted;
     try { ok = (await helper.call('trusted')).trusted; } catch { /* 다음에 다시 */ }
@@ -220,6 +221,8 @@ function createSidebar(){
   let hang = null;
   win.webContents.on('unresponsive', () => { clearTimeout(hang); hang = setTimeout(() => { logErr('사이드바 응답 없음', '8초'); win?.webContents.forcefullyCrashRenderer(); }, 8000); });
   win.webContents.on('responsive', () => { clearTimeout(hang); hang = null; });
+  // 다시 불러온 화면은 미리보기 영상(윈도우)을 잃는다 → 처음부터 다시 연결 (안 하면 미리보기가 빈 그림으로 남았다, windows.md "최종 점검")
+  win.webContents.on('did-finish-load', () => { previewStream = null; if (session) push(); });
 }
 
 const fullState = () => ({ ...session.snapshot(), collapsed, trusted: session.trusted !== false, tools: { pointer: tools.pointer, spot: tools.spot, pen: tools.pen, grab: grab?.mode ?? null, pins: pins.size }, cover: cover.mode, preview: previewOn && screenAccess() === 'granted', rec: rec ? { since: rec.startedAt, mic: !!rec.mic, sys: !!rec.sys, stopping: !!rec.stopping, where: rec.where } : null, prefs: { ...prefs, steps: OPACITY_STEPS, asideAvailable: ASIDE_OK, keys: SHORTCUTS.map(s => ({ key: keyLabel(s), label: s.label })) }, update: update && !update.dismissed ? { version: update.version, notes: update.notes, size: update.size, phase: update.phase ?? null, pct: update.pct ?? null } : null, version: app.getVersion(), presenter: !!presWin, remote: remote ? { url: remote.url, qr: remote.qr, showQr: remote.showQr, phones: liveSrv.clients('lan') } : null });
@@ -336,13 +339,27 @@ function overlayFor(d){
   w.setBounds(d.bounds);
   return w;
 }
+// 도구를 다 끄고 1분이 지나면 겹침 창을 닫아 메모리를 돌려준다 (화면마다 화면 크기 투명 창이라 윈도우에서 약 260MB).
+// 다시 켜면 새로 만든다 (0.3초쯤)
+let overlayFree = null;
+function freeOverlaysLater(){
+  clearTimeout(overlayFree);
+  overlayFree = setTimeout(() => {
+    overlayFree = null;
+    if (tools.pointer || tools.spot || tools.pen || grab) return;
+    for (const w of overlays.values()) if (!w.isDestroyed()) w.destroy();
+    overlays.clear();
+  }, 60000);
+}
 function syncTools(){
   const on = tools.pointer || tools.spot || tools.pen;
   const grabsMouse = tools.spot || tools.pen;
   clearInterval(toolTimer); toolTimer = null;
   syncClicks();
+  if (on || grab){ clearTimeout(overlayFree); overlayFree = null; }
   if (!on){
     for (const w of overlays.values()) if (!w.isDestroyed()){ w.webContents.send('overlay:state', tools); w.hide(); }   // 끈 것을 알려 판서도 지운다
+    if (!grab) freeOverlaysLater();
     globalShortcut.unregister('Escape');
     push();
     return;
@@ -361,7 +378,8 @@ function syncTools(){
   if (tools.pen && inkFor === null) inkFor = session.highlight ?? '';
   if (!tools.pen) inkFor = null;
   lastCur = null; curIn = null;
-  toolTimer = setInterval(sendCursor, 16);
+  // 겹침 창이 자기 화면의 마우스 움직임을 직접 받으므로, 여기는 화면을 옮겼는지·사이드바 위인지만 보면 된다 → 30번/초면 충분 (60번/초는 메인 CPU 1%)
+  toolTimer = setInterval(sendCursor, 33);
   push();
 }
 // 겹침 창은 자기 화면 안의 마우스 움직임을 직접 받아 원을 옮긴다. 여기서는 어느 화면에 있는지와
@@ -619,7 +637,9 @@ async function syncPreviewStream(want){
 }
 function syncPreview(){
   const want = previewOn && session?.dual && screenAccess() === 'granted' && !!win;
-  if (IS_WIN) return syncPreviewStream(want);   // 윈도우는 영상으로 (windows.md) — 맥은 아래처럼 5초마다 찍기
+  // 윈도우는 영상(초당 1장)으로 — 찍을 때마다 화면 복제(DXGI)를 새로 시작해 5초마다 한 장 찍기가 오히려 무겁다
+  // (코어 하나 기준 5초마다 찍기 7.5%, 영상 초당 1장 2.2%, 0.2장도 2.7% — windows.md "최종 점검"). 사이드바가 접혀 있으면 영상을 끈다
+  if (IS_WIN) return syncPreviewStream(want && !collapsed);   // 맥은 아래처럼 5초마다 찍기
   if (!want){
     if (previewLive){ previewLive = false; clearTimeout(previewT); previewT = null; win?.webContents.send('preview', null); }
     return;
@@ -1167,7 +1187,7 @@ async function installUpdate(){
     const file = path.join(dir, path.basename(new URL(u.url).pathname));
     u.phase = 'downloading'; u.pct = 0; push();
     let shown = 0;
-    await download(u.url, file, { fetchFn: net.fetch, expected: u.size, onProgress: pct => { u.pct = pct; if (Date.now() - shown > 400){ shown = Date.now(); push(); } },
+    await download(u.url, file, { fetchFn: net.fetch, expected: u.size, sha256: u.sha256 ?? null, onProgress: pct => { u.pct = pct; if (Date.now() - shown > 400){ shown = Date.now(); push(); } },
       onRetry: (n, e) => { logErr('업데이트 받기 다시', `${n}번째 · ${e.message} ${e.detail ?? ''}`); session.say(`새 버전을 받지 못해 잠시 뒤 다시 받습니다 (${e.message})`); } });
     u.phase = 'installing'; push();
     if (process.platform === 'darwin'){
@@ -1674,7 +1694,7 @@ async function act(action, arg){
   return true;
 }
 
-ipcMain.handle('state', () => fullState());
+ipcMain.handle('state', e => (e.sender === win?.webContents ? fullState() : null));   // 사이드바 화면에만 (휴대폰 열쇠가 든 주소도 담겨 있다)
 ipcMain.handle('act', (e, action, arg) => {
   if (e.sender !== win?.webContents) return false;
   act(action, arg).catch(err => session.say(err.message));

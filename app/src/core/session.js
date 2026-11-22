@@ -691,8 +691,10 @@ export class Session extends EventEmitter {
       let wins;
       try { wins = await this.list(); } catch { return 0; }
       const plan = planAside(wins, this.teacher, span, { ownPid: this.ownPid, displays: this.displays });
-      if (!plan.length) return 0;
       const now = Date.now();
+      // 1분 지난 기록은 버린다 (닫힌 창의 기록이 하루 종일 쌓이지 않게)
+      for (const [w, ts] of this.asideTries) if (!ts.some(t => now - t < 60000)) this.asideTries.delete(w);
+      if (!plan.length) return 0;
       const moved = this.aside ?? [];
       let n = 0;
       for (const p of plan){
