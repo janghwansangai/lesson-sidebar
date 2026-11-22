@@ -4,6 +4,9 @@
 > 저장소: https://github.com/janghwansangai/lesson-sidebar (**공개**, 2026-11-22부터 — 개인 정보 규칙은 `CLAUDE.md` Git 규칙 7)
 
 ## 지금 상황
+- **소개·다운로드 사이트** (2026-11-22, 선생님 요청): **https://lesson-sidebar.pages.dev** — 저장소 `site/`(정적 페이지, Cloudflare Pages 프로젝트 `lesson-sidebar`, 선생님 계정). 소개·장점·설치·메뉴별 사용법 ①~⑧·단축키·문제 해결·만든 사람 다있쌤. 내려받기 단추는 GitHub Releases에서 **파일 종류마다 가장 새 공개 Release**를 찾아 연결한다(`site/app.js`) — 새 버전을 Release로 공개하면 사이트는 다시 올리지 않아도 된다.
+  - **유튜브 영상 넣기**: 선생님이 준 주소(또는 영상 ID)를 `site/config.js`의 `youtube`에 넣고 다시 올린다: `npx wrangler@4 pages deploy site --project-name lesson-sidebar --branch main --commit-dirty=true` (저장소 맨 위에서, 선생님 Cloudflare 계정으로 로그인된 맥). 영상 세션: [수업 사이드바 소개·사용법 영상 만들기](#local_dab535c7-f133-40a6-b792-3afd15d42e34).
+  - 화면 그림(`site/img/`)은 시험용 설정 폴더·예시 수업 복사본으로 찍고 경로·메일을 가렸다. 다시 찍을 때도 선생님 수업 보관함·구글 드라이브 주소가 나오지 않게 (mac.md 76).
 - **설계 완료**: `docs/PLAN.md` v0.3, UI 시안 `design/prototype.html`
   - 정해진 것: 윈도우·맥 모두 지원, 듀얼 모니터(교사 화면 + 학생 화면), 설치형 프로그램 하나(확장 프로그램 없음), 수업은 폴더 단위, 맥·윈도우 Claude 협업
 - **0단계 기술 검증 진행 중** (`docs/poc/README.md`에 진행표)
