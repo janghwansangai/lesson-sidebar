@@ -787,7 +787,7 @@ export class Session extends EventEmitter {
       lesson: Ls ? {
         title: Ls.title, date: Ls.date, folder: Ls.root,
         sections: Ls.sections.map(s => ({ id: s.id, title: s.title, minutes: s.minutes,
-          items: s.items.map(it => ({ id: it.id, title: it.title, type: it.type, start: it.start, app: this.appLabel(it), home: this.home(it), problem: it.problem })) })),
+          items: s.items.map(it => ({ id: it.id, title: it.title, type: it.type, start: it.start, app: this.appLabel(it), home: this.home(it), problem: it.problem, link: !!(it.url && /^https?:\/\//i.test(it.url)) })) })),
       } : null,
       state: Object.fromEntries([...this.state].map(([id, st]) => [id, { status: st.status, disp: st.disp, note: st.note }])),
       highlight: this.highlight, sel: this.sel, tile: this.tile ? { ids: this.tile.ids, layout: this.tile.layout } : null, layouts: TILE_LAYOUTS,

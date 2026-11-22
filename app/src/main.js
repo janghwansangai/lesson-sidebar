@@ -894,6 +894,37 @@ async function setRemote(on){
   push();
 }
 
+// ---------- 링크 QR (docs/PLAN.md 15 "학생 공유 QR") ----------
+// 링크 자료의 주소를 학생 화면(모니터 한 대면 이 화면)에 큰 QR로 띄운다. 누르거나 Esc로 닫는다
+let qrWin = null;
+function shortUrl(u){
+  try { const x = new URL(u); return (x.host.replace(/^www\./, '') + (x.pathname === '/' ? '' : x.pathname)).slice(0, 60) + (u.length > 70 ? '…' : ''); } catch { return ''; }
+}
+function closeQr(){ if (qrWin && !qrWin.isDestroyed()) qrWin.close(); qrWin = null; }
+function shareQr(id){
+  if (qrWin && !qrWin.isDestroyed()){ closeQr(); return session.say('링크 QR을 닫았습니다'); }
+  const it = session.item(id);
+  if (!it?.url || !/^https?:\/\//i.test(it.url)) return session.say('링크가 있는 자료만 QR로 띄울 수 있습니다');
+  const q = qrcode(0, 'M'); q.addData(it.url); q.make();
+  const src = `data:image/svg+xml;base64,${Buffer.from(q.createSvgTag({ cellSize: 8, margin: 0, scalable: true })).toString('base64')}`;
+  const d = coverDisplay();
+  qrWin = new BrowserWindow({
+    ...d.bounds, frame: false, resizable: false, movable: false, minimizable: false, maximizable: false, fullscreenable: false,
+    skipTaskbar: true, show: false, alwaysOnTop: true, hasShadow: false, backgroundColor: '#1b2f2a', enableLargerThanScreen: true,
+    type: process.platform === 'darwin' ? 'panel' : undefined, webPreferences: SECURE('qr-preload.cjs'),
+  });
+  qrWin.setAlwaysOnTop(true, 'screen-saver');   // 겹침 창·가림 창과 같은 높이, 사이드바(한 칸 위)보다 아래
+  qrWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  lockDown(qrWin);
+  const w = qrWin;
+  w.loadFile(path.join(HERE, 'renderer', 'qr.html'));
+  w.webContents.on('did-finish-load', () => { w.webContents.send('qr:show', { title: it.title, src, short: shortUrl(it.url) }); w.setBounds(d.bounds); w.show(); w.moveTop(); w.focus(); });
+  w.on('closed', () => { if (qrWin === w) qrWin = null; push(); });
+  win?.setAlwaysOnTop(true, 'screen-saver', 1);   // 사이드바는 그 위
+  session.say(`'${it.title}' 링크를 ${session.dual ? '학생 화면에 ' : ''}QR로 띄웠습니다 · 화면을 누르거나 Esc로 닫습니다`);
+}
+ipcMain.on('qr:close', e => { if (qrWin && !qrWin.isDestroyed() && e.sender === qrWin.webContents) closeQr(); });
+
 // ---------- 새 버전 알림 (docs/PLAN.md 13 "서명·자동 업데이트") ----------
 // 하루 한 번 GitHub Releases의 최신 버전을 보고, 새 버전이면 사이드바에 "내려받기"를 보인다. 깔기는 선생님이 직접 (update.js 맨 위 이유)
 let update = null;   // { version, url, page, notes, size, dismissed }
@@ -1254,6 +1285,7 @@ const ACTIONS = {
   pin: () => startGrab('pick'),
   closePins: () => { for (const p of [...pins]) p.close(); },
   screenSettings: () => shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture'),
+  shareQr: id => shareQr(id),
   quit: () => app.quit(),
   shortcuts: v => { prefs.shortcuts = v === true || v === 'true'; saveSettings({ shortcuts: prefs.shortcuts }); syncShortcuts(true); push(); },
 };

@@ -144,8 +144,9 @@ function row(it){
     : st.status === 'blocked' ? '<span class="chip wait">답 기다림</span>'
     : front ? '<span class="chip now">보는 중</span>'
     : open ? '<i class="dot" title="열림"></i>' : '';
-  const acts = open ? (S.dual ? `<button class="act" data-act="move" title="${st.disp === 'student' ? '교사' : '학생'} 화면으로 보내기" aria-label="${esc(it.title)} 다른 화면으로 보내기">⇄</button>` : '') +
-    `<button class="act x" data-act="close" title="창 닫기" aria-label="${esc(it.title)} 창 닫기">✕</button>` : '';
+  const qr = it.link ? `<button class="act qr" data-act="qr" title="링크를 ${S.dual ? '학생 화면에 ' : ''}큰 QR로" aria-label="${esc(it.title)} 링크 QR 띄우기">QR</button>` : '';
+  const acts = qr + (open ? (S.dual ? `<button class="act" data-act="move" title="${st.disp === 'student' ? '교사' : '학생'} 화면으로 보내기" aria-label="${esc(it.title)} 다른 화면으로 보내기">⇄</button>` : '') +
+    `<button class="act x" data-act="close" title="창 닫기" aria-label="${esc(it.title)} 창 닫기">✕</button>` : '');
   return `<div class="it${open ? ' open' : ''}${front ? ' front' : ''}${sel ? ' sel' : ''}${it.problem ? ' bad' : ''}${open && S.dual && st.disp === 'teacher' ? ' on-t' : ''}" data-id="${esc(it.id)}" role="button" tabindex="0">` +
     `<button class="check" data-act="sel" aria-label="${esc(it.title)} 선택" aria-pressed="${sel}">${sel ? '✓' : ''}</button>` +
     `<span class="badge" style="--c:var(${c})">${b}</span>` +
@@ -161,6 +162,7 @@ $('#list').addEventListener('click', e => {
   if (a === 'sel' || (!a && (e.metaKey || e.ctrlKey || e.shiftKey))) return api.act('toggleSel', id);
   if (a === 'move') return api.act('move', id);
   if (a === 'close') return api.act('close', id);
+  if (a === 'qr') return api.act('shareQr', id);
   if (!r.classList.contains('bad')) api.act('activate', id);
 });
 $('#list').addEventListener('keydown', e => {
