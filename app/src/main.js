@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { Helper } from './core/helper.js';
 import { loadLesson } from './core/lesson.js';
 import { startFileServer } from './core/fileserver.js';
-import { Session } from './core/session.js';
+import { Session, TILE_LAYOUTS } from './core/session.js';
 import { LessonDoc } from './core/editor.js';
 import { listLessons, suggestRoots, LIB_NAME } from './core/library.js';
 import { writeLock, clearLock, otherLock, deviceName } from './core/lock.js';
@@ -172,52 +172,75 @@ const fullState = () => ({ ...session.snapshot(), collapsed, trusted: session.tr
 function push(){ win?.webContents.send('state', fullState()); syncDivider(); }
 
 // ---------- 나란히 보기 조절 바 ----------
-// 나란히 놓은 창의 첫 세로 경계에 가는 막대 창을 띄운다. 끌면 경계가 따라오며 두 창 폭이 함께 바뀐다.
+// 나란히 놓은 창의 경계에 가는 막대 창을 띄운다: 세로 경계(v) 하나 + 큰 화면+2·4분할이면 가로 경계(h) 하나.
+// 끄는 동안에는 막대만 마우스를 따라가고, 놓을 때 창들을 한 번에 옮긴다.
+// (PPT·엑셀은 한 번 옮기는 데 0.5초 넘게 걸려, 끄는 동안 계속 옮기면 창이 3초 넘게 늦게 따라왔다 — docs/poc/mac.md 36)
 // 도우미 좌표: 맥은 Electron과 같은 포인트, 윈도우는 물리 픽셀 → DIP로 바꿔서 창을 놓는다.
 const DIV_W = 16;
-let divWin = null, divDrag = null;   // divDrag: 끄는 중이면 true
+const divWins = { v: null, h: null };
+let divDrag = null;   // 끄는 중인 막대 'v' | 'h'
 const toDipRect = r => IS_WIN ? screen.screenToDipRect(null, r) : r;
-const toHelperX = (x, y) => IS_WIN ? screen.dipToScreenPoint({ x, y }).x : x;
-function ensureDivider(){
-  if (divWin) return divWin;
-  divWin = new BrowserWindow({
-    width: DIV_W, height: 100, frame: false, transparent: true, backgroundColor: '#00000000', resizable: false, movable: false,
+const toHelperPt = (x, y) => IS_WIN ? screen.dipToScreenPoint({ x, y }) : { x, y };
+function ensureDivider(dir){
+  if (divWins[dir]) return divWins[dir];
+  const w = new BrowserWindow({
+    width: DIV_W, height: DIV_W, frame: false, transparent: true, backgroundColor: '#00000000', resizable: false, movable: false,
     minimizable: false, maximizable: false, fullscreenable: false, focusable: false, hasShadow: false, skipTaskbar: true, show: false,
     alwaysOnTop: true, type: process.platform === 'darwin' ? 'panel' : undefined, thickFrame: false,
     webPreferences: SECURE('divider-preload.cjs'),
   });
-  divWin.setAlwaysOnTop(true, 'screen-saver');
-  divWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-  lockDown(divWin);
-  divWin.loadFile(path.join(HERE, 'renderer', 'divider.html'));
-  divWin.on('closed', () => { divWin = null; });
-  return divWin;
+  w.setAlwaysOnTop(true, 'screen-saver');
+  w.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  lockDown(w);
+  w.loadFile(path.join(HERE, 'renderer', 'divider.html'), { query: { dir } });
+  w.on('closed', () => { divWins[dir] = null; });
+  return (divWins[dir] = w);
 }
 function placeDivider(d){
-  const r = toDipRect({ x: d.x - Math.round(DIV_W / 2), y: d.y, width: DIV_W, height: d.height });
-  const w = ensureDivider();
-  w.setBounds({ x: Math.round(r.x), y: Math.round(r.y), width: DIV_W, height: Math.round(r.height) });
+  const r = toDipRect(d.dir === 'v'
+    ? { x: d.x - Math.round(DIV_W / 2), y: d.y, width: DIV_W, height: d.height }
+    : { x: d.x, y: d.y - Math.round(DIV_W / 2), width: d.width, height: DIV_W });
+  const w = ensureDivider(d.dir);
+  w.setBounds({ x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) });
   if (!w.isVisible()) w.showInactive();
 }
 function syncDivider(){
   if (divDrag) return;   // 끄는 동안은 마우스를 따라간다
-  const d = session?.tileDivider();
-  if (!d){ divWin?.hide(); return; }
-  placeDivider(d);
+  const ds = session?.tileDividers() ?? [];
+  for (const dir of ['v', 'h']){
+    const d = ds.find(x => x.dir === dir);
+    if (d) placeDivider(d); else divWins[dir]?.hide();
+  }
 }
-// 끄는 동안에는 막대만 마우스를 따라가고, 놓을 때 창들을 한 번에 옮긴다.
-// (PPT·엑셀은 한 번 옮기는 데 0.5초 넘게 걸려, 끄는 동안 계속 옮기면 창이 3초 넘게 늦게 따라왔다 — docs/poc/mac.md 36)
-async function dragDivider(x, final){
-  const d = session.tileDivider(); if (!d){ divDrag = null; return; }
-  const a = d.area, hx = Math.min(a.x + a.width * 0.85, Math.max(a.x + a.width * 0.15, toHelperX(x, d.y)));
-  divDrag = true;
-  placeDivider({ ...d, x: hx });
+async function dragDivider(dir, x, y, final){
+  const d = session.tileDividers().find(z => z.dir === dir); if (!d){ divDrag = null; return; }
+  const p = toHelperPt(x, y), a = d.area;
+  divDrag = dir;
+  let ratio;
+  if (dir === 'v'){
+    const hx = Math.min(a.x + a.width * 0.85, Math.max(a.x + a.width * 0.15, p.x));
+    placeDivider({ ...d, x: hx }); ratio = (hx - a.x) / a.width;
+  } else {
+    const hy = Math.min(a.y + a.height * 0.85, Math.max(a.y + a.height * 0.15, p.y));
+    placeDivider({ ...d, y: hy }); ratio = (hy - a.y) / a.height;
+  }
   if (!final) return;
-  try { await session.setTileRatio((hx - a.x) / a.width); }
+  try { await session.setTileRatio(ratio, dir); }
   finally { divDrag = null; syncDivider(); }
 }
-ipcMain.on('divider:move', (e, x) => { if (e.sender === divWin?.webContents && Number.isFinite(x)) dragDivider(x, false).catch(() => {}); });
-ipcMain.on('divider:end', (e, x) => { if (e.sender === divWin?.webContents && Number.isFinite(x)) dragDivider(x, true).catch(() => { divDrag = null; }); });
+const divDir = e => (e.sender === divWins.v?.webContents ? 'v' : e.sender === divWins.h?.webContents ? 'h' : null);
+ipcMain.on('divider:move', (e, x, y) => { const dir = divDir(e); if (dir && Number.isFinite(x) && Number.isFinite(y)) dragDivider(dir, x, y, false).catch(() => {}); });
+ipcMain.on('divider:end', (e, x, y) => { const dir = divDir(e); if (dir && Number.isFinite(x) && Number.isFinite(y)) dragDivider(dir, x, y, true).catch(() => { divDrag = null; }); });
+
+// ---------- 배치 저장 (lesson.json layouts) ----------
+function editLayouts(root, fn){
+  const d = new LessonDoc(root).load();
+  d.data.layouts = fn(Array.isArray(d.data.layouts) ? d.data.layouts : []);
+  d.save();
+  if (doc?.root === root) doc.load();   // 준비 화면이 이 수업을 열고 있으면 바로 다시 읽어, 나중에 저장할 때 배치를 지우지 않게
+  refreshSessionIfSame(root);
+  prepPush();
+}
 
 // ---------- 자동 숨김 ----------
 async function setAutoHide(v){
@@ -575,6 +598,23 @@ const ACTIONS = {
   toggleSel: id => session.toggleSel(id),
   split: v => session.split(v),
   relayout: v => session.relayout(v),
+  applyLayout: v => session.applyLayout(v),
+  saveLayout: () => {
+    const t = session.tile, root = session.lesson?.root;
+    if (!t || !root) return;
+    const label = TILE_LAYOUTS[t.ids.length]?.find(l => l.id === t.layout)?.label ?? t.layout;
+    const titles = t.ids.map(id => session.item(id)?.title ?? '').filter(Boolean);
+    const round = a => a.map(v => Math.round(v * 1000) / 1000);
+    const entry = { id: `lay_${randomBytes(4).toString('hex')}`, name: `${titles.join(' + ')} (${label})`.slice(0, 80), layout: t.layout, items: [...t.ids], c: round(t.c), r: round(t.r) };
+    const same = l => l.layout === entry.layout && String(l.items) === String(entry.items);
+    editLayouts(root, ls => [...ls.filter(l => !same(l)), entry].slice(-12));
+    session.say(`이 배치를 수업에 저장했습니다: ${entry.name} · 아래 '저장한 배치'에서 한 번에 다시 놓을 수 있습니다`);
+  },
+  removeLayout: v => {
+    const root = session.lesson?.root; if (!root) return;
+    editLayouts(root, ls => ls.filter(l => l.id !== v));
+    session.say('저장한 배치를 지웠습니다');
+  },
   untile: () => session.untile(),
   openAll: () => session.openAll(),
   next: () => session.next(),

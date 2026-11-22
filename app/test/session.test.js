@@ -620,3 +620,26 @@ test('나란히 보기: 2개 7:3·3:7, 3개 3분할·큰 화면+2, 4개 4분할,
   await s.split('thirds');
   assert.deepEqual(s.tile.ids.length, 3);
 });
+
+test('저장한 배치: 빠진 자료는 걸러 읽고, 그 배치·비율로 다시 놓는다 · 큰 화면+2는 가로 경계 조절 바도', async () => {
+  const { s, helper } = makeSession();
+  let n = 0;
+  s.launcher.openInBrowser = async () => { helper.spawn('Chrome', `웹 ${n++}`); };
+  await s.refreshDisplays();
+  const lesson = makeLesson();
+  // lesson.json의 layouts는 loadLesson이 걸러 준다 (여기서는 같은 모양을 직접 넣음)
+  lesson.layouts = [{ id: 'lay_1', name: '발표+참고 (7:3)', layout: '7:3', items: ['ppt', 'web'], c: [0.6], r: [] },
+                    { id: 'lay_2', name: '셋', layout: 'main2', items: ['ppt', 'web', 'memo'], c: [0.6], r: [0.3] }];
+  s.load(lesson);
+  assert.deepEqual(s.snapshot().saved.map(l => l.id), ['lay_1', 'lay_2']);
+  await s.applyLayout('lay_1');
+  const W = STUDENT.visible, winOf = id => helper.wins.find(w => w.wid === s.state.get(id).wid);
+  assert.equal(winOf('ppt').width, 768);           // 저장한 비율 0.6 (7:3 기본 0.7이 아님)
+  assert.equal(s.tileDividers().length, 1);
+  await s.applyLayout('lay_2');
+  const ds = s.tileDividers();
+  assert.deepEqual(ds.map(d => d.dir), ['v', 'h']);
+  assert.equal(ds[1].y, Math.round(W.y + W.height * 0.3));
+  assert.equal(await s.setTileRatio(0.5, 'h'), 0.5);
+  assert.equal(winOf('web').height, Math.round(W.height * 0.5));
+});
