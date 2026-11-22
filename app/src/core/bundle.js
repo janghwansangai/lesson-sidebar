@@ -7,7 +7,7 @@
 // - manifest.json: 형식 버전, 앱 버전, 만든 때, 파일 목록과 SHA-256 (가져올 때 손상 확인)
 import yazl from 'yazl';
 import yauzl from 'yauzl';
-import { createReadStream, createWriteStream, existsSync, mkdirSync, readdirSync, lstatSync, renameSync, rmSync, statfsSync, readFileSync, writeFileSync } from 'node:fs';
+import { createReadStream, createWriteStream, existsSync, mkdirSync, readdirSync, lstatSync, renameSync, rmSync, statfsSync, readFileSync, writeFileSync, openSync, closeSync } from 'node:fs';
 import { createHash, randomBytes } from 'node:crypto';
 import { pipeline } from 'node:stream/promises';
 import { Transform } from 'node:stream';
@@ -214,6 +214,43 @@ export function findExisting(info, libraryRoot){
 
 const freeFolder = (dir, name) => { let n = name; for (let i = 2; existsSync(path.join(dir, n)); i++) n = `${name}_${i}`; return path.join(dir, n); };
 
+// 윈도우: 폴더 안 파일이 다른 프로그램(파워포인트·한글 등)에 열려 있으면 폴더 이름을 바꿀 수 없다 (EPERM/EBUSY/EACCES).
+// 클라우드 동기화 프로그램이 잠깐 잡고 있을 때도 같은 오류라 조금 기다리며 몇 번 더 해 본다.
+const BUSY = new Set(['EPERM', 'EBUSY', 'EACCES']);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+async function renameRetry(from, to, { tries = 4, waitMs = 400 } = {}){
+  for (let i = 1; ; i++){
+    try { return renameSync(from, to); }
+    catch (e){ if (!BUSY.has(e.code) || i >= tries) throw e; await sleep(waitMs); }
+  }
+}
+
+/**
+ * 수업 폴더 안에서 다른 프로그램이 열고 있는 파일 (이름만, 최대 max개). 윈도우만 판단하고 맥은 빈 목록.
+ * 오피스·한글은 연 파일을 쓰기 금지로 잡아 두므로, 쓰기로 열어 보아 막히면 "열려 있음"으로 본다 (내용은 바꾸지 않음).
+ * 오피스가 옆에 만드는 `~$파일` 표시는 listLessonFiles가 빼므로 원래 파일로 판단한다.
+ */
+export function busyFiles(root, { max = 3, platform = process.platform } = {}){
+  if (platform !== 'win32') return [];
+  const out = [];
+  for (const f of listLessonFiles(root)){
+    try {
+      if (lstatSync(f.abs).mode & 0o200){ closeSync(openSync(f.abs, 'r+')); }   // 읽기 전용 파일은 건너뜀
+    } catch (e){
+      if (BUSY.has(e.code)){ out.push(path.basename(f.rel)); if (out.length >= max) break; }
+    }
+  }
+  return out;
+}
+
+/** 덮어쓰지 못할 때 선생님께 보일 말 (경로·영어 오류는 넣지 않는다) */
+function busyError(names){
+  const which = names.length ? `'${names.join("', '")}' 파일이` : '이 수업 폴더의 파일이';
+  const e = new Error(`${which} 다른 프로그램(파워포인트·엑셀·한글·탐색기 등)에 열려 있어 덮어쓰지 못했습니다 · 그 파일을 닫고 다시 가져오거나 "사본으로 가져오기"를 고르세요 (지금 수업은 그대로입니다)`);
+  e.code = 'BUSY';
+  return e;
+}
+
 /**
  * 꾸러미를 보관함에 푼다.
  * mode 'copy': 새 폴더(이름이 겹치면 _2)로, 수업 번호도 새로 — 따로 고치는 사본
@@ -227,6 +264,11 @@ export async function importBundle(info, libraryRoot, { mode = 'copy', existing 
     const fs = statfsSync(libraryRoot);
     if (fs.bavail * fs.bsize < info.totalBytes * 1.05 + 50 * 1024 ** 2) throw new Error(`저장 공간이 모자랍니다 (${fmtBytes(info.totalBytes)} 필요)`);
   } catch (e){ if (/모자랍니다/.test(e.message)) throw e; }
+  // 덮어쓸 수업의 파일이 열려 있으면 풀기 전에 알린다 (큰 꾸러미를 다 푼 뒤에 실패하지 않게)
+  if (mode === 'overwrite' && existing){
+    const open = busyFiles(existing);
+    if (open.length) throw busyError(open);
+  }
 
   const tmp = path.join(libraryRoot, `.가져오는 중-${randomBytes(4).toString('hex')}`);
   const want = new Map(info.plan.map(p => [p.rel, p]));
@@ -274,13 +316,19 @@ export async function importBundle(info, libraryRoot, { mode = 'copy', existing 
     const keep = path.join(libraryRoot, META, '덮어쓰기 전');
     mkdirSync(keep, { recursive: true });
     backup = freeFolder(keep, `${path.basename(existing)}_${nowStamp()}`);
-    renameSync(existing, backup);
-    try { renameSync(tmp, existing); }
+    try { await renameRetry(existing, backup); }
+    catch (e){
+      rmSync(tmp, { recursive: true, force: true });
+      if (BUSY.has(e.code)) throw busyError(busyFiles(existing));
+      throw e;
+    }
+    try { await renameRetry(tmp, existing); }
     catch (e){ renameSync(backup, existing); rmSync(tmp, { recursive: true, force: true }); throw e; }
     root = existing;
   } else {
     root = freeFolder(libraryRoot, info.folderName);
-    renameSync(tmp, root);
+    try { await renameRetry(tmp, root); }
+    catch (e){ rmSync(tmp, { recursive: true, force: true }); throw e; }
   }
   return { root, count, skipped: info.skipped, damaged, backup };
 }

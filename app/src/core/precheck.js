@@ -148,6 +148,8 @@ export async function precheck(lesson, d){
 export function cloudOf(root){
   const p = String(root).normalize('NFC');
   if (/[\\/]CloudStorage[\\/]GoogleDrive-|[\\/]Google Drive[\\/]|[\\/](내 드라이브|My Drive)[\\/]/i.test(p)) return '구글 드라이브';
+  // 윈도우 구글 드라이브(G: 같은 드라이브 문자) 맨 위의 다른 폴더: 공유 드라이브, 다른 컴퓨터, 바로 가기로 넣은 폴더
+  if (/^[a-z]:[\\/](공유 드라이브|Shared drives|다른 컴퓨터|Other computers|\.shortcut-targets-by-id)[\\/]/i.test(p)) return '구글 드라이브';
   if (/[\\/]CloudStorage[\\/]OneDrive|[\\/]OneDrive[\\/ -]/i.test(p)) return 'OneDrive';
   if (/[\\/]Dropbox[\\/]/i.test(p)) return 'Dropbox';
   return null;
