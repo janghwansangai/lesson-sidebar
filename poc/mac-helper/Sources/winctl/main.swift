@@ -130,6 +130,37 @@ struct Win {
     let app: String
     let bundle: String
     let el: AXUIElement
+    /// 이 프로그램 전체를 막고 있는 모달 대화상자 (있으면)
+    let appDialog: AXUIElement?
+}
+
+// MARK: - 답을 기다리는 창 (저장 여부·확인·로그인 등)
+// 맥에서 확인한 모양 (docs/poc/mac.md):
+//  - 저장 여부 시트: 창의 자식으로 역할 AXSheet가 붙는다 (엑셀). 바탕 창의 닫기 단추는 "사용 안 함"이 된다.
+//  - 프로그램 전체를 막는 대화상자: 프로그램 창 목록에 하위 역할 AXDialog·AXSystemDialog, AXModal=true로 보인다 (엣지 로그인 창).
+//  - 최소화된 일반 창도 하위 역할이 AXDialog로 바뀌므로 최소화 여부를 함께 본다.
+
+func sheet(of win: AXUIElement) -> AXUIElement? {
+    guard let v = copyValue(win, kAXChildrenAttribute), let kids = v as? [AXUIElement] else { return nil }
+    return kids.first { str($0, kAXRoleAttribute) == "AXSheet" }
+}
+
+func isModalDialog(_ w: AXUIElement) -> Bool {
+    guard let sub = str(w, kAXSubroleAttribute),
+          sub == (kAXDialogSubrole as String) || sub == (kAXSystemDialogSubrole as String) else { return false }
+    return bool(w, kAXModalAttribute) == true && bool(w, kAXMinimizedAttribute) != true
+}
+
+/// 규격의 waiting 모양 {wid, title}. 창 번호를 못 읽으면 wid는 null.
+func waitingJSON(_ el: AXUIElement) -> [String: Any] {
+    ["wid": windowID(el).map { Int($0) as Any } ?? NSNull(), "title": str(el, kAXTitleAttribute) ?? ""]
+}
+
+/// 그 창에 답을 기다리는 창이 있으면 {wid, title}, 없으면 null(NSNull).
+func waitingFor(_ w: Win) -> Any {
+    if let s = sheet(of: w.el) { return waitingJSON(s) }
+    if let d = w.appDialog { return waitingJSON(d) }
+    return NSNull()
 }
 
 func allWindows(appFilter: String?) -> [Win] {
@@ -141,12 +172,22 @@ func allWindows(appFilter: String?) -> [Win] {
         let axApp = AXUIElementCreateApplication(app.processIdentifier)
         AXUIElementSetMessagingTimeout(axApp, 1.5)
         guard let v = copyValue(axApp, kAXWindowsAttribute), let arr = v as? [AXUIElement] else { continue }
+        var keep: [AXUIElement] = []
+        var dialog: AXUIElement? = nil
         for w in arr {
+            // 말풍선 도움말(AXHelpTag) 같은 것은 하위 역할이 없어 아래 거르기를 지나가므로 역할부터 본다 (한글에서 확인)
+            if str(w, kAXRoleAttribute) != (kAXWindowRole as String) { continue }
             // 일반 창만 (도구 막대·팝업 제외). 단, 최소화된 창은 하위 역할이 AXDialog로 바뀌므로 함께 넣는다
             if let role = str(w, kAXSubroleAttribute), role != (kAXStandardWindowSubrole as String),
-               bool(w, kAXMinimizedAttribute) != true { continue }
+               bool(w, kAXMinimizedAttribute) != true {
+                if dialog == nil && isModalDialog(w) { dialog = w }
+                continue
+            }
+            keep.append(w)
+        }
+        for w in keep {
             guard let wid = windowID(w) else { continue }
-            out.append(Win(wid: wid, pid: app.processIdentifier, app: name, bundle: bundle, el: w))
+            out.append(Win(wid: wid, pid: app.processIdentifier, app: name, bundle: bundle, el: w, appDialog: dialog))
         }
     }
     return out
@@ -173,6 +214,7 @@ func winJSON(_ w: Win, _ displays: [[String: Any]]) -> [String: Any] {
     }
     d["fullscreen"] = (bool(w.el, "AXFullScreen") ?? false) || coversDisplay
     d["display"] = displayIndex(of: f, in: displays)
+    d["waiting"] = waitingFor(w)
     return d
 }
 
@@ -180,10 +222,18 @@ func frontInfo() -> [String: Any] {
     guard let app = NSWorkspace.shared.frontmostApplication else { return [:] }
     var info: [String: Any] = ["pid": Int(app.processIdentifier), "app": app.localizedName ?? ""]
     let axApp = AXUIElementCreateApplication(app.processIdentifier)
-    if let w = element(axApp, kAXFocusedWindowAttribute) ?? element(axApp, kAXMainWindowAttribute) {
-        if let wid = windowID(w) { info["wid"] = Int(wid) }
-        info["title"] = str(w, kAXTitleAttribute) ?? ""
+    guard var w = element(axApp, kAXFocusedWindowAttribute) ?? element(axApp, kAXMainWindowAttribute) else { return info }
+    // 답을 기다리는 창이 맨 앞이면 (시트가 붙으면 프로그램의 포커스 창이 시트가 된다)
+    // 목록에 나오는 바탕 창을 알리고, 그 창은 dialog로 함께 알린다 (윈도우 도우미와 같은 모양)
+    var dialog: AXUIElement? = nil
+    if str(w, kAXRoleAttribute) == "AXSheet", let p = element(w, kAXParentAttribute) {
+        dialog = w; w = p
+    } else if isModalDialog(w), let m = element(axApp, kAXMainWindowAttribute), windowID(m) != windowID(w) {
+        dialog = w; w = m
     }
+    if let wid = windowID(w) { info["wid"] = Int(wid) }
+    info["title"] = str(w, kAXTitleAttribute) ?? ""
+    if let d = dialog { info["dialog"] = waitingJSON(d) }
     return info
 }
 
@@ -209,6 +259,13 @@ func raise(_ w: Win) -> [String: Any] {
     let eRaise = AXUIElementPerformAction(w.el, kAXRaiseAction as CFString)
     var activated = false
     if let app = NSRunningApplication(processIdentifier: w.pid) { activated = app.activate(options: []) }
+    // 프로그램 전체를 막는 대화상자가 있으면 그 창에 포커스를 준다.
+    // 한글은 바탕 창을 앞으로 가져오면 포커스가 저장 대화상자에서 바탕 창으로 옮겨 간다. 시트는 바탕 창을 따라온다.
+    var dialogFocused: Any = NSNull()
+    if sheet(of: w.el) == nil, let d = w.appDialog {
+        AXUIElementPerformAction(d, kAXRaiseAction as CFString)
+        dialogFocused = AXUIElementSetAttributeValue(d, kAXFocusedAttribute as CFString, kCFBooleanTrue) == .success
+    }
     var front: [String: Any] = [:]
     // 앞 창이 바뀔 때까지 최대 1.5초 기다린다
     for _ in 0..<15 {
@@ -219,7 +276,9 @@ func raise(_ w: Win) -> [String: Any] {
     let ok = (front["wid"] as? Int) == Int(w.wid)
     return ["ok": ok, "front": front, "ms": Int(Date().timeIntervalSince(t0) * 1000),
             "detail": ["axFrontmost": eFront == .success, "axMain": eMain == .success,
-                       "axRaise": eRaise == .success, "nsActivate": activated]]
+                       "axRaise": eRaise == .success, "nsActivate": activated,
+                       "dialogFocused": dialogFocused,
+                       "waiting": waitingFor(w)]]
 }
 
 func move(_ w: Win, _ r: CGRect) -> [String: Any] {
@@ -241,7 +300,14 @@ func move(_ w: Win, _ r: CGRect) -> [String: Any] {
 func close(_ w: Win) -> [String: Any] {
     guard let btn = element(w.el, kAXCloseButtonAttribute) else { return ["ok": false, "error": "닫기 버튼이 없습니다"] }
     let e = AXUIElementPerformAction(btn, kAXPressAction as CFString)
-    return ["ok": e == .success]
+    if e == .success { return ["ok": true] }
+    // 한글은 바뀐 문서를 닫을 때 저장 대화상자를 띄우느라 2초쯤 늦게 오류로 답한다 (요청은 전달됨).
+    // 창이 닫혔거나 답을 기다리는 창이 떴으면 전달된 것으로 본다.
+    let again = allWindows(appFilter: w.bundle.isEmpty ? w.app : w.bundle).first { $0.wid == w.wid }
+    if let a = again, waitingFor(a) is NSNull {
+        return ["ok": false, "error": "닫기 요청을 보내지 못했습니다 (접근성 오류 \(e.rawValue))"]
+    }
+    return ["ok": true, "detail": ["axError": Int(e.rawValue), "closed": again == nil]]
 }
 
 // MARK: - 명령

@@ -22,6 +22,7 @@ cd poc
 npm test                                         # 공통 로직 단위 테스트
 npm run build:mac                                # 맥만: 도우미 빌드
 node runner/run.js --browsers=chrome,edge,whale  # 기술 검증 실행
+node runner/modal.js [--app=hwp]                 # 저장 창이 떠 있을 때 닫기 시험 (윈도우·맥, 엑셀 또는 한글)
 ```
 - 실행기는 **자기가 연 창만** 옮기고 닫는다. 실행 중에는 프로그램 창이 저절로 열리고 움직이니 다른 작업을 잠시 멈춘다.
 - 결과는 화면에 표로 나오고, 자세한 값은 `poc/out/report-*.json`에 남는다 (저장소에는 올리지 않음).
