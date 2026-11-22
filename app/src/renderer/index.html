@@ -16,6 +16,13 @@
     </div>
     <div id="recbar" class="recbar" hidden><span class="dotrec" aria-hidden="true"></span><b>녹화 중</b><span id="rec-time">00:00</span><span id="rec-where" class="rw"></span>
       <button id="rec-stop" class="rbtn" type="button">녹화 끝내기</button></div>
+    <div id="updbar" class="updbar" role="status" hidden>
+      <span id="upd-t"></span>
+      <div class="row">
+        <button id="upd-get" class="fb" type="button">내려받기</button>
+        <button id="upd-later" class="fb quiet" type="button">나중에</button>
+      </div>
+    </div>
     <header class="head">
       <div class="top">
         <span class="brand">수업 사이드바 <em>체험판</em></span>
@@ -32,6 +39,9 @@
         <div class="pref-h">녹화</div>
         <label class="pref-row"><input id="rec-mic" type="checkbox"><span>마이크 소리도 녹화<small>선생님 목소리를 함께 남깁니다. 학생 목소리도 들어갈 수 있습니다.</small></span></label>
         <label class="pref-row"><input id="rec-light" type="checkbox"><span>가볍게 녹화 (720p · 15장/초)<small>느린 PC에서 수업이 버벅이면 켜 주세요. 용량도 절반쯤입니다.</small></span></label>
+        <div class="pref-h">새 버전 <span id="ver" class="pref-sub"></span></div>
+        <label class="pref-row"><input id="upd-check" type="checkbox"><span>새 버전 알림<small>하루 한 번 새 설치판이 나왔는지 확인합니다. 깔기는 직접 합니다.</small></span></label>
+        <button id="upd-now" class="fb quiet" type="button">지금 확인</button>
         <label id="aside-row" class="pref-row" hidden>
           <input id="aside" type="checkbox">
           <span>고정해 둘 때 가려지는 창을 옆으로 비키기<small>교사 화면에서 사이드바에 가려지는 창(선생님 창 포함)을 오른쪽으로 옮깁니다. 맥은 고정해 둔 동안 새로 가려지는 창도 옮깁니다. 자동 숨김을 켜면 이 설정은 꺼지고, 끄거나 끝내면 창을 돌려놓습니다.</small></span>

@@ -20,6 +20,7 @@ import { Chapters, clock } from './core/chapters.js';
 import { duplicateLesson, guideHtml, findConflicts, resolveConflict } from './core/reuse.js';
 import { Timing, liveView, memoFor, lanAddress } from './core/live.js';
 import { LiveServer } from './core/liveserver.js';
+import { checkUpdate, isReleaseUrl } from './core/update.js';
 import qrcode from 'qrcode-generator';
 import { safeName } from './core/types.js';
 import * as L from './core/launcher.js';
@@ -175,7 +176,7 @@ function createSidebar(){
   win.on('closed', () => { win = null; });
 }
 
-const fullState = () => ({ ...session.snapshot(), collapsed, trusted: session.trusted !== false, tools: { pointer: tools.pointer, spot: tools.spot, grab: grab?.mode ?? null, pins: pins.size }, cover: cover.mode, preview: previewOn && screenAccess() === 'granted', rec: rec ? { since: rec.startedAt, mic: !!rec.mic, stopping: !!rec.stopping, where: rec.where } : null, prefs: { ...prefs, steps: OPACITY_STEPS, asideAvailable: ASIDE_OK }, presenter: !!presWin, remote: remote ? { url: remote.url, qr: remote.qr, showQr: remote.showQr, phones: liveSrv.clients('lan') } : null });
+const fullState = () => ({ ...session.snapshot(), collapsed, trusted: session.trusted !== false, tools: { pointer: tools.pointer, spot: tools.spot, grab: grab?.mode ?? null, pins: pins.size }, cover: cover.mode, preview: previewOn && screenAccess() === 'granted', rec: rec ? { since: rec.startedAt, mic: !!rec.mic, stopping: !!rec.stopping, where: rec.where } : null, prefs: { ...prefs, steps: OPACITY_STEPS, asideAvailable: ASIDE_OK }, update: update && !update.dismissed ? { version: update.version, notes: update.notes, size: update.size } : null, version: app.getVersion(), presenter: !!presWin, remote: remote ? { url: remote.url, qr: remote.qr, showQr: remote.showQr, phones: liveSrv.clients('lan') } : null });
 function push(){ noteChapter(); win?.webContents.send('state', fullState()); syncDivider(); syncPreview(); syncLive(); }
 
 // ---------- 나란히 보기 조절 바 ----------
@@ -818,6 +819,30 @@ async function setRemote(on){
   push();
 }
 
+// ---------- 새 버전 알림 (docs/PLAN.md 13 "서명·자동 업데이트") ----------
+// 하루 한 번 GitHub Releases의 최신 버전을 보고, 새 버전이면 사이드바에 "내려받기"를 보인다. 깔기는 선생님이 직접 (update.js 맨 위 이유)
+let update = null;   // { version, url, page, notes, size, dismissed }
+async function runUpdateCheck({ manual = false } = {}){
+  try {
+    const u = process.env.SIDEBAR_DEBUG === '1' && process.env.SIDEBAR_FAKE_UPDATE
+      ? { version: process.env.SIDEBAR_FAKE_UPDATE, url: 'https://github.com/janghwansangai/lesson-sidebar/releases', notes: '시험용 새 버전', size: null }
+      : await checkUpdate(app.getVersion(), { fetchFn: net.fetch });
+    saveSettings({ lastUpdateCheck: Date.now() });
+    update = u;
+    if (manual) session.say(u ? `새 버전 ${u.version}이 있습니다 · 위쪽 '내려받기'를 눌러 주세요` : `지금 버전(${app.getVersion()})이 가장 새 버전입니다`);
+    push();
+  } catch (e){
+    if (manual) session.say(`새 버전을 확인하지 못했습니다 (인터넷 연결 확인 · ${e.message})`);
+  }
+}
+function scheduleUpdateCheck(){
+  // 개발 중(npx electron .)에는 확인하지 않는다. 시험할 때는 SIDEBAR_FAKE_UPDATE=0.2.0
+  if (!app.isPackaged && !process.env.SIDEBAR_FAKE_UPDATE) return;
+  const due = () => prefs.updateCheck && Date.now() - (readSettings().lastUpdateCheck ?? 0) > 20 * 3600e3;
+  setTimeout(() => { if (due()) runUpdateCheck(); }, 15000);
+  setInterval(() => { if (due()) runUpdateCheck(); }, 3600e3);
+}
+
 // ---------- 수업 준비 창 ----------
 function openPrep(){
   if (prepWin){ prepWin.show(); prepWin.focus(); return; }
@@ -1121,6 +1146,10 @@ const ACTIONS = {
   presenter: v => setPresenter(v === true || v === 'true'),
   remote: v => setRemote(v === true || v === 'true'),
   remoteNew: () => setRemote(true),
+  getUpdate: () => { if (update && isReleaseUrl(update.url)){ shell.openExternal(update.url); session.say(`새 버전 ${update.version}을 내려받습니다 · 다 받으면 열어서 설치해 주세요 (사이드바를 끝낸 뒤 덮어 설치)`); } },
+  dismissUpdate: () => { if (update){ update.dismissed = true; push(); } },
+  updateCheck: v => { prefs.updateCheck = v === true || v === 'true'; saveSettings({ updateCheck: prefs.updateCheck }); push(); },
+  checkUpdateNow: () => runUpdateCheck({ manual: true }),
   remoteQr: v => { if (remote){ remote.showQr = v === true || v === 'true'; push(); } },
   hideOthers: () => session.hideOthers(),
   // 손쉬운 사용 설정 화면만 열어 준다 (켜는 것은 선생님이 직접)
@@ -1241,7 +1270,7 @@ app.whenReady().then(async () => {
   await session.refreshDisplays();
 
   const settings = readSettings();
-  prefs = { opacity: OPACITY_STEPS.includes(settings.opacity) ? settings.opacity : 100, aside: ASIDE_OK && !!settings.aside, recMic: settings.recMic !== false, recLight: !!settings.recLight };
+  prefs = { opacity: OPACITY_STEPS.includes(settings.opacity) ? settings.opacity : 100, aside: ASIDE_OK && !!settings.aside, recMic: settings.recMic !== false, recLight: !!settings.recLight, updateCheck: settings.updateCheck !== false };
   createSidebar();
   if (!(settings.lastFolder && existsSync(settings.lastFolder) && runLesson(settings.lastFolder))) runLesson(sampleLesson());
   if (settings.lastPrepFolder && existsSync(path.join(settings.lastPrepFolder, 'lesson.json'))){
@@ -1270,6 +1299,7 @@ app.whenReady().then(async () => {
   screen.on('display-metrics-changed', onDisplays);
 
   recoverRecordings();
+  scheduleUpdateCheck();
   setInterval(watchOutside, 3000);
   setInterval(heartbeat, 30000);
 
