@@ -138,6 +138,7 @@
     "afterSign": "build/sign-local.cjs"
   },
   "dependencies": {
+    "qrcode-generator": "2.0.4",
     "yauzl": "3.4.0",
     "yazl": "3.3.1"
   }

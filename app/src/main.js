@@ -3,6 +3,7 @@
 import { app, BrowserWindow, ipcMain, screen, dialog, shell, net, globalShortcut, desktopCapturer, systemPreferences } from 'electron';
 import { readFileSync, writeFileSync, mkdirSync, existsSync, statSync, cpSync, createReadStream, statfsSync, openSync, writeSync, closeSync, renameSync, copyFileSync, unlinkSync, readdirSync } from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import http from 'node:http';
 import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
@@ -17,6 +18,10 @@ import { exportBundle, inspectBundle, importBundle, findExisting, fmtBytes } fro
 import { precheck, checkLink, cloudOf } from './core/precheck.js';
 import { Chapters, clock } from './core/chapters.js';
 import { duplicateLesson, guideHtml, findConflicts, resolveConflict } from './core/reuse.js';
+import { Timing, liveView, memoFor, lanAddress } from './core/live.js';
+import { LiveServer } from './core/liveserver.js';
+import { checkUpdate, isReleaseUrl } from './core/update.js';
+import qrcode from 'qrcode-generator';
 import { safeName } from './core/types.js';
 import * as L from './core/launcher.js';
 
@@ -171,8 +176,8 @@ function createSidebar(){
   win.on('closed', () => { win = null; });
 }
 
-const fullState = () => ({ ...session.snapshot(), collapsed, trusted: session.trusted !== false, tools: { pointer: tools.pointer, spot: tools.spot, grab: grab?.mode ?? null, pins: pins.size }, cover: cover.mode, preview: previewOn && screenAccess() === 'granted', rec: rec ? { since: rec.startedAt, mic: !!rec.mic, stopping: !!rec.stopping, where: rec.where } : null, prefs: { ...prefs, steps: OPACITY_STEPS, asideAvailable: ASIDE_OK } });
-function push(){ noteChapter(); win?.webContents.send('state', fullState()); syncDivider(); syncPreview(); }
+const fullState = () => ({ ...session.snapshot(), collapsed, trusted: session.trusted !== false, tools: { pointer: tools.pointer, spot: tools.spot, grab: grab?.mode ?? null, pins: pins.size }, cover: cover.mode, preview: previewOn && screenAccess() === 'granted', rec: rec ? { since: rec.startedAt, mic: !!rec.mic, stopping: !!rec.stopping, where: rec.where } : null, prefs: { ...prefs, steps: OPACITY_STEPS, asideAvailable: ASIDE_OK }, update: update && !update.dismissed ? { version: update.version, notes: update.notes, size: update.size } : null, version: app.getVersion(), presenter: !!presWin, remote: remote ? { url: remote.url, qr: remote.qr, showQr: remote.showQr, phones: liveSrv.clients('lan') } : null });
+function push(){ noteChapter(); win?.webContents.send('state', fullState()); syncDivider(); syncPreview(); syncLive(); }
 
 // ---------- 나란히 보기 조절 바 ----------
 // 나란히 놓은 창의 경계에 가는 막대 창을 띄운다: 세로 경계(v) 하나 + 큰 화면+2·4분할이면 가로 경계(h) 하나.
@@ -708,6 +713,136 @@ function refreshSessionIfSame(root){
   catch (e){ session.say(e.message); }
 }
 
+// ---------- 발표자 화면 · 휴대폰 리모컨 (docs/PLAN.md 13 "4단계 확장") ----------
+// 두 화면은 같은 웹 페이지(renderer/live.*)를 LiveServer에서 받는다. 발표자 화면은 이 PC 안(127.0.0.1) 창,
+// 휴대폰은 같은 와이파이에서 QR 주소로. 휴대폰 주소의 열쇠는 리모컨을 켤 때마다 새로 만든다.
+const timing = new Timing();
+let presWin = null, remote = null, nextThumb = null, thumbTimer = null;
+const memoCache = new Map();   // 메모 파일 → { m: 고친 시각, text }
+function memoText(abs){
+  try {
+    const m = statSync(abs).mtimeMs, c = memoCache.get(abs);
+    if (c?.m === m) return c.text;
+    let text = readFileSync(abs, 'utf8');
+    if (text.length > 20000) text = `${text.slice(0, 20000)}\n…`;
+    memoCache.set(abs, { m, text });
+    return text;
+  } catch { return ''; }
+}
+function liveState(){
+  const snap = session.snapshot();
+  const v = liveView(snap.lesson, snap.highlight, timing);
+  // 지난 시간은 화면이 since로 스스로 센다 (같은 내용이면 다시 보내지 않도록 시간이 흐르는 값은 뺀다)
+  if (v){ delete v.lesson.elapsed; if (v.section){ delete v.section.elapsed; delete v.section.over; } }
+  return {
+    live: v,
+    memo: memoFor(session.lesson, snap.highlight).map(m => ({ title: m.title, text: memoText(m.abs) })).filter(m => m.text.trim()),
+    thumb: nextThumb && nextThumb.id === v?.next?.id ? nextThumb.v : null,
+    cover: cover.mode, dual: snap.dual, rec: rec ? { since: rec.startedAt } : null, msg: snap.msg,
+  };
+}
+async function liveAct(action, arg){
+  if (!session.lesson && action !== 'blank') return;
+  try {
+    if (action === 'next') await session.next({ skipMemo: true });
+    else if (action === 'prev') await session.prev();
+    else if (action === 'activate'){ if (typeof arg === 'string' && session.item(arg)) await session.activate(arg); }
+    else if (action === 'freeze' || action === 'blank') await setCover(action);
+    else if (action === 'hideOthers') await session.hideOthers();
+    else if (action === 'restartClock'){ timing.restart(); session.say('수업·구간 시계를 지금부터 다시 잽니다'); }
+  } catch (e){ session.say(e.message); }
+}
+const liveSrv = new LiveServer({
+  dir: path.join(HERE, 'renderer'), getState: liveState, onAct: liveAct,
+  getThumb: () => nextThumb?.buf ?? null,
+  // 휴대폰이 처음 붙으면 QR을 접는다 (모니터 한 대일 때 학생이 찍지 않게)
+  onClients: () => { if (remote && liveSrv.clients('lan') > 0) remote.showQr = false; push(); },
+});
+function syncLive(){
+  timing.update(session.lesson, session.highlight);
+  liveSrv.broadcast();
+  const want = !!presWin || liveSrv.clients('lan') > 0;
+  if (want && !thumbTimer){ thumbTimer = setInterval(refreshThumb, 3000); refreshThumb(); }
+  else if (!want && thumbTimer){ clearInterval(thumbTimer); thumbTimer = null; nextThumb = null; }
+}
+/** 다음 자료 창이 미리 열려 있으면 작게 찍어 둔다 (화면 기록 권한이 있을 때만). 다음 자료가 바뀌면 바로, 그대로면 10초마다 */
+let thumbBusy = false;
+async function refreshThumb(){
+  if (thumbBusy || screenAccess() !== 'granted' || !session.lesson) return;
+  const nx = liveView(session.snapshot().lesson, session.highlight, timing)?.next;
+  const wid = nx ? session.state.get(nx.id)?.wid : null;
+  if (!wid){ if (nextThumb){ nextThumb = null; liveSrv.broadcast(); } return; }
+  if (nextThumb?.id === nx.id && Date.now() - nextThumb.at < 10000) return;
+  thumbBusy = true;
+  try {
+    const srcs = await desktopCapturer.getSources({ types: ['window'], thumbnailSize: { width: 480, height: 300 } });
+    const src = srcs.find(x => Number(String(x.id).split(':')[1]) === Number(wid));
+    nextThumb = src && !src.thumbnail.isEmpty() ? { id: nx.id, wid, buf: src.thumbnail.toJPEG(75), v: `${nx.id}-${Date.now()}`, at: Date.now() } : null;
+    liveSrv.broadcast();
+  } catch { /* 다음에 다시 */ } finally { thumbBusy = false; }
+}
+
+async function setPresenter(on){
+  if (!on){ presWin?.close(); return; }
+  if (presWin){ presWin.show(); presWin.focus(); return; }
+  await liveSrv.listen('local', '127.0.0.1');
+  const wa = teacherArea();
+  const w = Math.min(1100, wa.width - SIDEBAR_W - 40), h = Math.min(720, wa.height - 20);
+  presWin = new BrowserWindow({
+    x: Math.round(wa.x + SIDEBAR_W + Math.max(20, (wa.width - SIDEBAR_W - w) / 2)), y: Math.round(wa.y + Math.max(10, (wa.height - h) / 2)),
+    width: w, height: h, minWidth: 360, minHeight: 420, title: '발표자 화면 — 수업 사이드바', backgroundColor: '#1b2f2a', show: false,
+    webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false },
+  });
+  lockDown(presWin);
+  presWin.loadURL(liveSrv.url('local'));
+  presWin.once('ready-to-show', () => presWin?.show());
+  presWin.on('closed', () => { presWin = null; liveSrv.close('local'); push(); });
+  session.say(session.dual ? '발표자 화면을 교사 화면에 열었습니다 · 진행 메모, 구간 시계, 다음 자료 · 키보드 → 다음, ← 이전'
+    : '발표자 화면을 열었습니다 · 모니터가 한 대라 학생에게도 보입니다');
+  push();
+}
+
+async function setRemote(on){
+  liveSrv.close('lan');
+  if (!on){
+    if (remote){ remote = null; session.say('휴대폰 리모컨을 껐습니다 · 연결했던 휴대폰은 더 이상 조작할 수 없습니다'); }
+    return push();
+  }
+  const a = lanAddress(os.networkInterfaces());
+  if (!a){ remote = null; session.say('와이파이(또는 유선 인터넷)에 연결되어 있지 않아 휴대폰 리모컨을 켤 수 없습니다'); return push(); }
+  try { await liveSrv.listen('lan', a.address); }
+  catch (e){ remote = null; session.say(`휴대폰 리모컨을 켜지 못했습니다 (${e.code ?? e.message})`); return push(); }
+  const url = liveSrv.url('lan');
+  const q = qrcode(0, 'M'); q.addData(url); q.make();
+  remote = { url, qr: q.createSvgTag({ cellSize: 4, margin: 2, scalable: true }), showQr: true };
+  session.say(`휴대폰 카메라로 QR을 찍어 주세요 (이 PC와 같은 와이파이) · 처음이면 '들어오는 연결 허용'을 물을 수 있습니다${session.dual ? '' : ' · 모니터가 한 대라 QR이 학생에게도 보입니다. 연결한 뒤 QR을 닫아 주세요'}`);
+  push();
+}
+
+// ---------- 새 버전 알림 (docs/PLAN.md 13 "서명·자동 업데이트") ----------
+// 하루 한 번 GitHub Releases의 최신 버전을 보고, 새 버전이면 사이드바에 "내려받기"를 보인다. 깔기는 선생님이 직접 (update.js 맨 위 이유)
+let update = null;   // { version, url, page, notes, size, dismissed }
+async function runUpdateCheck({ manual = false } = {}){
+  try {
+    const u = process.env.SIDEBAR_DEBUG === '1' && process.env.SIDEBAR_FAKE_UPDATE
+      ? { version: process.env.SIDEBAR_FAKE_UPDATE, url: 'https://github.com/janghwansangai/lesson-sidebar/releases', notes: '시험용 새 버전', size: null }
+      : await checkUpdate(app.getVersion(), { fetchFn: net.fetch });
+    saveSettings({ lastUpdateCheck: Date.now() });
+    update = u;
+    if (manual) session.say(u ? `새 버전 ${u.version}이 있습니다 · 위쪽 '내려받기'를 눌러 주세요` : `지금 버전(${app.getVersion()})이 가장 새 버전입니다`);
+    push();
+  } catch (e){
+    if (manual) session.say(`새 버전을 확인하지 못했습니다 (인터넷 연결 확인 · ${e.message})`);
+  }
+}
+function scheduleUpdateCheck(){
+  // 개발 중(npx electron .)에는 확인하지 않는다. 시험할 때는 SIDEBAR_FAKE_UPDATE=0.2.0
+  if (!app.isPackaged && !process.env.SIDEBAR_FAKE_UPDATE) return;
+  const due = () => prefs.updateCheck && Date.now() - (readSettings().lastUpdateCheck ?? 0) > 20 * 3600e3;
+  setTimeout(() => { if (due()) runUpdateCheck(); }, 15000);
+  setInterval(() => { if (due()) runUpdateCheck(); }, 3600e3);
+}
+
 // ---------- 수업 준비 창 ----------
 function openPrep(){
   if (prepWin){ prepWin.show(); prepWin.focus(); return; }
@@ -1007,6 +1142,15 @@ const ACTIONS = {
   untile: () => session.untile(),
   openAll: () => session.openAll(),
   next: () => session.next(),
+  prev: () => session.prev(),
+  presenter: v => setPresenter(v === true || v === 'true'),
+  remote: v => setRemote(v === true || v === 'true'),
+  remoteNew: () => setRemote(true),
+  getUpdate: () => { if (update && isReleaseUrl(update.url)){ shell.openExternal(update.url); session.say(`새 버전 ${update.version}을 내려받습니다 · 다 받으면 열어서 설치해 주세요 (사이드바를 끝낸 뒤 덮어 설치)`); } },
+  dismissUpdate: () => { if (update){ update.dismissed = true; push(); } },
+  updateCheck: v => { prefs.updateCheck = v === true || v === 'true'; saveSettings({ updateCheck: prefs.updateCheck }); push(); },
+  checkUpdateNow: () => runUpdateCheck({ manual: true }),
+  remoteQr: v => { if (remote){ remote.showQr = v === true || v === 'true'; push(); } },
   hideOthers: () => session.hideOthers(),
   // 손쉬운 사용 설정 화면만 열어 준다 (켜는 것은 선생님이 직접)
   axSettings: () => shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility'),
@@ -1126,7 +1270,7 @@ app.whenReady().then(async () => {
   await session.refreshDisplays();
 
   const settings = readSettings();
-  prefs = { opacity: OPACITY_STEPS.includes(settings.opacity) ? settings.opacity : 100, aside: ASIDE_OK && !!settings.aside, recMic: settings.recMic !== false, recLight: !!settings.recLight };
+  prefs = { opacity: OPACITY_STEPS.includes(settings.opacity) ? settings.opacity : 100, aside: ASIDE_OK && !!settings.aside, recMic: settings.recMic !== false, recLight: !!settings.recLight, updateCheck: settings.updateCheck !== false };
   createSidebar();
   if (!(settings.lastFolder && existsSync(settings.lastFolder) && runLesson(settings.lastFolder))) runLesson(sampleLesson());
   if (settings.lastPrepFolder && existsSync(path.join(settings.lastPrepFolder, 'lesson.json'))){
@@ -1155,6 +1299,7 @@ app.whenReady().then(async () => {
   screen.on('display-metrics-changed', onDisplays);
 
   recoverRecordings();
+  scheduleUpdateCheck();
   setInterval(watchOutside, 3000);
   setInterval(heartbeat, 30000);
 
@@ -1175,5 +1320,5 @@ app.on('before-quit', e => {
     return;
   }
   for (const root of new Set([doc?.root, session?.lesson?.root].filter(Boolean))) clearLock(root, DEVICE);
-  helper?.stop(); files?.close(); clearInterval(cursorTimer);
+  helper?.stop(); files?.close(); liveSrv.closeAll(); clearInterval(cursorTimer); clearInterval(thumbTimer);
 });

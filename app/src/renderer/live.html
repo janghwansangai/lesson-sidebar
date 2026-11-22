@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1b2f2a">
+  <title>수업 진행</title>
+  <link rel="stylesheet" href="live.css">
+</head>
+<body>
+  <!-- 발표자 화면(이 PC, 넓은 창)과 휴대폰 리모컨(좁은 화면)이 같이 쓰는 페이지. 내용은 live.js가 채운다 -->
+  <div id="gone" class="gone" hidden>
+    <b>연결이 끊겼습니다</b>
+    <p>리모컨이 꺼졌거나 새 주소로 바뀌었습니다. 사이드바의 QR 코드를 다시 찍어 주세요.</p>
+  </div>
+  <main id="app" class="app">
+    <div class="col">
+    <header class="top">
+      <div class="t-row">
+        <h1 id="title" class="title">연결하는 중…</h1>
+        <span id="rec" class="rec" hidden>● REC</span>
+        <span id="conn" class="conn" role="status" aria-live="polite"></span>
+      </div>
+      <div class="clocks">
+        <div class="clk"><span class="k">수업</span><b id="c-lesson">0:00</b><span id="c-plan" class="sub"></span></div>
+        <div id="sec-box" class="clk sec"><span id="sec-k" class="k">구간</span><b id="c-sec">0:00</b><span id="c-secplan" class="sub"></span></div>
+      </div>
+      <div class="bar" aria-hidden="true"><i id="bar"></i></div>
+    </header>
+
+    <section class="now">
+      <div class="card cur"><span class="k">지금</span><b id="cur">—</b><span id="cur-app" class="sub"></span></div>
+      <div class="card nxt">
+        <span class="k">다음</span><b id="nxt">—</b><span id="nxt-app" class="sub"></span>
+        <img id="thumb" class="thumb" alt="다음 자료 미리보기" hidden>
+      </div>
+    </section>
+
+    <nav class="go" aria-label="자료 넘기기">
+      <button id="prev" class="big" data-act="prev" type="button">◀ 이전</button>
+      <button id="next" class="big primary" data-act="next" type="button">다음 ▶</button>
+    </nav>
+    <div class="tools" role="group" aria-label="학생 화면">
+      <button id="b-freeze" class="tb" data-act="freeze" type="button" aria-pressed="false">정지</button>
+      <button id="b-blank" class="tb" data-act="blank" type="button" aria-pressed="false">가리기</button>
+      <button class="tb" data-act="hideOthers" type="button">다른 창 숨기기</button>
+      <button class="tb quiet" data-act="restartClock" type="button" title="수업·구간 시계를 지금부터 다시 잽니다">시계 다시</button>
+    </div>
+    <p id="msg" class="msg"></p>
+    </div>
+    <aside class="col">
+
+    <section id="memo-box" class="memo" aria-label="진행 메모" hidden>
+      <h2 id="memo-h">진행 메모</h2>
+      <div id="memo" class="memo-t"></div>
+    </section>
+
+    <section class="list" aria-label="수업 자료">
+      <h2>수업 흐름</h2>
+      <div id="list"></div>
+    </section>
+    </aside>
+  </main>
+  <script src="live.js"></script>
+</body>
+</html>

@@ -65,6 +65,26 @@ function render(){
   $('#preview').hidden = !(S.dual && S.preview);
   $('#preview-tag').textContent = S.cover === 'freeze' ? '정지 중 · 학생에게는 멈춘 장면' : S.cover === 'blank' ? '가리는 중 · 학생에게는 검은 화면' : '학생 화면';
 
+  // 새 버전 알림
+  $('#updbar').hidden = !S.update;
+  if (S.update) $('#upd-t').textContent = `새 버전 ${S.update.version}이 있습니다${S.update.size ? ` (${Math.round(S.update.size / 1048576)}MB)` : ''}${S.update.notes ? ` · ${S.update.notes.split('\n')[0].slice(0, 60)}` : ''}`;
+  $('#upd-check').checked = S.prefs?.updateCheck !== false;
+  $('#ver').textContent = S.version ? `(지금 ${S.version})` : '';
+
+  // 발표자 화면 · 휴대폰 리모컨
+  $('#presenter').setAttribute('aria-pressed', !!S.presenter);
+  $('#remote-on').setAttribute('aria-pressed', !!S.remote);
+  $('#remote').hidden = !S.remote;
+  if (S.remote){
+    const r = S.remote;
+    $('#rm-phones').textContent = r.phones ? `휴대폰 ${r.phones}대 연결됨` : '연결 기다리는 중';
+    $('#rm-qr').hidden = !r.showQr;
+    if (r.showQr && $('#rm-qr').dataset.url !== r.url){ $('#rm-qr').innerHTML = r.qr; $('#rm-qr').dataset.url = r.url; }
+    $('#rm-url').hidden = !r.showQr;
+    $('#rm-url').textContent = r.url.replace(/[0-9a-f]{32}\/$/, '…');
+    $('#rm-toggleqr').textContent = r.showQr ? 'QR 닫기' : 'QR 다시 보기';
+  }
+
   const flat = L ? L.sections.flatMap(s => s.items) : [];
   const i = flat.findIndex(it => it.id === S.highlight);
   const nx = flat[i + 1];
@@ -199,6 +219,14 @@ $('#closeall').addEventListener('click', e => {
   closeArm = Date.now(); b.textContent = '한 번 더 누르면 모두 닫습니다'; b.classList.add('arm');
   setTimeout(() => { if (Date.now() - closeArm >= 3900){ b.textContent = '사이드바가 연 창 모두 닫기'; b.classList.remove('arm'); } }, 4000);
 });
+$('#upd-get').addEventListener('click', () => api.act('getUpdate'));
+$('#upd-later').addEventListener('click', () => api.act('dismissUpdate'));
+$('#upd-check').addEventListener('change', e => api.act('updateCheck', e.target.checked));
+$('#upd-now').addEventListener('click', () => api.act('checkUpdateNow'));
+$('#presenter').addEventListener('click', () => api.act('presenter', !S.presenter));
+$('#remote-on').addEventListener('click', () => api.act('remote', !S.remote));
+$('#rm-toggleqr').addEventListener('click', () => api.act('remoteQr', !S.remote?.showQr));
+$('#rm-new').addEventListener('click', () => api.act('remoteNew'));
 $('#folder').addEventListener('click', () => api.act('prep'));
 $('#quit').addEventListener('click', () => api.act('quit'));
 
