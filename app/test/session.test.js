@@ -48,6 +48,12 @@ class FakeHelper extends EventEmitter {
         return { ok: true, tabs: true, found: true, count, closed: true, windowClosed, waiting: null };
       }
       case 'maximize': { const w = this.wins.find(x => x.wid === Number(a[0])); w.maximized = true; return { ok: true }; }
+      case 'covered': {
+        // 맥 도우미처럼 띠와 겹치는 창 번호 (canCover일 때만 — 아니면 모르는 명령)
+        if (!this.canCover) throw responseError({ ok: false, error: '모르는 명령: covered' });
+        const [x, y, w, h] = a.slice(0, 4).map(Number);
+        return { ok: true, wids: this.wins.filter(v => v.x < x + w && v.x + v.width > x && v.y < y + h && v.y + v.height > y).map(v => v.wid) };
+      }
       case 'displays': return { ok: true, displays: this.displays };
       case 'list': {
         if (this.failList) throw new Error('목록 실패');
@@ -570,6 +576,24 @@ test('앞으로 가져오기가 실패하고 창 목록도 못 읽으면 예전�
   helper.blockFront = null;
   assert.equal((await s.raiseInfo(wid)).state, 'ok');
   assert.equal((await s.raiseInfo(12345)).state, 'gone');
+});
+
+test("계속 비키기: 도우미가 'covered'를 알면 사이드바 띠에 창이 없을 때 전체 목록을 읽지 않는다", async () => {
+  const { s, helper } = makeSession([TEACHER]);
+  helper.canCover = true;
+  await s.refreshDisplays(); s.load(makeLesson());
+  helper.spawn('Finder', '오른쪽 창'); Object.assign(helper.wins[0], { x: 600, y: 200, width: 500, height: 400 });
+  const before = helper.lists;
+  for (let i = 0; i < 5; i++) assert.equal(await s.keepAside(), 0);
+  assert.equal(helper.lists, before, '띠에 창이 없으면 list를 부르지 않음');
+  helper.wins[0].x = 10;                                  // 사이드바 아래로 들어옴
+  assert.equal(await s.keepAside(), 1);
+  assert.equal(helper.wins[0].x, 280);
+  for (let i = 0; i < 3; i++){ helper.wins[0].x = 10; await s.keepAside(); }
+  const capped = helper.lists;
+  helper.wins[0].x = 10;
+  assert.equal(await s.keepAside(), 0);                  // 1분에 3번 넘게 옮긴 창뿐이면 목록도 읽지 않음
+  assert.equal(helper.lists, capped);
 });
 
 test('계속 비키기(맥): 고정해 둔 동안 새로 가려진 창도 옮기고, 스스로 되돌아가는 창은 1분에 3번까지만, 돌려놓기는 처음 자리로', async () => {

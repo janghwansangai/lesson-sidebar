@@ -379,6 +379,24 @@ func run(_ args: [String]) throws -> [String: Any] {
         return ["ok": true, "windows": allWindows(appFilter: filter).map { winJSON($0, ds, z) }]
     case "front":
         return ["ok": true, "front": frontInfo()]
+    case "covered":
+        // covered <x> <y> <width> <height> [제외할 pid]: 그 띠와 겹치는 보통 창 번호 (화면에 보이는 것만).
+        // 창 목록 서버만 본다(프로그램들에 묻지 않음) — 계속 비키기가 2초마다 "사이드바 밑에 창이 있나"만 싸게 보려고
+        guard args.count >= 5, let x = Double(args[1]), let y = Double(args[2]), let w = Double(args[3]), let h = Double(args[4]) else {
+            throw HelperFail(msg: "사용법: winctl covered <x> <y> <width> <height> [pid]")
+        }
+        let own = args.count >= 6 ? Int(args[5]) : nil
+        let strip = CGRect(x: x, y: y, width: w, height: h)
+        let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
+        var out: [Int] = []
+        for win in list {
+            guard (win[kCGWindowLayer as String] as? Int) == 0, let n = win[kCGWindowNumber as String] as? Int,
+                  let b = win[kCGWindowBounds as String] as? NSDictionary, let r = CGRect(dictionaryRepresentation: b) else { continue }
+            if let o = own, (win[kCGWindowOwnerPID as String] as? Int) == o { continue }
+            if ((win[kCGWindowAlpha as String] as? Double) ?? 1) <= 0 || r.width < 2 || r.height < 2 { continue }
+            if r.intersects(strip) { out.append(n) }
+        }
+        return ["ok": true, "wids": out]
     case "raise":
         return raise(try findWin(args.dropFirst().first))
     case "move":
