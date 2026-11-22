@@ -1187,8 +1187,13 @@ async function installUpdate(){
     const file = path.join(dir, path.basename(new URL(u.url).pathname));
     u.phase = 'downloading'; u.pct = 0; push();
     let shown = 0;
-    await download(u.url, file, { fetchFn: net.fetch, expected: u.size, sha256: u.sha256 ?? null, onProgress: pct => { u.pct = pct; if (Date.now() - shown > 400){ shown = Date.now(); push(); } },
-      onRetry: (n, e) => { logErr('업데이트 받기 다시', `${n}번째 · ${e.message} ${e.detail ?? ''}`); session.say(`새 버전을 받지 못해 잠시 뒤 다시 받습니다 (${e.message})`); } });
+    // 받기는 업데이트만 쓰는 메모리 세션으로 하고, 다시 받을 때마다 새 세션(새 연결)으로 바꾼다.
+    // 공개 직후 GitHub가 400으로 답하면 그 연결이 망가진 채 다시 쓰여 다시 받기가 모두 ERR_HTTP2_PROTOCOL_ERROR로
+    // 실패했다 — 사이드바를 껐다 켜야만 됐다 (2026-11-22 v0.3.4 시험, docs/poc/mac.md 76)
+    let dl = eSession.fromPartition(`update-${Date.now()}`);
+    await download(u.url, file, { fetchFn: (url, o) => dl.fetch(url, o), expected: u.size, sha256: u.sha256 ?? null, onProgress: pct => { u.pct = pct; if (Date.now() - shown > 400){ shown = Date.now(); push(); } },
+      onRetry: (n, e) => { dl.closeAllConnections?.().catch(() => {}); dl = eSession.fromPartition(`update-${Date.now()}-${n}`);
+        logErr('업데이트 받기 다시', `${n}번째 · ${e.message} ${e.detail ?? ''}`); session.say(`새 버전을 받지 못해 잠시 뒤 다시 받습니다 (${e.message})`); } });
     u.phase = 'installing'; push();
     if (process.platform === 'darwin'){
       const staged = await stageMacUpdate(file, { currentApp: macApp, version: u.version, workDir: dir });

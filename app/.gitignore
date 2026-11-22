@@ -1,4 +1,4 @@
 .userdata/
-node_modules/
+node_modules
 _preview.html
 sample-lesson/.sidebar/
