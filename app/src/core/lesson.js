@@ -12,7 +12,7 @@ export function loadLesson(folder){
   let data;
   try { data = JSON.parse(readFileSync(file, 'utf8')); }
   catch (e) { throw new Error(`lesson.json을 읽지 못했습니다: ${e.message}`); }
-  if (data.schema !== 1) throw new Error(`이 체험판이 모르는 형식입니다 (schema ${data.schema}). 사이드바를 업데이트해 주세요.`);
+  if (data.schema !== 1) throw new Error(`이 버전이 모르는 형식입니다 (schema ${data.schema}). 사이드바를 업데이트해 주세요.`);
 
   const sections = [];
   const items = [];

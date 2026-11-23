@@ -1,4 +1,4 @@
-// 수업 사이드바 체험판 — Electron 시작점 (맥·윈도우)
+// 수업 사이드바 — Electron 시작점 (맥·윈도우)
 // 사이드바 창(교사 화면 왼쪽)과 수업 준비 창을 띄우고, 수업 진행 로직(Session)·수업 편집(LessonDoc)과 잇는다.
 import { app, BrowserWindow, ipcMain, screen, dialog, shell, net, globalShortcut, desktopCapturer, systemPreferences, session as eSession } from 'electron';
 import { copyFile } from 'node:fs/promises';
@@ -45,7 +45,7 @@ const OPACITY_STEPS = [100, 90, 80, 70];
 const DEVICE = deviceName();
 
 // 개발 중에는 설정·로그를 이 폴더 안에 둔다 (패키지로 만들면 운영체제 기본 위치)
-// (SIDEBAR_USERDATA를 주면 그 폴더를 쓴다: 선생님이 쓰는 체험판 설정을 건드리지 않고 시험할 때)
+// (SIDEBAR_USERDATA를 주면 그 폴더를 쓴다: 선생님이 쓰는 앱 설정을 건드리지 않고 시험할 때)
 if (!app.isPackaged){
   const ud = process.env.SIDEBAR_USERDATA ? path.resolve(process.env.SIDEBAR_USERDATA) : path.join(APP_DIR, '.userdata');
   app.setPath('userData', ud);
