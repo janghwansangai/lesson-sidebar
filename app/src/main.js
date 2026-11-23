@@ -1166,11 +1166,15 @@ async function runUpdateCheck({ manual = false } = {}){
       : await checkUpdate(app.getVersion(), { fetchFn: net.fetch });
     saveSettings({ lastUpdateCheck: Date.now() });
     if (!updating) update = u;   // 받는 중이면 진행 표시를 지우지 않는다
-    if (manual) session.say(u ? `새 버전 ${u.version}이 있습니다 · 위쪽 '업데이트'를 누르면 받아서 바꿔 깔고 다시 켭니다` : `지금 버전(${app.getVersion()})이 가장 새 버전입니다`);
     push();
+    // 선생님이 직접 "업데이트 확인"을 눌렀으면(설정·도움말) 새 버전을 바로 받아 바꿔 깐다 — 사이드바 위 '업데이트'를 또 누르지 않게 (선생님 요청)
+    if (manual){
+      if (u && !updating) installUpdate();
+      else if (!u) updSay(`지금 버전(${app.getVersion()})이 가장 새 버전입니다`);
+    }
     return true;
   } catch (e){
-    if (manual) session.say(`새 버전을 확인하지 못했습니다 (인터넷 연결 확인 · ${e.message})`);
+    if (manual) updSay(`새 버전을 확인하지 못했습니다 (인터넷 연결 확인 · ${e.message})`);
     return false;
   }
 }
@@ -1178,12 +1182,21 @@ async function runUpdateCheck({ manual = false } = {}){
 // 시험(SIDEBAR_DEBUG=1)에서만: SIDEBAR_UPDATE_TEST=<시험용 .app 경로> — 그 앱을 바꾸고 다시 켜지 않는다. SIDEBAR_FAKE_UPDATE_URL은 127.0.0.1만
 const UPDATE_TEST = DEBUG_ON ? process.env.SIDEBAR_UPDATE_TEST || null : null;
 let updating = false;
+let updMsg = null;   // 마지막 업데이트 안내 — 도움말 창에서 "업데이트 확인"을 눌렀을 때 그 창에도 보인다
+/** 업데이트 진행(받는 중 %, 바꿔 까는 중)과 안내를 도움말 창에 보낸다 */
+function helpUpdate(extra = {}){
+  if (!helpWin || helpWin.isDestroyed()) return;
+  helpWin.webContents.send('help:update', { version: update?.version ?? null, phase: update?.phase ?? null, pct: update?.pct ?? null, msg: updMsg, ...extra });
+}
+function updSay(msg, opt){ updMsg = msg; session.say(msg, opt); helpUpdate(); }
+const updPush = () => { push(); helpUpdate(); };
 async function installUpdate(){
   const u = update;
   if (!u || updating) return;
-  if (rec) return session.say('녹화 중에는 업데이트하지 않습니다 · 녹화를 끝낸 뒤 눌러 주세요');
+  updMsg = null;
+  if (rec) return updSay('녹화 중에는 업데이트하지 않습니다 · 녹화를 끝낸 뒤 눌러 주세요');
   const page = isReleaseUrl(u.page) ? u.page : `https://github.com/${GH_REPO}/releases`;
-  const byHand = why => { if (!UPDATE_TEST) shell.openExternal(isReleaseUrl(u.url) ? u.url : page).catch(e => logErr('업데이트 페이지 열기', e)); session.say(`${why} · 브라우저에서 새 버전을 받아 직접 설치해 주세요 (사이드바를 끝낸 뒤 덮어 설치)`); };
+  const byHand = why => { if (!UPDATE_TEST) shell.openExternal(isReleaseUrl(u.url) ? u.url : page).catch(e => logErr('업데이트 페이지 열기', e)); updSay(`${why} · 브라우저에서 새 버전을 받아 직접 설치해 주세요 (사이드바를 끝낸 뒤 덮어 설치)`); };
   const asset = typeof u.url === 'string' && (u.url.startsWith(`https://github.com/${GH_REPO}/releases/download/`) || (UPDATE_TEST && u.url.startsWith('http://127.0.0.1:')));
   if (!app.isPackaged && !UPDATE_TEST) return byHand('개발용으로 켠 사이드바라 바꿔 깔 수 없습니다');
   if (!asset || (IS_WIN && process.env.PORTABLE_EXECUTABLE_FILE) || (!IS_WIN && process.platform !== 'darwin')) return byHand('이 PC에 맞는 설치 파일을 찾지 못했습니다');
@@ -1195,40 +1208,40 @@ async function installUpdate(){
   try {
     rmSync(dir, { recursive: true, force: true });
     const file = path.join(dir, path.basename(new URL(u.url).pathname));
-    u.phase = 'downloading'; u.pct = 0; push();
+    u.phase = 'downloading'; u.pct = 0; updPush();
     let shown = 0;
     // 받기는 업데이트만 쓰는 메모리 세션으로 하고, 다시 받을 때마다 새 세션(새 연결)으로 바꾼다.
     // 공개 직후 GitHub가 400으로 답하면 그 연결이 망가진 채 다시 쓰여 다시 받기가 모두 ERR_HTTP2_PROTOCOL_ERROR로
     // 실패했다 — 사이드바를 껐다 켜야만 됐다 (2026-11-22 v0.3.4 시험, docs/poc/mac.md 76)
     let dl = eSession.fromPartition(`update-${Date.now()}`);
-    await download(u.url, file, { fetchFn: (url, o) => dl.fetch(url, o), expected: u.size, sha256: u.sha256 ?? null, onProgress: pct => { u.pct = pct; if (Date.now() - shown > 400){ shown = Date.now(); push(); } },
+    await download(u.url, file, { fetchFn: (url, o) => dl.fetch(url, o), expected: u.size, sha256: u.sha256 ?? null, onProgress: pct => { u.pct = pct; if (Date.now() - shown > 400){ shown = Date.now(); updPush(); } },
       onRetry: (n, e) => { dl.closeAllConnections?.().catch(() => {}); dl = eSession.fromPartition(`update-${Date.now()}-${n}`);
-        logErr('업데이트 받기 다시', `${n}번째 · ${e.message} ${e.detail ?? ''}`); session.say(`새 버전을 받지 못해 잠시 뒤 다시 받습니다 (${e.message})`); } });
+        logErr('업데이트 받기 다시', `${n}번째 · ${e.message} ${e.detail ?? ''}`); updSay(`새 버전을 받지 못해 잠시 뒤 다시 받습니다 (${e.message})`); } });
     got = true;
-    u.phase = 'installing'; push();
+    u.phase = 'installing'; updPush();
     if (process.platform === 'darwin'){
       const staged = await stageMacUpdate(file, { currentApp: macApp, version: u.version, workDir: dir });
       rmSync(dir, { recursive: true, force: true });   // 받은 설치판(120MB)은 이제 필요 없음
       startMacSwap({ pid: process.pid, staged, dest: macApp, relaunch: !UPDATE_TEST });
-      session.say(`새 버전 ${u.version}을 받았습니다 · 사이드바를 껐다가 새 버전으로 다시 켭니다`);
+      updSay(`새 버전 ${u.version}을 받았습니다 · 사이드바를 껐다가 새 버전으로 다시 켭니다`);
     } else {
       try { await startWinInstaller(file); }
       catch (e){
         // 보안 프로그램이 자동 설치를 막았다: 받아 둔 설치 파일을 탐색기로 보여 준다 (브라우저로 다시 받게 하지 않는다 — 저장 창이 떠 헷갈렸다)
         logErr('업데이트 설치 실행', e);
-        updating = false; u.phase = null; u.pct = null; push();
+        updating = false; u.phase = null; u.pct = null; updPush();
         shell.showItemInFolder(file);
-        session.say(`새 버전 ${u.version}을 받았지만 보안 프로그램이 자동 설치를 막았습니다 · 열린 폴더의 설치 파일(${path.basename(file)})을 두 번 눌러 설치해 주세요 (켜 둔 사이드바는 설치할 때 저절로 꺼집니다)`);
+        updSay(`새 버전 ${u.version}을 받았지만 보안 프로그램이 자동 설치를 막았습니다 · 열린 폴더의 설치 파일(${path.basename(file)})을 두 번 눌러 설치해 주세요 (켜 둔 사이드바는 설치할 때 저절로 꺼집니다)`);
         return;
       }
-      session.say(`새 버전 ${u.version}을 받았습니다 · 사이드바를 끄고 설치합니다 (설치가 끝나면 다시 켜집니다)`);
+      updSay(`새 버전 ${u.version}을 받았습니다 · 사이드바를 끄고 설치합니다 (설치가 끝나면 다시 켜집니다)`);
     }
     setTimeout(() => app.quit(), IS_WIN ? 400 : 1500);   // 윈도우 설치 프로그램(--updated)은 사이드바가 끝나기를 기다린다
   } catch (e){
     logErr('업데이트', `${e.message} ${e.detail ?? ''}`);
-    updating = false; u.phase = null; u.pct = null; push();
+    updating = false; u.phase = null; u.pct = null; updPush();
     // 받기가 안 됐으면(인터넷·GitHub 일시 오류) 브라우저 저장 창을 띄우지 않고 다시 눌러 달라고 한다
-    if (!got) return session.say(`새 버전을 받지 못했습니다 (${e.message}) · 잠시 뒤 '업데이트'를 다시 눌러 주세요`, { act: 'updatePage', label: '내려받기 페이지 열기' });
+    if (!got) return updSay(`새 버전을 받지 못했습니다 (${e.message}) · 잠시 뒤 '업데이트'를 다시 눌러 주세요`, { act: 'updatePage', label: '내려받기 페이지 열기' });
     byHand(`새 버전을 바꿔 깔지 못했습니다 (${e.message})`);
   }
 }
@@ -1284,8 +1297,12 @@ ipcMain.on('help:act', async (e, what) => {
   if (what === 'tools') shell.openExternal(TOOLS_URL);
   else if (what === 'bug') reportBug('도움말');
   else if (what === 'update'){
-    const ok = await runUpdateCheck({ manual: true });
-    if (!e.sender.isDestroyed()) e.sender.send('help:update', !ok ? { error: true } : update ? { version: update.version } : { latest: app.getVersion() });
+    if (updating) return helpUpdate();   // 이미 받는 중이면 진행만 보여 준다
+    updMsg = null;
+    const ok = await runUpdateCheck({ manual: true });   // 새 버전이면 바로 받아 바꿔 깐다 (진행은 helpUpdate로)
+    if (e.sender.isDestroyed()) return;
+    if (!ok) e.sender.send('help:update', { error: true, msg: updMsg });
+    else if (!update) e.sender.send('help:update', { latest: app.getVersion() });
   }
 });
 
