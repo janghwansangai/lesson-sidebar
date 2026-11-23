@@ -29,12 +29,14 @@ function render(){
 
 function renderLibrary(){
   const L = S.library;
-  $('#lib-path').textContent = L.root ? L.root : '아직 정하지 않았습니다';
+  // 처음에는 짧은 위치 (전체 경로에는 사용자 이름·이메일이 들어 있음) · 누르면 전체 경로
+  $('#lib-path').textContent = L.root ? (S.fullPath ? L.root : L.where) : '아직 정하지 않았습니다';
+  $('#lib-path').disabled = !L.root;
   $('#lib-setup').hidden = !!L.root;
   $('#new-btn').disabled = !L.root;
   if (!L.root){
     $('#lib-setup').innerHTML = `<p><b>수업 보관함 위치를 정해 주세요.</b> 수업 폴더들이 이곳에 모입니다. 구글 드라이브 안에 두면 윈도우·맥에서 함께 쓸 수 있습니다.</p>` +
-      L.suggestions.map((s, i) => `<button class="btn" data-sug="${i}" type="button">${esc(s.label)}<small>${esc(s.path)}</small></button>`).join('') +
+      L.suggestions.map((s, i) => `<button class="btn" data-sug="${i}" type="button">${esc(s.label)}<small>${esc(s.where)}</small></button>`).join('') +
       `<button class="btn" data-sug="pick" type="button">다른 위치 고르기</button>`;
   }
   const cur = S.doc?.root;
@@ -48,6 +50,8 @@ function renderLibrary(){
       (l.folder === S.running ? '<span class="tag run">사이드바에서 진행 중</span>' : '') +
       (l.lockedBy ? `<span class="tag lock">${esc(l.lockedBy)}에서 열림</span>` : '') +
       (l.conflicts ? `<span class="tag lock">충돌 사본 ${l.conflicts}개</span>` : '') + '</li>').join('');
+  $('#lib-hidden').hidden = !L.root || !L.hidden;
+  $('#lib-hidden').textContent = `목록에서 뺀 수업 ${L.hidden}개 · 폴더는 그대로 있고, "다른 폴더 열기"로 열면 다시 나옵니다`;
 }
 
 function renderDoc(d){
@@ -59,8 +63,11 @@ function renderDoc(d){
   const total = d.sections.reduce((a, s) => a + (s.minutes || 0), 0);
   const count = d.sections.reduce((a, s) => a + s.items.length, 0);
   const saved = d.updatedAt ? new Date(d.updatedAt).toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' }) : '';
-  $('#summary').textContent = [`자료 ${count}개`, `총 ${total}분`, saved && `마지막 저장 ${saved}${d.device ? ` (${d.device})` : ''}`, d.root].filter(Boolean).join(' · ');
-  $('#run').textContent = S.running === d.root ? '사이드바에 반영됨' : '이 수업으로 진행';
+  // 이 PC에서 저장했으면 PC 이름 대신 "이 PC" (PC 이름에 선생님 이름이 들어 있는 경우가 많다)
+  const by = d.device && d.device !== S.device ? ` (${d.device})` : d.device ? ' (이 PC)' : '';
+  $('#summary').textContent = [`자료 ${count}개`, `총 ${total}분`, saved && `마지막 저장 ${saved}${by}`].filter(Boolean).join(' · ');
+  $('#doc-path').textContent = S.fullPath ? d.root : `${d.where} (눌러서 전체 경로)`;
+  $('#run').textContent = S.running === d.root ? '사이드바에서 진행 중' : '사이드바로 수업 진행';
   // 충돌 사본: 두 PC에서 동시에 고쳐 드라이브가 만든 사본 → 고르게 한다
   const cs = S.conflicts ?? [];
   $('#conflictbar').hidden = !cs.length;
@@ -130,6 +137,7 @@ $('#lib-setup').addEventListener('click', e => {
   api.act('setLibrary', { path: S.library.suggestions[Number(b.dataset.sug)].path });
 });
 $('#lib-change').addEventListener('click', () => api.act('chooseLibrary'));
+for (const b of ['#lib-path', '#doc-path']) $(b).addEventListener('click', () => api.act('togglePath'));
 $('#lib-list').addEventListener('click', e => { const li = e.target.closest('[data-folder]'); if (li) api.act('openLesson', { folder: li.dataset.folder }); });
 $('#lib-list').addEventListener('keydown', e => { const li = e.target.closest('[data-folder]'); if (li && (e.key === 'Enter' || e.key === ' ')){ e.preventDefault(); api.act('openLesson', { folder: li.dataset.folder }); } });
 $('#new-btn').addEventListener('click', () => {
@@ -192,6 +200,7 @@ $('#tidy').addEventListener('click', () => api.act('tidy'));
 $('#reveal').addEventListener('click', () => api.act('reveal'));
 $('#export').addEventListener('click', () => api.act('exportBundle'));
 $('#guide').addEventListener('click', () => api.act('guide'));
+$('#del-lesson').addEventListener('click', () => api.act('removeLesson'));
 $('#dup').addEventListener('click', () => {
   $('#dup-form').hidden = false;
   $('#dup-title').value = `${S.doc?.title ?? '수업'} (2차)`;

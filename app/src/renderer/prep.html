@@ -13,10 +13,11 @@
       <h2>수업 보관함</h2>
       <button id="lib-change" class="link" type="button">위치 바꾸기</button>
     </div>
-    <p id="lib-path" class="path"></p>
+    <button id="lib-path" class="path where" type="button" title="눌러서 전체 경로 보기 / 짧게 보기"></button>
     <div id="lib-setup" class="setup" hidden></div>
     <input id="lib-search" class="search" type="search" placeholder="지난 수업 찾기 · 수업·자료 이름, 링크" aria-label="지난 수업 찾기">
     <ul id="lib-list" class="lib-list"></ul>
+    <p id="lib-hidden" class="path" hidden></p>
     <form id="new-form" class="new" hidden>
       <label><span>수업 이름</span><input id="new-title" required maxlength="120" placeholder="예: AI 활용 연수 (2차)"></label>
       <label><span>날짜</span><input id="new-date" type="date" required></label>
@@ -30,8 +31,8 @@
     </form>
     <div class="lib-act">
       <button id="new-btn" class="btn primary" type="button">새 수업</button>
-      <button id="open-other" class="btn" type="button">다른 폴더 열기</button>
-      <button id="import" class="btn" type="button" title="다른 PC에서 만든 수업 꾸러미(.zip)를 이 보관함으로 가져옵니다">꾸러미 가져오기</button>
+      <button id="open-other" class="btn" type="button" title="이미 있는 수업 폴더(lesson.json이 든 폴더)를 그 자리에서 엽니다 · 복사하지 않고, 고치면 그 폴더에 저장됩니다">다른 폴더 열기</button>
+      <button id="import" class="btn" type="button" title="꾸러미(.zip 파일)를 풀어 이 보관함에 새 수업으로 복사해 넣습니다 · 다른 PC나 동료가 '꾸러미(.zip)로 내보내기'로 만든 파일">꾸러미(.zip) 가져오기</button>
     </div>
   </aside>
 
@@ -49,15 +50,16 @@
           <input id="date" type="date" aria-label="날짜">
         </div>
         <div class="ed-act">
-          <button id="run" class="btn primary" type="button">이 수업으로 진행</button>
+          <button id="run" class="btn primary" type="button" title="이 수업을 사이드바에 띄웁니다 · 진행 중에 고쳐도 사이드바에 바로 반영됩니다">사이드바로 수업 진행</button>
           <button id="check" class="btn" type="button" title="수업 전에 자료 파일·여는 프로그램·링크·모니터·권한을 한 번에 확인합니다">사전 점검</button>
           <button id="tidy" class="btn" type="button" title="파일 이름 앞 순번과 구간 폴더를 지금 순서에 맞춥니다">정리하기</button>
           <button id="reveal" class="btn" type="button">Finder에서 보기</button>
           <button id="dup" class="btn" type="button" title="이 수업을 복사해 새 수업(예: 2차 연수)을 만듭니다">복제</button>
           <button id="guide" class="btn" type="button" title="참여자에게 나눠 줄 수업안내.html을 만듭니다 (순서·링크, 진행 메모는 빠짐)">안내 페이지</button>
-          <button id="export" class="btn" type="button" title="이 수업을 zip 파일 하나로 묶습니다 (USB·메일로 옮기거나 동료에게 줄 때)">꾸러미로 내보내기</button>
+          <button id="export" class="btn" type="button" title="이 수업을 .zip 파일 하나로 묶습니다 (USB·메일로 옮기거나 동료에게 줄 때)">꾸러미(.zip)로 내보내기</button>
+          <button id="del-lesson" class="btn danger" type="button" title="목록에서만 빼거나, 수업 폴더를 통째로 휴지통으로 옮깁니다 (누르면 고르게 합니다)">수업 지우기</button>
         </div>
-        <p id="summary" class="sum"></p>
+        <p class="sum"><span id="summary"></span> · <button id="doc-path" class="where" type="button" title="눌러서 전체 경로 보기 / 짧게 보기"></button></p>
       </header>
       <section id="checks" class="checks" hidden aria-label="사전 점검 결과">
         <div class="ck-h"><b>사전 점검</b><span id="ck-sum" class="ck-sum"></span>
