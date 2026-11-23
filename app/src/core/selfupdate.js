@@ -129,12 +129,25 @@ export function startMacSwap({ pid, staged, dest, relaunch = true }){
 }
 
 // ---------- 윈도우 ----------
-/** 사이드바가 끝날 시간(약 3초)을 둔 뒤 설치 프로그램을 실행한다 (한 번에 설치판은 앱이 켜져 있으면 멈추므로) */
-export function startWinInstaller(exe){
-  // cmd 줄에 넣으므로 %(환경 변수로 풀림)·따옴표가 든 경로는 쓰지 않는다 (부르는 쪽이 브라우저 내려받기로 돌림)
-  if (/[%"\r\n]/.test(exe) || !/\.exe$/i.test(exe)) throw new Error('설치 파일 경로를 쓸 수 없습니다');
-  spawn('cmd.exe', ['/d', '/c', `ping -n 4 127.0.0.1 >nul & start "" "${exe}"`], { detached: true, stdio: 'ignore', windowsHide: true, windowsVerbatimArguments: true }).unref();
+/**
+ * 받은 설치 프로그램을 바로 실행한다. 실행되면 resolve, 막히면(보안 프로그램 등) reject.
+ * - cmd.exe를 거치지 않는다: 예전에는 cmd로 3초 기다렸다 실행했는데, V3가 "서명 없는 앱이 cmd로 받은 파일을 실행"을
+ *   악성 행위(MDP.Event)로 막아 업데이트가 되지 않았다 (2026-11-23 윈도우, docs/poc/windows.md "업데이트").
+ * - --updated: 설치 프로그램(electron-builder NSIS)이 사이드바가 끝나기를 기다렸다가(안 끝나면 끝내고) 바꿔 깐다.
+ *   --force-run: 다 깔면 사이드바를 다시 켠다. 부르는 쪽은 실행된 뒤 곧바로 사이드바를 끝낸다.
+ */
+export function startWinInstaller(exe, { spawnFn = spawn } = {}){
+  if (!/\.exe$/i.test(exe) || /[\r\n"]/.test(exe)) return Promise.reject(new Error('설치 파일 경로를 쓸 수 없습니다'));
+  return new Promise((resolve, reject) => {
+    let p;
+    try { p = spawnFn(exe, ['--updated', '--force-run'], { detached: true, stdio: 'ignore' }); }
+    catch (e){ reject(e); return; }
+    p.once('error', reject);
+    p.once('spawn', () => { p.unref?.(); resolve(); });
+  });
 }
 
 export const workDirOf = tmp => path.join(tmp, 'lesson-sidebar-update');
+/** 윈도우: 받은 설치 파일을 둘 곳 — 임시 폴더(Temp)가 아니라 이 PC의 앱 자리(%LOCALAPPDATA%) 아래 (보안 프로그램이 덜 의심함) */
+export const winUpdateDir = (localAppData, tmp) => path.join(localAppData || tmp, 'lesson-sidebar-updater');
 export const exists = existsSync;

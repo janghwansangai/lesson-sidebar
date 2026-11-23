@@ -71,9 +71,25 @@ test('받기: SHA-256 지문이 다르면 오류 (깨지거나 바뀐 설치 파
   rmSync(dir, { recursive: true, force: true });
 });
 
-test('윈도우 설치 실행: cmd에서 풀리는 % · 따옴표가 든 경로와 .exe가 아닌 파일은 거절', async () => {
-  const { startWinInstaller } = await import('../src/core/selfupdate.js');
-  assert.throws(() => startWinInstaller('C:\Temp\%PATH%\setup.exe'), /쓸 수 없습니다/);
-  assert.throws(() => startWinInstaller('C:\Temp\a"b\setup.exe'), /쓸 수 없습니다/);
-  assert.throws(() => startWinInstaller('C:\Temp\setup.bat'), /쓸 수 없습니다/);
+test('윈도우 설치 실행: cmd를 거치지 않고 설치 파일을 바로, 사이드바를 기다렸다 다시 켜게 실행한다', async () => {
+  const { startWinInstaller, winUpdateDir } = await import('../src/core/selfupdate.js');
+  const { EventEmitter } = await import('node:events');
+  const calls = [];
+  const fake = mode => (cmd, args, opts) => {
+    calls.push({ cmd, args, opts });
+    const p = new EventEmitter(); p.unref = () => { p.unrefed = true; };
+    setImmediate(() => mode === 'ok' ? p.emit('spawn') : p.emit('error', Object.assign(new Error('spawn EPERM'), { code: 'EPERM' })));
+    return p;
+  };
+  const exe = 'C:\\Users\\kim\\AppData\\Local\\lesson-sidebar-updater\\lesson-sidebar-0.3.7-win-setup.exe';
+  await startWinInstaller(exe, { spawnFn: fake('ok') });
+  assert.equal(calls[0].cmd, exe);                                  // cmd.exe가 아니라 설치 파일을 바로 (V3가 cmd 방식을 막았다)
+  assert.deepEqual(calls[0].args, ['--updated', '--force-run']);
+  assert.equal(calls[0].opts.detached, true);
+  await assert.rejects(startWinInstaller(exe, { spawnFn: fake('blocked') }), /EPERM/);   // 보안 프로그램이 막으면 알려 준다
+  await assert.rejects(startWinInstaller('C:\\Temp\\setup.bat', { spawnFn: fake('ok') }), /쓸 수 없습니다/);
+  await assert.rejects(startWinInstaller('C:\\Temp\\a"b\\setup.exe', { spawnFn: fake('ok') }), /쓸 수 없습니다/);
+  assert.equal(calls.length, 2);
+  assert.match(winUpdateDir('C:\\Users\\kim\\AppData\\Local', 'C:\\Temp'), /AppData.Local.lesson-sidebar-updater$/);
+  assert.match(winUpdateDir(undefined, '/tmp'), /tmp.lesson-sidebar-updater$/);
 });
