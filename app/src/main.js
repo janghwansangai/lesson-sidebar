@@ -16,7 +16,7 @@ import { loadLesson } from './core/lesson.js';
 import { startFileServer } from './core/fileserver.js';
 import { Session, TILE_LAYOUTS } from './core/session.js';
 import { LessonDoc } from './core/editor.js';
-import { listLessons, suggestRoots, LIB_NAME } from './core/library.js';
+import { listLessons, suggestRoots, LIB_NAME, shortPath, libraryProblem, moveLesson, hiddenLessons, setHidden, inLibrary } from './core/library.js';
 import { writeLock, clearLock, otherLock, deviceName } from './core/lock.js';
 import { exportBundle, inspectBundle, importBundle, findExisting, fmtBytes } from './core/bundle.js';
 import { precheck, checkLink, cloudOf } from './core/precheck.js';
@@ -1304,9 +1304,12 @@ function prepSnapshot(){
   let lockedBy = null;
   if (doc){ lockedBy = otherLock(doc.root, DEVICE)?.device ?? null; }
   return {
-    library: { root, lessons: root ? listLessons(root) : [], suggestions: root ? [] : suggestRoots(), libName: LIB_NAME },
-    doc: doc ? { ...doc.snapshot(), lockedBy } : null,
-    running: session.lesson?.root ?? null, openIds, device: DEVICE, msg: prepMsg, platform: process.platform,
+    // 처음에는 짧은 위치(where)로 보인다: 전체 경로에는 PC 사용자 이름·구글 계정 이메일이 들어 있어 연수 화면에 띄우면 드러난다.
+    // 위치 글자를 누르면 전체 경로로 바뀌고(fullPath), 그 선택은 설정에 남는다
+    library: { root, where: shortPath(root), lessons: root ? listLessons(root) : [], libName: LIB_NAME, hidden: root ? hiddenLessons(root).size : 0,
+      suggestions: root ? [] : suggestRoots().map(s => ({ ...s, where: shortPath(s.path) })) },
+    doc: doc ? { ...doc.snapshot(), where: shortPath(doc.root), lockedBy } : null,
+    running: session.lesson?.root ?? null, openIds, device: DEVICE, msg: prepMsg, platform: process.platform, fullPath: !!readSettings().prepFullPath,
     check: doc && lastCheck?.root === doc.root ? lastCheck : null,
     conflicts: doc ? findConflicts(doc.root) : [],
   };
@@ -1353,6 +1356,92 @@ async function snapshotPdf(url){
 }
 
 function needDoc(){ if (!doc) throw new Error('먼저 왼쪽에서 수업을 고르거나 새로 만드세요'); return doc; }
+
+const insideDir = (child, parent) => { const r = path.relative(parent, child); return r === '' || (!!r && !r.startsWith('..') && !path.isAbsolute(r)); };
+/** 이 수업 자료가 사이드바에서 열려 있거나 녹화 중이면 그 까닭 (옮기기·지우기를 하면 안 됨) */
+function busyReason(root){
+  if (rec?.root === root) return '녹화 중';
+  if (session.lesson?.root === root && [...session.state].some(([, st]) => st.wid)) return '사이드바에서 자료가 열려 있음';
+  return null;
+}
+/** 사이드바가 이 수업을 진행 중이면(열린 자료 없음) 예시 수업으로 바꿔 둔다 → 그 수업 폴더를 옮기거나 지울 수 있다 */
+function releaseFromSidebar(root){
+  if (session.lesson?.root !== root) return false;
+  runLesson(sampleLesson());
+  return true;
+}
+/** 보던 수업이 이 보관함 밖이면 닫는다 (왼쪽 목록과 오른쪽 내용이 어긋나지 않게) */
+function closeDocOutside(lib){
+  if (!doc || insideDir(doc.root, lib)) return false;
+  if (doc.root !== session.lesson?.root) clearLock(doc.root, DEVICE);
+  doc = null; lastCheck = null;
+  saveSettings({ lastPrepFolder: null });
+  return true;
+}
+
+/** 보관함 위치를 바꾼다. 예전 보관함의 수업과 지금 보던 수업을 새 위치로 옮길지 묻는다
+ *  (시험용 DEBUG: p.move = 'all'|'cur'|'keep'|'cancel') */
+async function changeLibrary(dir, p = {}){
+  const old = libraryRoot();
+  if (old && path.resolve(old) === path.resolve(dir)){ note('지금 쓰는 보관함과 같은 위치입니다'); return; }
+  const lessons = old ? listLessons(old).filter(l => !l.broken) : [];
+  // 보던 수업이 예전 보관함 밖(다른 폴더 열기로 연 수업)이어도 함께 옮길 수 있게
+  const cand = doc && !insideDir(doc.root, dir) && !lessons.some(l => l.folder === doc.root)
+    ? [...lessons, { folder: doc.root, title: doc.data.title }] : lessons;
+  const bad = libraryProblem(dir, cand); if (bad) throw new Error(bad);
+  const curIn = doc && cand.some(l => l.folder === doc.root);
+  let pick = 'keep';
+  if (cand.length){
+    const modes = ['all', ...(curIn && cand.length > 1 ? ['cur'] : []), 'keep', 'cancel'];
+    const label = { all: cand.length > 1 ? `모두 옮기기 (${cand.length}개)` : '새 위치로 옮기기', cur: '보던 수업만 옮기기', keep: '옮기지 않기', cancel: '취소' };
+    pick = DEBUG && modes.includes(p.move) ? p.move : modes[(await dialog.showMessageBox(prepWin, {
+      type: 'question', title: '수업 보관함 위치 바꾸기',
+      message: cand.length > 1 ? `수업 ${cand.length}개를 새 위치로 옮길까요?` : `'${cand[0].title}' 수업을 새 위치로 옮길까요?`,
+      detail: [`예전 위치: ${shortPath(old) || '없음'}`, `새 위치: ${shortPath(dir)}`, curIn ? `지금 보던 수업: '${doc.data.title}'` : '', '',
+        '옮기면 수업 폴더(자료·메모·녹화 포함)가 새 위치로 갑니다. 디스크가 다르면 복사한 뒤 예전 폴더는 휴지통으로 보냅니다.',
+        '옮기지 않으면 예전 수업은 예전 위치에 그대로 남습니다. "위치 바꾸기"로 예전 위치를 다시 고르면 다시 보입니다.'].filter((l, i) => l || i === 3).join('\n'),
+      buttons: modes.map(m => label[m]), defaultId: 0, cancelId: modes.length - 1,
+    })).response];
+    if (pick === 'cancel'){ note('보관함 위치를 그대로 두었습니다'); return; }
+  }
+  mkdirSync(dir, { recursive: true });
+  if (pick === 'cur') return oneAtATime(() => moveLessons(cand.filter(l => l.folder === doc.root), dir, lessons.filter(l => l.folder !== doc.root).length));
+  if (pick === 'all') return oneAtATime(() => moveLessons(cand, dir));
+  saveSettings({ libraryRoot: dir });
+  const closed = closeDocOutside(dir);
+  note(`수업 보관함: ${shortPath(dir)}` + (lessons.length ? ` · 예전 수업 ${lessons.length}개는 예전 위치(${shortPath(old)})에 그대로 있습니다` : '')
+    + (closed ? ' · 보던 수업은 새 보관함 밖이라 닫았습니다' : ''));
+}
+
+async function moveLessons(lessons, dir, rest = 0){
+  saveSettings({ libraryRoot: dir });   // 먼저 바꿔 둔다: 옮기는 대로 새 목록에 보이고, 도중에 꺼져도 남은 수업은 예전 위치에 그대로
+  const wasDoc = doc?.root ?? null;
+  const moved = new Map(), skipped = [];
+  let n = 0;
+  for (const l of lessons){
+    n++;
+    const why = busyReason(l.folder) ?? (otherLock(l.folder, DEVICE) ? `${otherLock(l.folder, DEVICE).device}에서 열려 있음` : null);
+    if (why){ skipped.push(`${l.title}: ${why}`); continue; }
+    note(`수업 옮기는 중… ${n}/${lessons.length} '${l.title}'`);
+    const wasRunning = releaseFromSidebar(l.folder);
+    if (doc?.root === l.folder){ clearLock(l.folder, DEVICE); doc = null; }   // 옮기는 동안 이 창이 예전 위치에 저장하지 않게
+    try {
+      const r = await moveLesson(l.folder, dir, { trash: f => shell.trashItem(f) });
+      moved.set(l.folder, r.dest);
+      if (r.kept) skipped.push(`${l.title}: 새 위치로 복사했지만 예전 폴더는 휴지통에 넣지 못해 남겨 둠`);
+      if (wasRunning) runLesson(r.dest);
+    } catch (e){
+      skipped.push(`${l.title}: ${e.message}`);
+      if (wasRunning) runLesson(l.folder);
+    }
+  }
+  if (doc) closeDocOutside(dir);                                        // 옮기지 않은 수업을 보고 있었으면 닫는다
+  else if (wasDoc && moved.has(wasDoc)) openDoc(moved.get(wasDoc));    // 보던 수업을 옮겼으면 새 위치에서 다시 연다
+  else if (wasDoc) saveSettings({ lastPrepFolder: null });
+  note(`수업 보관함을 바꿨습니다: ${shortPath(dir)} · 수업 ${moved.size}개 옮김`
+    + (skipped.length ? ` · ${skipped.length}개는 예전 위치에 남음 (${skipped.join(', ')})` : '')
+    + (rest ? ` · 나머지 수업 ${rest}개는 예전 위치에 그대로 있습니다` : ''));
+}
 function afterEdit(msg){
   doc.save();
   refreshSessionIfSame(doc.root);
@@ -1401,17 +1490,61 @@ async function oneAtATime(fn){
 }
 
 const PREP_ACTIONS = {
-  async chooseLibrary(){
-    const r = await dialog.showOpenDialog(prepWin, { title: '수업 보관함으로 쓸 폴더 고르기', properties: ['openDirectory', 'createDirectory'] });
-    if (r.canceled || !r.filePaths[0]) return;
-    saveSettings({ libraryRoot: r.filePaths[0] });
-    note(`수업 보관함: ${r.filePaths[0]}`);
+  async chooseLibrary(p){
+    let dir = DEBUG ? absPath(p.path) : null;
+    if (!dir){
+      const r = await dialog.showOpenDialog(prepWin, { title: '수업 보관함으로 쓸 폴더 고르기', properties: ['openDirectory', 'createDirectory'] });
+      if (r.canceled || !r.filePaths[0]) return;
+      dir = r.filePaths[0];
+    }
+    await changeLibrary(dir, p);
   },
-  setLibrary(p){
+  togglePath(){ saveSettings({ prepFullPath: !readSettings().prepFullPath }); },
+  async setLibrary(p){
     const dir = absPath(p.path); if (!dir) throw new Error('보관함 위치가 올바르지 않습니다');
-    mkdirSync(dir, { recursive: true });
-    saveSettings({ libraryRoot: dir });
-    note(`수업 보관함을 만들었습니다: ${dir}`);
+    await changeLibrary(dir, p);
+  },
+  /** 수업 지우기: 목록에서만 뺄지(폴더·자료 그대로), 폴더까지 휴지통으로 보낼지 묻는다 (시험용 DEBUG: p.mode = 'hide'|'trash'|'cancel') */
+  async removeLesson(p){
+    const d = needDoc(), root = d.root, title = d.data.title;
+    const lib = libraryRoot(), listed = inLibrary(root, lib);
+    const why = busyReason(root);
+    const lock = otherLock(root, DEVICE);
+    const count = d.data.sections.reduce((a, s) => a + s.items.length, 0);
+    const hasRec = existsSync(path.join(root, '_녹화'));
+    const modes = why ? ['hide', 'cancel'] : ['hide', 'trash', 'cancel'];
+    const pick = DEBUG && modes.includes(p.mode) ? p.mode : modes[(await dialog.showMessageBox(prepWin, {
+      type: 'warning', title: '수업 지우기', message: `'${title}' 수업을 어떻게 지울까요?`,
+      detail: [
+        listed ? '목록에서만 빼기: 수업 폴더와 자료는 그대로 두고 보관함 목록에서만 숨깁니다. "다른 폴더 열기"로 그 폴더를 열면 목록에 다시 나옵니다.'
+               : '이 창에서 닫기: 보관함 밖의 수업이라 목록에는 없습니다. 폴더와 자료는 그대로 둡니다.',
+        why ? `폴더까지 지우기는 지금 할 수 없습니다 (${why}) · ${why === '녹화 중' ? '녹화를 끝낸' : '사이드바에서 자료 창을 닫은'} 뒤 다시 해 주세요.`
+            : `폴더까지 지우기: 수업 폴더를 통째로(자료 ${count}개${hasRec ? ', 녹화 포함' : ''}) 휴지통으로 옮깁니다. 휴지통에서 되살릴 수 있습니다${IS_WIN ? '' : ' (구글 드라이브 안이면 드라이브 휴지통에도 들어갑니다)'}.`,
+        lock ? `주의: ${lock.device}에서 이 수업을 열고 있습니다.` : '',
+      ].filter(Boolean).join('\n\n'),
+      buttons: [listed ? '목록에서만 빼기' : '이 창에서 닫기', ...(why ? [] : ['폴더까지 휴지통으로']), '취소'], defaultId: 0, cancelId: modes.length - 1,
+    })).response];
+    if (pick === 'cancel') return;
+    if (pick === 'hide'){
+      if (listed) setHidden(lib, path.basename(root), true);
+      if (root !== session.lesson?.root) clearLock(root, DEVICE);
+      doc = null; lastCheck = null;
+      saveSettings({ lastPrepFolder: null });
+      note(listed ? `'${title}' 수업을 목록에서 뺐습니다 · 폴더와 자료는 그대로 있습니다 ("다른 폴더 열기"로 열면 다시 나옵니다)` : `'${title}' 수업을 닫았습니다 · 폴더와 자료는 그대로 있습니다`);
+      return;
+    }
+    const wasRunning = releaseFromSidebar(root);
+    clearLock(root, DEVICE);
+    doc = null; lastCheck = null;
+    try { await shell.trashItem(root); }
+    catch (e){
+      if (wasRunning) runLesson(root);
+      openDoc(root);
+      throw new Error(`휴지통으로 옮기지 못했습니다 (${e.message}) · ${IS_WIN ? '탐색기' : 'Finder'}에서 수업 폴더를 직접 지우거나 "목록에서만 빼기"를 써 주세요`);
+    }
+    if (listed) setHidden(lib, path.basename(root), false);   // 휴지통에서 되살리면 목록에 바로 다시 나오게
+    saveSettings({ lastPrepFolder: null });
+    note(`'${title}' 수업 폴더를 휴지통으로 옮겼습니다 · 휴지통에서 되살릴 수 있습니다${wasRunning ? ' · 사이드바는 예시 수업으로 바꿨습니다' : ''}`);
   },
   // ---------- 정리와 재사용 ----------
   duplicate(p){
@@ -1445,6 +1578,12 @@ const PREP_ACTIONS = {
   openLesson(p){
     const dir = absPath(p.folder); if (!dir || !existsSync(path.join(dir, 'lesson.json'))) throw new Error('수업 폴더가 아닙니다 (lesson.json 없음)');
     openDoc(dir);
+    // 목록에서 뺐던 수업을 다시 열면 목록에 다시 넣는다
+    const lib = libraryRoot();
+    if (inLibrary(dir, lib) && hiddenLessons(lib).has(path.basename(dir).normalize('NFC'))){
+      setHidden(lib, path.basename(dir), false);
+      note(`'${doc.data.title}' 수업을 목록에 다시 넣었습니다`);
+    }
   },
   async openOther(){
     const r = await dialog.showOpenDialog(prepWin, { title: '수업 폴더 고르기 (lesson.json이 있는 폴더)', properties: ['openDirectory'] });
