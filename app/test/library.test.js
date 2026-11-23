@@ -22,7 +22,8 @@ test('화면에 보일 위치에는 사용자 이름·이메일이 없다', () =
   const win = { platform: 'win32', home: 'C:\\Users\\kim' };
   assert.equal(shortPath('C:\\Users\\Kim\\Desktop\\수업', win), '바탕 화면 › 수업');
   assert.equal(shortPath('C:\\Users\\kim\\OneDrive - 학교\\문서\\수업', win), 'OneDrive › 문서 › 수업');
-  assert.equal(shortPath('G:\\내 드라이브\\수업 사이드바', win), 'G: › 내 드라이브 › 수업 사이드바');
+  assert.equal(shortPath('G:\\내 드라이브\\수업 사이드바', win), '구글 드라이브 (G:) › 내 드라이브 › 수업 사이드바');
+  assert.equal(shortPath('g:\\공유 드라이브\\우리 학교', win), '구글 드라이브 (G:) › 공유 드라이브 › 우리 학교');
   assert.equal(shortPath('d:\\자료', win), 'D: › 자료');
   assert.equal(shortPath('', win), '');
 });
@@ -49,13 +50,14 @@ test('맥: 구글 드라이브 계정이 하나면 이메일 없이, 여럿이�
 test('윈도우: 구글 드라이브 데스크톱이 깔려 있고, 그 드라이브 맨 위에 구글 폴더만 있어야 구글 드라이브로 붙인다', () => {
   const tops = {
     'G:\\': ['내 드라이브', '공유 드라이브', '$RECYCLE.BIN', 'desktop.ini'],
+    'H:\\': ['공유 드라이브', '내 드라이브', '다른 컴퓨터', '.shortcut-targets-by-id', '$RECYCLE.BIN', '.Encrypted'],   // 2026-11-23 윈도우 선생님 PC의 실제 구글 드라이브 모양
     'D:\\': ['내 드라이브', '사진', '게임'],          // 다른 디스크에 같은 이름 폴더만 있는 경우
     'Z:\\': ['My Drive', '백업'],                      // NAS 등
   };
   const base = { platform: 'win32', home: 'C:\\Users\\kim', readdir: p => { if (!tops[p]) throw new Error('없음'); return tops[p]; } };
   const drives = o => suggestRoots({ ...base, ...o }).filter(s => s.kind === 'drive');
   const installed = { env: { LOCALAPPDATA: 'C:\\Users\\kim\\AppData\\Local' }, exists: p => p === 'C:\\Users\\kim\\AppData\\Local\\Google\\DriveFS' };
-  assert.deepEqual(drives(installed).map(s => [s.label, s.path]), [['구글 드라이브 (G:)', 'G:\\내 드라이브\\수업 사이드바']]);
+  assert.deepEqual(drives(installed).map(s => [s.label, s.path]), [['구글 드라이브 (G:)', 'G:\\내 드라이브\\수업 사이드바'], ['구글 드라이브 (H:)', 'H:\\내 드라이브\\수업 사이드바']]);
   assert.deepEqual(drives({ env: { LOCALAPPDATA: 'C:\\Users\\kim\\AppData\\Local' }, exists: () => false }), []);   // 구글 드라이브 데스크톱이 없음
   const docs = suggestRoots({ ...installed, ...base }).at(-1);
   assert.equal(docs.label, '이 PC의 문서 폴더');
