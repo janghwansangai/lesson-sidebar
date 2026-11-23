@@ -25,7 +25,7 @@ import { duplicateLesson, guideHtml, findConflicts, resolveConflict } from './co
 import { Timing, liveView, memoFor, lanAddress } from './core/live.js';
 import { LiveServer } from './core/liveserver.js';
 import { checkUpdate, isReleaseUrl, REPO as GH_REPO } from './core/update.js';
-import { download, currentMacApp, stageMacUpdate, startMacSwap, startWinInstaller, leftovers, workDirOf } from './core/selfupdate.js';
+import { download, currentMacApp, stageMacUpdate, startMacSwap, startWinInstaller, leftovers, workDirOf, winUpdateDir } from './core/selfupdate.js';
 import qrcode from 'qrcode-generator';
 import { safeName } from './core/types.js';
 import * as L from './core/launcher.js';
@@ -1183,14 +1183,15 @@ async function installUpdate(){
   if (!u || updating) return;
   if (rec) return session.say('녹화 중에는 업데이트하지 않습니다 · 녹화를 끝낸 뒤 눌러 주세요');
   const page = isReleaseUrl(u.page) ? u.page : `https://github.com/${GH_REPO}/releases`;
-  const byHand = why => { if (!UPDATE_TEST) shell.openExternal(isReleaseUrl(u.url) ? u.url : page); session.say(`${why} · 브라우저에서 새 버전을 받아 직접 설치해 주세요 (사이드바를 끝낸 뒤 덮어 설치)`); };
+  const byHand = why => { if (!UPDATE_TEST) shell.openExternal(isReleaseUrl(u.url) ? u.url : page).catch(e => logErr('업데이트 페이지 열기', e)); session.say(`${why} · 브라우저에서 새 버전을 받아 직접 설치해 주세요 (사이드바를 끝낸 뒤 덮어 설치)`); };
   const asset = typeof u.url === 'string' && (u.url.startsWith(`https://github.com/${GH_REPO}/releases/download/`) || (UPDATE_TEST && u.url.startsWith('http://127.0.0.1:')));
   if (!app.isPackaged && !UPDATE_TEST) return byHand('개발용으로 켠 사이드바라 바꿔 깔 수 없습니다');
   if (!asset || (IS_WIN && process.env.PORTABLE_EXECUTABLE_FILE) || (!IS_WIN && process.platform !== 'darwin')) return byHand('이 PC에 맞는 설치 파일을 찾지 못했습니다');
   const macApp = process.platform === 'darwin' ? (UPDATE_TEST ?? currentMacApp(app.getPath('exe'))) : null;
   if (process.platform === 'darwin' && !macApp) return byHand('응용 프로그램 폴더에서 켠 사이드바가 아니라 바꿔 깔 수 없습니다');
   updating = true;
-  const dir = workDirOf(app.getPath('temp'));
+  const dir = IS_WIN ? updDirWin() : workDirOf(app.getPath('temp'));
+  let got = false;   // 다 받았는지 (받기 실패와 설치 실패를 다르게 안내)
   try {
     rmSync(dir, { recursive: true, force: true });
     const file = path.join(dir, path.basename(new URL(u.url).pathname));
@@ -1203,6 +1204,7 @@ async function installUpdate(){
     await download(u.url, file, { fetchFn: (url, o) => dl.fetch(url, o), expected: u.size, sha256: u.sha256 ?? null, onProgress: pct => { u.pct = pct; if (Date.now() - shown > 400){ shown = Date.now(); push(); } },
       onRetry: (n, e) => { dl.closeAllConnections?.().catch(() => {}); dl = eSession.fromPartition(`update-${Date.now()}-${n}`);
         logErr('업데이트 받기 다시', `${n}번째 · ${e.message} ${e.detail ?? ''}`); session.say(`새 버전을 받지 못해 잠시 뒤 다시 받습니다 (${e.message})`); } });
+    got = true;
     u.phase = 'installing'; push();
     if (process.platform === 'darwin'){
       const staged = await stageMacUpdate(file, { currentApp: macApp, version: u.version, workDir: dir });
@@ -1210,15 +1212,32 @@ async function installUpdate(){
       startMacSwap({ pid: process.pid, staged, dest: macApp, relaunch: !UPDATE_TEST });
       session.say(`새 버전 ${u.version}을 받았습니다 · 사이드바를 껐다가 새 버전으로 다시 켭니다`);
     } else {
-      startWinInstaller(file);
+      try { await startWinInstaller(file); }
+      catch (e){
+        // 보안 프로그램이 자동 설치를 막았다: 받아 둔 설치 파일을 탐색기로 보여 준다 (브라우저로 다시 받게 하지 않는다 — 저장 창이 떠 헷갈렸다)
+        logErr('업데이트 설치 실행', e);
+        updating = false; u.phase = null; u.pct = null; push();
+        shell.showItemInFolder(file);
+        session.say(`새 버전 ${u.version}을 받았지만 보안 프로그램이 자동 설치를 막았습니다 · 열린 폴더의 설치 파일(${path.basename(file)})을 두 번 눌러 설치해 주세요 (켜 둔 사이드바는 설치할 때 저절로 꺼집니다)`);
+        return;
+      }
       session.say(`새 버전 ${u.version}을 받았습니다 · 사이드바를 끄고 설치합니다 (설치가 끝나면 다시 켜집니다)`);
     }
-    setTimeout(() => app.quit(), 1500);
+    setTimeout(() => app.quit(), IS_WIN ? 400 : 1500);   // 윈도우 설치 프로그램(--updated)은 사이드바가 끝나기를 기다린다
   } catch (e){
     logErr('업데이트', `${e.message} ${e.detail ?? ''}`);
     updating = false; u.phase = null; u.pct = null; push();
+    // 받기가 안 됐으면(인터넷·GitHub 일시 오류) 브라우저 저장 창을 띄우지 않고 다시 눌러 달라고 한다
+    if (!got) return session.say(`새 버전을 받지 못했습니다 (${e.message}) · 잠시 뒤 '업데이트'를 다시 눌러 주세요`, { act: 'updatePage', label: '내려받기 페이지 열기' });
     byHand(`새 버전을 바꿔 깔지 못했습니다 (${e.message})`);
   }
+}
+/** 윈도우: 받은 설치 파일을 둘 곳 */
+const updDirWin = () => winUpdateDir(process.env.LOCALAPPDATA, app.getPath('temp'));
+/** 윈도우: 지난번 업데이트에서 남은 설치 파일(120MB)을 지운다 (설치 프로그램이 다 끝난 뒤에 켜지므로 잠시 뒤) */
+function cleanupWinUpdate(){
+  if (!IS_WIN || !app.isPackaged) return;
+  setTimeout(() => { try { rmSync(updDirWin(), { recursive: true, force: true }); } catch { /* 아직 쓰는 중이면 다음에 */ } }, 30000);
 }
 /** 맥: 바꿔 깐 뒤 남은 옛 앱(.LessonSidebar.old-….app)은 휴지통으로, 바꾸다 남은 복사본(.updating)은 지운다 */
 async function cleanupOldApps(){
@@ -1784,6 +1803,7 @@ const ACTIONS = {
   help: () => openHelp(),
   reportBug: where => reportBug(typeof where === 'string' ? where : '사이드바'),
   dismissUpdate: () => { if (update){ update.dismissed = true; push(); } },
+  updatePage: () => { const p = update?.page && isReleaseUrl(update.page) ? update.page : `https://github.com/${GH_REPO}/releases`; return shell.openExternal(p).catch(e => logErr('업데이트 페이지 열기', e)); },
   updateCheck: v => { prefs.updateCheck = v === true || v === 'true'; saveSettings({ updateCheck: prefs.updateCheck }); push(); },
   checkUpdateNow: () => runUpdateCheck({ manual: true }),
   remoteQr: v => { if (remote){ remote.showQr = v === true || v === 'true'; push(); } },
@@ -1938,6 +1958,7 @@ app.whenReady().then(async () => {
   if (!firstInstance) return;
   if (await leaveDmg()) return;
   cleanupOldApps().catch(() => {});
+  cleanupWinUpdate();
   if (process.platform === 'darwin') app.dock?.hide();
   const h = makeHelper();
   helper = h.helper;

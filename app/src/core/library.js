@@ -1,5 +1,5 @@
 // 수업 보관함: 수업 폴더들이 들어 있는 상위 폴더 (보통 구글 드라이브의 "수업 사이드바").
-import { readdirSync, readFileSync, existsSync, statSync, renameSync, mkdirSync, writeFileSync } from 'node:fs';
+import { readdirSync, readFileSync, existsSync, statSync, renameSync, mkdirSync, writeFileSync, realpathSync } from 'node:fs';
 import { cp, rm } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
@@ -16,7 +16,8 @@ export function maskEmail(e){
 }
 
 // 윈도우 구글 드라이브 데스크톱이 붙이는 드라이브(G: 등)의 맨 위에는 이 폴더들만 있다
-const DRIVEFS_TOP = /^(내 드라이브|My Drive|공유 드라이브|Shared drives|다른 컴퓨터|Other computers|\.shortcut-targets-by-id|desktop\.ini|System Volume Information)$/i;
+// (.Encrypted: 구글 드라이브가 만드는 숨은 폴더 — 2026-11-23 윈도우 선생님 PC의 G:에 있어 진짜 구글 드라이브가 추천에서 빠졌다)
+const DRIVEFS_TOP = /^(내 드라이브|My Drive|공유 드라이브|Shared drives|다른 컴퓨터|Other computers|\.shortcut-targets-by-id|\.Encrypted|desktop\.ini|System Volume Information)$/i;
 
 /** 보관함으로 쓸 만한 위치. 구글 드라이브 데스크톱이 있으면 먼저.
  *  o: 시험용으로 바꿔 넣는 값 (platform, home, env, exists, readdir) */
@@ -55,10 +56,24 @@ export function suggestRoots(o = {}){
 
 /** 화면에 보일 짧은 위치. 사용자 이름·구글 계정 이메일이 든 앞부분은 빼고 바꿔 부른다.
  *  예) /Users/<이름>/Library/CloudStorage/GoogleDrive-<이메일>/내 드라이브/수업 사이드바 → 구글 드라이브 › 내 드라이브 › 수업 사이드바 */
+/** 윈도우 짧은 이름(8.3, 예: C:\Users\KIMCHU~1)을 긴 이름으로. 아직 없는 폴더면 있는 데까지만 바꾼다 */
+function longName(s){
+  if (process.platform !== 'win32' || !s.includes('~')) return s;
+  let head = s; const rest = [];
+  for (let i = 0; i < 64; i++){
+    try { return path.win32.join(realpathSync.native(head), ...rest); } catch { /* 위로 */ }
+    const up = path.win32.dirname(head);
+    if (up === head) return s;
+    rest.unshift(path.win32.basename(head)); head = up;
+  }
+  return s;
+}
+
 export function shortPath(p, { platform = process.platform, home = os.homedir() } = {}){
   if (!p) return '';
   const P = platform === 'win32' ? path.win32 : path.posix;
-  const s = String(p).normalize('NFC');
+  // 윈도우 TEMP 같은 경로는 사용자 이름이 짧은 이름(예: KIMCHU~1)으로 들어 있어 홈으로 알아보지 못하고 그대로 보였다 (2026-11-23)
+  const s = (platform === 'win32' ? longName(String(p)) : String(p)).normalize('NFC');
   const parts = rest => rest.split(/[\\/]+/).filter(Boolean);
   const join = a => a.join(' › ');
   const cs = s.match(/[\\/]Library[\\/]CloudStorage[\\/]([^\\/]+)(.*)$/);
@@ -78,7 +93,15 @@ export function shortPath(p, { platform = process.platform, home = os.homedir() 
     if (/^OneDrive( - .+)?$/i.test(first)) return join(['OneDrive', ...more]);
     return join(NAMES[first] ? [NAMES[first], ...more] : ['홈', first, ...more]);
   }
-  if (platform === 'win32'){ const m = s.match(/^([a-z]:)(.*)$/i); if (m) return join([m[1].toUpperCase(), ...parts(m[2])]); }
+  if (platform === 'win32'){
+    const m = s.match(/^([a-z]:)(.*)$/i);
+    if (m){
+      // 윈도우 구글 드라이브(G: 등)는 맨 위가 '내 드라이브'·'공유 드라이브'다 → "구글 드라이브 (G:) › 내 드라이브 › …"
+      const [first, ...more] = parts(m[2]);
+      if (first && /^(내 드라이브|My Drive|공유 드라이브|Shared drives|다른 컴퓨터|Other computers)$/i.test(first)) return join([`구글 드라이브 (${m[1].toUpperCase()})`, first, ...more]);
+      return join([m[1].toUpperCase(), ...parts(m[2])]);
+    }
+  }
   const vol = s.match(/^\/Volumes\/(.*)$/);
   return join(parts(vol ? vol[1] : s));
 }
